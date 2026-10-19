@@ -38,7 +38,7 @@ public final class CameraApp extends PhoneApp {
         int x = (contentWidth() - size) / 2;
         int y = contentHeight() / 2 - 60;
         if (entry != null) {
-            PhoneDraw.texture(g, entry.icon(), x, y, size, size, 64, 64);
+            entry.drawIcon(g, x, y, size);
         }
         PhoneDraw.wrapped(g, PhoneLang.tr("camera.no_world"), 8, y + size + 10, contentWidth() - 16,
                 PhoneTheme.secondaryText(), 0.75f, true);

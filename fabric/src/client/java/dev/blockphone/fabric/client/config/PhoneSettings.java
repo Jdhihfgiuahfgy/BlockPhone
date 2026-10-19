@@ -24,8 +24,12 @@ public final class PhoneSettings {
     public String language = "auto";
     /** Индекс обоев из {@link dev.blockphone.fabric.client.phone.PhoneTheme#WALLPAPERS}. */
     public int wallpaper = 0;
-    /** Тёмная тема приложений. */
-    public boolean darkTheme = false;
+    /** Свои обои: имя файла в {@code blockphone/wallpapers/}; null — используются стандартные. */
+    public String customWallpaper = null;
+    /** Тёмная тема приложений (по умолчанию). */
+    public boolean darkTheme = true;
+    /** Акцентный цвет (ARGB): выделения, кнопки, свои сообщения. */
+    public int accentColor = 0xFF4C8DF6;
     /** 24-часовой формат часов в строке состояния. */
     public boolean clock24h = true;
     /** Показывать в строке состояния игровое время вместо реального. */

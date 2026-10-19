@@ -2,6 +2,7 @@ package dev.blockphone.fabric.client.apps.calculator;
 
 import dev.blockphone.fabric.client.phone.PhoneApp;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
@@ -9,18 +10,19 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
-/** Калькулятор в стиле iOS. Поддерживает ввод с клавиатуры: цифры, + - * / . = Enter Backspace. */
+/**
+ * Калькулятор: дисплей-панель и сетка кнопок (цифры — панели, функции — приглушённые,
+ * операции — с подсветкой акцентом, «=» — залита акцентом). Ввод с клавиатуры: цифры, + - * / . = Enter Backspace.
+ */
 public final class CalculatorApp extends PhoneApp {
     private static final int BUTTON = 33;
     private static final int GAP = 4;
     private static final int GRID_LEFT = (160 - (BUTTON * 4 + GAP * 3)) / 2;
-    private static final int GRID_TOP = 100;
+    private static final int DISPLAY_TOP = 6;
+    private static final int DISPLAY_H = 74;
+    private static final int GRID_TOP = DISPLAY_TOP + DISPLAY_H + 10;
 
-    private static final int DIGIT_BG = 0xFF333333;
-    private static final int FUNC_BG = 0xFFA5A5A5;
-    private static final int OP_BG = 0xFFFF9F0A;
-
-    private enum Kind { DIGIT, FUNC, OP }
+    private enum Kind { DIGIT, FUNC, OP, EQUALS }
 
     private record Key(String label, int col, int row, int span, Kind kind, Runnable action, Calculator.Op op) {
     }
@@ -43,7 +45,7 @@ public final class CalculatorApp extends PhoneApp {
                 op("+", 3, 3, Calculator.Op.ADD),
                 new Key("0", 0, 4, 2, Kind.DIGIT, () -> calc.digit(0), null),
                 new Key(".", 2, 4, 1, Kind.DIGIT, calc::point, null),
-                new Key("=", 3, 4, 1, Kind.OP, calc::equals, null));
+                new Key("=", 3, 4, 1, Kind.EQUALS, calc::equals, null));
     }
 
     private Key digit(int d, int col, int row) {
@@ -54,50 +56,63 @@ public final class CalculatorApp extends PhoneApp {
         return new Key(label, col, row, 1, Kind.OP, () -> calc.operation(op), op);
     }
 
-    @Override
-    public int backgroundColor() {
-        return 0xFF000000;
+    private static int keyX(Key key) {
+        return GRID_LEFT + key.col * (BUTTON + GAP);
     }
 
-    @Override
-    public int headerTextColor() {
-        return 0xFFFFFFFF;
+    private static int keyY(Key key) {
+        return GRID_TOP + key.row * (BUTTON + GAP);
     }
 
-    @Override
-    public boolean lightStatusBar() {
-        return true;
+    private static int keyW(Key key) {
+        return BUTTON * key.span + GAP * (key.span - 1);
     }
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-        int right = contentWidth() - GRID_LEFT - 2;
-
-        PhoneDraw.rightText(g, calc.expression(), right, 40, 0xFF8E8E93, 1f);
+        int w = contentWidth();
+        PhoneDraw.panel(g, GRID_LEFT, DISPLAY_TOP, w - GRID_LEFT, DISPLAY_TOP + DISPLAY_H, PhoneTheme.field());
+        int right = w - GRID_LEFT - 6;
+        PhoneDraw.rightText(g, calc.expression(), right, DISPLAY_TOP + 8, PhoneTheme.secondaryText(), 1f);
 
         String value = calc.display();
         float scale = 2.5f;
-        while (scale > 1f && PhoneDraw.width(value, scale) > right - GRID_LEFT) {
+        while (scale > 1f && PhoneDraw.width(value, scale) > w - 2 * GRID_LEFT - 12) {
             scale -= 0.25f;
         }
-        PhoneDraw.rightText(g, value, right, 88 - 9 * scale, 0xFFFFFFFF, scale);
+        PhoneDraw.rightText(g, value, right, DISPLAY_TOP + DISPLAY_H - 6 - 8 * scale, PhoneTheme.text(), scale);
 
         for (Key key : keys) {
-            int x = GRID_LEFT + key.col * (BUTTON + GAP);
-            int y = GRID_TOP + key.row * (BUTTON + GAP);
-            int w = BUTTON * key.span + GAP * (key.span - 1);
+            int x = keyX(key);
+            int y = keyY(key);
+            int kw = keyW(key);
+            boolean hovered = PhoneDraw.inside(mouseX, mouseY, x, y, kw, BUTTON);
             boolean active = key.op != null && key.op == calc.pendingOp();
-            int bg = switch (key.kind) {
-                case DIGIT -> DIGIT_BG;
-                case FUNC -> FUNC_BG;
-                case OP -> active ? 0xFFFFFFFF : OP_BG;
-            };
-            int fg = key.kind == Kind.FUNC ? 0xFF000000 : (active ? OP_BG : 0xFFFFFFFF);
-            PhoneDraw.roundedRect(g, x, y, x + w, y + BUTTON, BUTTON / 2, bg);
-            if (PhoneDraw.inside(mouseX, mouseY, x, y, w, BUTTON)) {
-                PhoneDraw.roundedRect(g, x, y, x + w, y + BUTTON, BUTTON / 2, 0x30FFFFFF);
+            int fg;
+            switch (key.kind) {
+                case DIGIT -> {
+                    PhoneDraw.card(g, x, y, x + kw, y + BUTTON, hovered);
+                    fg = PhoneTheme.text();
+                }
+                case FUNC -> {
+                    PhoneDraw.panel(g, x, y, x + kw, y + BUTTON, hovered ? PhoneTheme.border() : PhoneTheme.cardHover());
+                    fg = PhoneTheme.secondaryText();
+                }
+                case OP -> {
+                    if (active) {
+                        PhoneDraw.roundedRect(g, x, y, x + kw, y + BUTTON, PhoneTheme.RADIUS, PhoneTheme.accent());
+                        fg = PhoneTheme.onAccent();
+                    } else {
+                        PhoneDraw.roundedRect(g, x, y, x + kw, y + BUTTON, PhoneTheme.RADIUS, PhoneTheme.accentTint(hovered ? 0x70 : 0x45));
+                        fg = PhoneTheme.dark() ? PhoneTheme.mix(PhoneTheme.accent(), PhoneTheme.WHITE, 0.35f) : PhoneTheme.accent();
+                    }
+                }
+                default -> {
+                    PhoneDraw.roundedRect(g, x, y, x + kw, y + BUTTON, PhoneTheme.RADIUS, hovered ? PhoneTheme.accentHover() : PhoneTheme.accent());
+                    fg = PhoneTheme.onAccent();
+                }
             }
-            float textX = key.span > 1 ? x + BUTTON / 2f : x + w / 2f;
+            float textX = key.span > 1 ? x + BUTTON / 2f : x + kw / 2f;
             PhoneDraw.centeredText(g, key.label, textX, y + BUTTON / 2f - 6, fg, 1.5f, false);
         }
     }
@@ -108,10 +123,7 @@ public final class CalculatorApp extends PhoneApp {
             return false;
         }
         for (Key key : keys) {
-            int x = GRID_LEFT + key.col * (BUTTON + GAP);
-            int y = GRID_TOP + key.row * (BUTTON + GAP);
-            int w = BUTTON * key.span + GAP * (key.span - 1);
-            if (PhoneDraw.inside(mx, my, x, y, w, BUTTON)) {
+            if (PhoneDraw.inside(mx, my, keyX(key), keyY(key), keyW(key), BUTTON)) {
                 key.action.run();
                 return true;
             }

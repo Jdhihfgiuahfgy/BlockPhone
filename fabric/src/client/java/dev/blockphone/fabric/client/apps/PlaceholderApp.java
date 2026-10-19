@@ -21,7 +21,7 @@ public final class PlaceholderApp extends PhoneApp {
         int y = contentHeight() / 2 - 60;
         AppRegistry.Entry entry = AppRegistry.get(id());
         if (entry != null) {
-            PhoneDraw.texture(g, entry.icon(), x, y, size, size, 64, 64);
+            entry.drawIcon(g, x, y, size);
         }
         float cx = contentWidth() / 2f;
         PhoneDraw.centeredText(g, title(), cx, y + size + 10, PhoneTheme.text(), 1f, false);

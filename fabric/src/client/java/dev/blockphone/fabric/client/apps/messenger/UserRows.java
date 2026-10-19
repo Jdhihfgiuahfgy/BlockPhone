@@ -30,9 +30,9 @@ final class UserRows {
         float right = width - 8;
         if (checked != null) {
             int bx = width - 20;
-            PhoneDraw.roundedRect(g, bx, y + 7, bx + 12, y + 19, 6, checked ? PhoneTheme.ACCENT : PhoneTheme.separator());
+            PhoneDraw.roundedRect(g, bx, y + 7, bx + 12, y + 19, 6, checked ? PhoneTheme.accent() : PhoneTheme.separator());
             if (checked) {
-                PhoneDraw.centeredText(g, "✔", bx + 6, y + 9, 0xFFFFFFFF, 0.75f, false);
+                PhoneDraw.centeredText(g, "✔", bx + 6, y + 9, PhoneTheme.onAccent(), 0.75f, false);
             } else {
                 PhoneDraw.roundedRect(g, bx + 1, y + 8, bx + 11, y + 18, 5, PhoneTheme.background());
             }
@@ -44,7 +44,7 @@ final class UserRows {
         }
         PhoneDraw.text(g, PhoneDraw.ellipsize(user.name(), right - textX, 0.85f), textX, y + 5, PhoneTheme.text(), 0.85f, false);
         String status = MessengerApp.tr(online ? "messenger.online" : "messenger.offline");
-        PhoneDraw.text(g, status, textX, y + 15, online ? PhoneTheme.ACCENT : PhoneTheme.secondaryText(), 0.6f, false);
+        PhoneDraw.text(g, status, textX, y + 15, online ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.6f, false);
     }
 
     private UserRows() {

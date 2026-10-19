@@ -8,6 +8,7 @@ import dev.blockphone.fabric.client.mixin.GameRendererAccessor;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneScreen;
 import dev.blockphone.fabric.client.phone.PhoneState;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import dev.blockphone.fabric.client.photo.PhotoMeta;
 import dev.blockphone.fabric.client.photo.PhotoStore;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -288,7 +289,7 @@ public final class CameraMode {
             PhoneDraw.centeredText(g, zoom, w / 2f, 20, 0xFFFFD60A, 1f, true);
         }
         if (capture != null && capture.exposing()) {
-            g.fill(20, 20, 26, 26, 0xFFFF3B30);
+            g.fill(20, 20, 26, 26, PhoneTheme.danger());
             PhoneDraw.text(g, PhoneLang.tr("camera.exposing"), 30, 19, 0xFFFFFFFF, 1f, true);
         }
         if (!panelHidden) {

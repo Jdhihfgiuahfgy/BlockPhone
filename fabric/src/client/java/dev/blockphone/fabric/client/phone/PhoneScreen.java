@@ -175,9 +175,9 @@ public class PhoneScreen extends Screen {
     }
 
     private void renderPhone(GuiGraphics g, int mx, int my, float delta) {
-        // Корпус с тонкой окантовкой.
-        PhoneDraw.roundedRect(g, 0, 0, PHONE_W, PHONE_H, BODY_RADIUS, PhoneTheme.BODY_EDGE);
-        PhoneDraw.roundedRect(g, 1, 1, PHONE_W - 1, PHONE_H - 1, BODY_RADIUS - 1, PhoneTheme.BODY);
+        // Корпус: тонкая окантовка, подсвеченная акцентом.
+        PhoneDraw.rawRoundedRect(g, 0, 0, PHONE_W, PHONE_H, BODY_RADIUS, PhoneTheme.bodyEdge());
+        PhoneDraw.rawRoundedRect(g, 1, 1, PHONE_W - 1, PHONE_H - 1, BODY_RADIUS - 1, PhoneTheme.body());
 
         g.pose().pushMatrix();
         g.pose().translate(BEZEL, BEZEL);
@@ -187,8 +187,7 @@ public class PhoneScreen extends Screen {
 
         // Фон: обои или цвет приложения.
         if (app.transparentBackground()) {
-            int[] wp = PhoneTheme.wallpaper();
-            g.fillGradient(0, 0, SCREEN_W, SCREEN_H, wp[0], wp[1]);
+            Wallpapers.draw(g, 0, 0, SCREEN_W, SCREEN_H);
         } else {
             g.fill(0, 0, SCREEN_W, SCREEN_H, app.backgroundColor());
         }
@@ -212,59 +211,109 @@ public class PhoneScreen extends Screen {
         }
 
         g.disableScissor();
-        // Скруглённые углы экрана и «островок» камеры.
-        PhoneDraw.roundCornersMask(g, 0, 0, SCREEN_W, SCREEN_H, SCREEN_RADIUS, PhoneTheme.BODY);
-        PhoneDraw.roundedRect(g, SCREEN_W / 2 - 18, 3, SCREEN_W / 2 + 18, 11, 4, PhoneTheme.BLACK);
+        // Скруглённые углы экрана и камера-«точка».
+        PhoneDraw.roundCornersMask(g, 0, 0, SCREEN_W, SCREEN_H, SCREEN_RADIUS, PhoneTheme.body());
+        PhoneDraw.rawRoundedRect(g, SCREEN_W / 2 - 3, 3, SCREEN_W / 2 + 3, 9, 3, 0xFF05070C);
+        g.fill(SCREEN_W / 2 - 1, 5, SCREEN_W / 2, 6, 0xFF2A3A5A);
         g.pose().popMatrix();
+    }
+
+    private static final int BACK_X = 4;
+    private static final int BACK_W = 18;
+    private static final int HEADER_BUTTON_H = 14;
+
+    private int headerButtonY() {
+        return STATUS_H + (HEADER_H - HEADER_BUTTON_H) / 2;
+    }
+
+    private static int actionWidth(String action) {
+        return Math.max(BACK_W, (int) PhoneDraw.width(action, 0.75f) + 10);
     }
 
     private void renderHeader(GuiGraphics g, int sx, int sy) {
         int top = STATUS_H;
         g.fill(0, top, SCREEN_W, top + HEADER_H, app.headerColor());
-        int textColor = app.headerTextColor();
-        boolean backHovered = PhoneDraw.inside(sx, sy, 0, top, 24, HEADER_H);
-        PhoneDraw.text(g, "<", 8, top + 6, backHovered ? PhoneTheme.ACCENT : textColor, 1f, false);
+        g.fill(0, top + HEADER_H - 1, SCREEN_W, top + HEADER_H, PhoneTheme.separator());
+        int by = headerButtonY();
+        boolean backHovered = PhoneDraw.inside(sx, sy, BACK_X, by, BACK_W, HEADER_BUTTON_H);
+        PhoneDraw.card(g, BACK_X, by, BACK_X + BACK_W, by + HEADER_BUTTON_H, backHovered);
+        PhoneDraw.centeredText(g, "<", BACK_X + BACK_W / 2f, by + 3, PhoneTheme.text(), 1f, false);
+
         String action = app.headerAction();
         int actionWidth = 0;
         if (action != null) {
-            actionWidth = (int) PhoneDraw.width(action, 0.75f) + 8;
-            boolean hovered = PhoneDraw.inside(sx, sy, SCREEN_W - actionWidth - 4, top, actionWidth + 4, HEADER_H);
-            int color = app.headerActionColor();
-            PhoneDraw.rightText(g, action, SCREEN_W - 8, top + 7, hovered ? (color & 0x00FFFFFF) | 0xB0000000 : color, 0.75f);
+            actionWidth = actionWidth(action);
+            int ax = SCREEN_W - 4 - actionWidth;
+            boolean hovered = PhoneDraw.inside(sx, sy, ax, by, actionWidth, HEADER_BUTTON_H);
+            PhoneDraw.card(g, ax, by, ax + actionWidth, by + HEADER_BUTTON_H, hovered);
+            PhoneDraw.centeredText(g, PhoneDraw.ellipsize(action, actionWidth - 4, 0.75f), ax + actionWidth / 2f, by + 4,
+                    app.headerActionColor(), 0.75f, false);
         }
-        int titleRoom = SCREEN_W - 2 * Math.max(28, actionWidth + 6);
+        int titleRoom = SCREEN_W - 2 * (Math.max(BACK_W, actionWidth) + 10);
         String title = PhoneDraw.ellipsize(app.title(), titleRoom, 1f);
-        PhoneDraw.centeredText(g, title, SCREEN_W / 2f, top + 6, textColor, 1f, false);
+        PhoneDraw.centeredText(g, title, SCREEN_W / 2f, top + 6, app.headerTextColor(), 1f, false);
+    }
+
+    /** Текст строки состояния и навигации: белый на обоях и тёмных экранах, иначе по теме. */
+    private int barColor() {
+        return app.transparentBackground() || app.lightStatusBar() ? PhoneTheme.WHITE : PhoneTheme.text();
     }
 
     private void renderStatusBar(GuiGraphics g) {
-        boolean light = app.lightStatusBar();
-        int color = light ? 0xFFFFFFFF : 0xFF1C1C1E;
-        int dim = light ? 0x66FFFFFF : 0x661C1C1E;
+        int color = barColor();
+        int dim = (color & 0x00FFFFFF) | 0x55000000;
 
-        PhoneDraw.text(g, PhoneClock.time(), 12, 3.5f, color, 0.75f, false);
+        PhoneDraw.text(g, PhoneClock.time(), 8, 3.5f, color, 0.75f, false);
 
         // «Связь»: полные деления — на сервере стоит BlockPhone.
         int bars = ClientNetwork.serverHello() != null ? 4 : 1;
-        int x = SCREEN_W - 40;
+        int x = SCREEN_W - 36;
         for (int i = 0; i < 4; i++) {
             int h = 2 + i * 2;
             g.fill(x + i * 3, 10 - h, x + i * 3 + 2, 10, i < bars ? color : dim);
         }
         // Батарейка.
-        int bx = SCREEN_W - 26;
-        g.renderOutline(bx, 4, 14, 7, color);
-        g.fill(bx + 14, 6, bx + 15, 9, color);
-        g.fill(bx + 2, 6, bx + 12, 9, color);
+        int bx = SCREEN_W - 22;
+        g.renderOutline(bx, 4, 13, 7, color);
+        g.fill(bx + 13, 6, bx + 14, 9, color);
+        g.fill(bx + 2, 6, bx + 11, 9, PhoneTheme.accent());
     }
 
+    private static final int NAV_BUTTON_W = 26;
+
+    private int navBackX() {
+        return SCREEN_W / 2 - NAV_BUTTON_W - 4;
+    }
+
+    private int navHomeX() {
+        return SCREEN_W / 2 + 4;
+    }
+
+    /** Нижняя навигация: «назад» и «домой». */
     private void renderNavBar(GuiGraphics g, int sx, int sy) {
-        boolean hovered = PhoneDraw.inside(sx, sy, SCREEN_W / 2 - 30, SCREEN_H - NAV_H, 60, NAV_H);
-        int color = app.lightStatusBar() || app.transparentBackground() ? 0xFFFFFFFF : 0xFF1C1C1E;
-        if (!hovered) {
-            color = (color & 0x00FFFFFF) | 0xB0000000;
+        int top = SCREEN_H - NAV_H;
+        if (!app.transparentBackground()) {
+            g.fill(0, top, SCREEN_W, SCREEN_H, app.headerColor());
+            g.fill(0, top, SCREEN_W, top + 1, PhoneTheme.separator());
         }
-        PhoneDraw.roundedRect(g, SCREEN_W / 2 - 24, SCREEN_H - 7, SCREEN_W / 2 + 24, SCREEN_H - 4, 1, color);
+        int color = barColor();
+        int cy = top + NAV_H / 2;
+        int backX = navBackX();
+        int homeX = navHomeX();
+        if (PhoneDraw.inside(sx, sy, backX, top, NAV_BUTTON_W, NAV_H)) {
+            PhoneDraw.roundedRect(g, backX, top + 1, backX + NAV_BUTTON_W, SCREEN_H - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
+        }
+        if (PhoneDraw.inside(sx, sy, homeX, top, NAV_BUTTON_W, NAV_H)) {
+            PhoneDraw.roundedRect(g, homeX, top + 1, homeX + NAV_BUTTON_W, SCREEN_H - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
+        }
+        // Стрелка «назад» — треугольник из полосок.
+        int ax = backX + NAV_BUTTON_W / 2 - 2;
+        for (int i = 0; i < 4; i++) {
+            g.fill(ax + i, cy - i, ax + i + 1, cy + i + 1, color);
+        }
+        // «Домой» — квадратик с рамкой.
+        int hx = homeX + NAV_BUTTON_W / 2 - 3;
+        g.renderOutline(hx, cy - 3, 7, 7, color);
     }
 
     // --- Ввод ---
@@ -299,18 +348,22 @@ public class PhoneScreen extends Screen {
             }
             return true;
         }
-        if (sy >= SCREEN_H - NAV_H && sy < SCREEN_H && sx >= 0 && sx < SCREEN_W) {
-            goHome();
+        if (sy >= SCREEN_H - NAV_H && sy < SCREEN_H) {
+            if (PhoneDraw.inside(sx, sy, navBackX(), SCREEN_H - NAV_H, NAV_BUTTON_W, NAV_H)) {
+                back();
+            } else if (PhoneDraw.inside(sx, sy, navHomeX(), SCREEN_H - NAV_H, NAV_BUTTON_W, NAV_H)) {
+                goHome();
+            }
             return true;
         }
-        if (app.hasHeader() && PhoneDraw.inside(sx, sy, 0, STATUS_H, 24, HEADER_H)) {
+        if (app.hasHeader() && PhoneDraw.inside(sx, sy, 0, STATUS_H, BACK_X + BACK_W + 2, HEADER_H)) {
             back();
             return true;
         }
         String action = app.hasHeader() ? app.headerAction() : null;
         if (action != null) {
-            int actionWidth = (int) PhoneDraw.width(action, 0.75f) + 8;
-            if (PhoneDraw.inside(sx, sy, SCREEN_W - actionWidth - 4, STATUS_H, actionWidth + 4, HEADER_H)) {
+            int actionWidth = actionWidth(action);
+            if (PhoneDraw.inside(sx, sy, SCREEN_W - 6 - actionWidth, STATUS_H, actionWidth + 6, HEADER_H)) {
                 app.onHeaderAction();
                 return true;
             }

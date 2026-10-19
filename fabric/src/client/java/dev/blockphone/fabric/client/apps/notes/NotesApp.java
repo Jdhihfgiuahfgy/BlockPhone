@@ -55,7 +55,7 @@ public final class NotesApp extends PhoneApp {
 
     @Override
     public int headerActionColor() {
-        return editing != null ? 0xFFFF3B30 : PhoneTheme.ACCENT;
+        return editing != null ? PhoneTheme.danger() : PhoneTheme.accent();
     }
 
     @Override
@@ -136,14 +136,13 @@ public final class NotesApp extends PhoneApp {
     private void renderEditor(GuiGraphics g, int mouseX, int mouseY) {
         int w = contentWidth();
         PhoneDraw.centeredText(g, formatDate(editing.updated, true), w / 2f, 4, PhoneTheme.secondaryText(), 0.6f, false);
-        editor.setBounds(MARGIN - 3, 14, w - 2 * MARGIN + 6, contentHeight() - 16);
+        editor.setBounds(MARGIN, 14, w - 2 * MARGIN, contentHeight() - 14 - MARGIN);
         editor.render(g, mouseX, mouseY);
     }
 
     private void renderList(GuiGraphics g, int mouseX, int mouseY) {
         int w = contentWidth();
-        PhoneDraw.roundedRect(g, MARGIN, 4, w - MARGIN, 4 + SEARCH_H, 6, PhoneTheme.card());
-        search.setBounds(MARGIN + 2, 5, w - 2 * MARGIN - 4, SEARCH_H - 2);
+        search.setBounds(MARGIN, 4, w - 2 * MARGIN, SEARCH_H);
         search.setPlaceholder(PhoneLang.tr("notes.search"));
         search.render(g, mouseX, mouseY);
 
@@ -157,30 +156,23 @@ public final class NotesApp extends PhoneApp {
         clampScroll(notes.size(), top);
         g.enableScissor(0, top, w, contentHeight());
         int listTop = top - (int) scroll;
-        int bottom = listTop + notes.size() * ROW_H;
-        PhoneDraw.roundedRect(g, MARGIN, listTop, w - MARGIN, bottom, 8, PhoneTheme.card());
         for (int i = 0; i < notes.size(); i++) {
             NotesStore.Note note = notes.get(i);
             int y = listTop + i * ROW_H;
             if (y + ROW_H < top || y > contentHeight()) {
                 continue;
             }
-            if (mouseY >= top && PhoneDraw.inside(mouseX, mouseY, MARGIN, y, w - 2 * MARGIN, ROW_H)) {
-                g.fill(MARGIN, y, w - MARGIN, y + ROW_H, PhoneTheme.cardHover());
-            }
-            if (i > 0) {
-                g.fill(MARGIN + 6, y, w - MARGIN, y + 1, PhoneTheme.separator());
-            }
+            boolean hovered = mouseY >= top && PhoneDraw.inside(mouseX, mouseY, MARGIN, y, w - 2 * MARGIN, ROW_H - 3);
+            PhoneDraw.card(g, MARGIN, y, w - MARGIN, y + ROW_H - 3, hovered);
             String title = note.title().isEmpty() ? PhoneLang.tr("notes.untitled") : note.title();
             PhoneDraw.text(g, PhoneDraw.ellipsize(title, w - 2 * MARGIN - 12, 0.85f), MARGIN + 6, y + 5,
                     PhoneTheme.text(), 0.85f, false);
             String date = formatDate(note.updated, false);
-            PhoneDraw.text(g, date, MARGIN + 6, y + 18, PhoneTheme.secondaryText(), 0.6f, false);
+            PhoneDraw.text(g, date, MARGIN + 6, y + 17, PhoneTheme.accent(), 0.6f, false);
             float previewX = MARGIN + 6 + PhoneDraw.width(date, 0.6f) + 5;
-            PhoneDraw.text(g, PhoneDraw.ellipsize(note.preview(), w - MARGIN - 6 - previewX, 0.6f), previewX, y + 18,
+            PhoneDraw.text(g, PhoneDraw.ellipsize(note.preview(), w - MARGIN - 6 - previewX, 0.6f), previewX, y + 17,
                     PhoneTheme.secondaryText(), 0.6f, false);
         }
-        PhoneDraw.roundCornersMask(g, MARGIN, listTop, w - MARGIN, bottom, 8, PhoneTheme.background());
         g.disableScissor();
     }
 

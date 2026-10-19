@@ -99,15 +99,17 @@ public final class DevShots {
     private void plan() {
         PhoneSettings settings = PhoneSettings.get();
         boolean originalDark = settings.darkTheme;
+        int originalAccent = settings.accentColor;
         String originalLanguage = settings.language;
         step(1, mc -> mc.options.pauseOnLostFocus = false);
 
         // 1. Все приложения в главном меню.
-        for (boolean dark : scenario.equals("messenger") ? new boolean[0] : new boolean[]{false, true}) {
+        for (boolean dark : scenario.equals("messenger") ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
                 settings.darkTheme = dark;
                 settings.language = dark ? "ru_ru" : "en_us";
+                settings.accentColor = 0xFF4C8DF6;
                 PhoneState.reset();
                 mc.setScreen(new PhoneScreen());
             });
@@ -116,6 +118,37 @@ public final class DevShots {
                 step(1, mc -> phone(mc, p -> p.openApp(entry.id())));
                 shot(20, "menu_" + entry.id() + suffix);
             }
+        }
+
+        // 1б. Другой акцент, страницы цвета и обоев.
+        if (!scenario.equals("messenger")) {
+            step(1, mc -> {
+                settings.darkTheme = true;
+                settings.language = "ru_ru";
+                settings.accentColor = 0xFFF29544;
+                PhoneState.reset();
+                mc.setScreen(new PhoneScreen());
+            });
+            shot(30, "accent_home");
+            step(1, mc -> phone(mc, p -> p.openApp("calculator")));
+            shot(20, "accent_calculator");
+            step(1, mc -> phone(mc, p -> p.openApp("settings")));
+            shot(20, "accent_settings");
+            step(1, mc -> settingsPage("accent"));
+            shot(20, "accent_page");
+            step(1, mc -> settingsPage("wallpaper"));
+            shot(30, "wallpaper_page");
+            step(1, mc -> settings.accentColor = originalAccent);
+        }
+        if (scenario.equals("design")) {
+            step(5, mc -> {
+                settings.darkTheme = originalDark;
+                settings.language = originalLanguage;
+                settings.accentColor = originalAccent;
+                BlockPhoneFabric.LOGGER.info("[DevShots] done");
+                mc.stop();
+            });
+            return;
         }
 
         // 2. Мир.
@@ -149,6 +182,7 @@ public final class DevShots {
         step(5, mc -> {
             settings.darkTheme = originalDark;
             settings.language = originalLanguage;
+            settings.accentColor = originalAccent;
             CameraMode.SETTINGS.reset();
             BlockPhoneFabric.LOGGER.info("[DevShots] done");
             mc.stop();
@@ -238,6 +272,12 @@ public final class DevShots {
         shot(30, "msg_group_dark");
         step(1, mc -> phone(mc, PhoneScreen::back));
         shot(20, "msg_list_dark");
+    }
+
+    private static void settingsPage(String page) {
+        if (PhoneState.app("settings") instanceof dev.blockphone.fabric.client.apps.settings.SettingsApp app) {
+            app.openPage(page);
+        }
     }
 
     private static void messenger(Consumer<MessengerApp> action) {

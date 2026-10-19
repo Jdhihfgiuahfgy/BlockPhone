@@ -6,6 +6,7 @@ import dev.blockphone.common.protocol.data.MessengerData.MessageInfo;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneScreen;
 import dev.blockphone.fabric.client.phone.PhoneState;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -56,7 +57,9 @@ public final class MessengerNotifications {
 
         @Override
         public void render(GuiGraphics g, Font font, long time) {
-            PhoneDraw.roundedRect(g, 0, 0, width(), height(), 8, 0xF0202024);
+            PhoneDraw.rawRoundedRect(g, 0, 0, width(), height(), 4, PhoneTheme.bodyEdge());
+            PhoneDraw.rawRoundedRect(g, 1, 1, width() - 1, height() - 1, 3, 0xF0111725);
+            g.fill(1, 1, 3, height() - 1, PhoneTheme.accent());
             Avatars.drawUser(g, message.sender(), 7, 7, 18);
             PhoneDraw.text(g, PhoneDraw.ellipsize(title, width() - 36, 1f), 31, 7, 0xFFFFFFFF, 1f, false);
             PhoneDraw.text(g, PhoneDraw.ellipsize(message.text().replace('\n', ' '), width() - 36, 1f), 31, 18,

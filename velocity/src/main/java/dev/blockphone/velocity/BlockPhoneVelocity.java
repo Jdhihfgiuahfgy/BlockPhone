@@ -32,7 +32,7 @@ import java.util.UUID;
  * blockphone:main от клиентов и не пропускает его к серверам, поэтому чаты общие для всей сети.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.3.0",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.3.1",
         description = "Network-wide messenger for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =

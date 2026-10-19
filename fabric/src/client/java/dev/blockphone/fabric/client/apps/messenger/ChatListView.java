@@ -79,15 +79,15 @@ final class ChatListView extends MessengerView {
                 String count = unread > 99 ? "99+" : String.valueOf(unread);
                 badgeW = Math.max(10, PhoneDraw.width(count, 0.6f) + 6);
                 int bx = (int) (w - 6 - badgeW);
-                PhoneDraw.roundedRect(g, bx, y + 18, w - 6, y + 28, 5, PhoneTheme.ACCENT);
-                PhoneDraw.centeredText(g, count, bx + badgeW / 2f, y + 20.5f, 0xFFFFFFFF, 0.6f, false);
+                PhoneDraw.roundedRect(g, bx, y + 18, w - 6, y + 28, 5, PhoneTheme.accent());
+                PhoneDraw.centeredText(g, count, bx + badgeW / 2f, y + 20.5f, PhoneTheme.onAccent(), 0.6f, false);
             }
             String preview = MessengerFormat.preview(chat.lastMessage(), chat.type() == ChatType.GROUP);
             List<String> typing = MessengerClient.typing(chat.id());
             int previewColor = PhoneTheme.secondaryText();
             if (!typing.isEmpty()) {
                 preview = MessengerApp.tr("messenger.typing");
-                previewColor = PhoneTheme.ACCENT;
+                previewColor = PhoneTheme.accent();
             }
             PhoneDraw.text(g, PhoneDraw.ellipsize(preview, w - textX - badgeW - 12, 0.7f), textX, y + 20, previewColor, 0.7f, false);
             if (i < chats.size() - 1) {

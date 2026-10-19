@@ -84,13 +84,12 @@ final class ChatInfoView extends MessengerView {
 
         boolean group = chat.type() == ChatType.GROUP;
         if (renaming) {
-            PhoneDraw.roundedRect(g, 12, y - 2, w - 12, y + 14, 6, PhoneTheme.card());
-            rename.setBounds(14, y - 1, w - 28, 14);
+            rename.setBounds(12, y - 2, w - 24, 16);
             rename.render(g, mouseX, mouseY);
             y += 18;
             int bw = (w - 32) / 2;
-            button(g, 12, y, bw, MessengerApp.tr("dialog.cancel"), PhoneTheme.card(), PhoneTheme.ACCENT, mouseX, mouseY, () -> renaming = false);
-            button(g, 20 + bw, y, bw, MessengerApp.tr("messenger.save"), PhoneTheme.ACCENT, 0xFFFFFFFF, mouseX, mouseY, this::saveTitle);
+            button(g, 12, y, bw, MessengerApp.tr("dialog.cancel"), PhoneTheme.card(), PhoneTheme.accent(), mouseX, mouseY, () -> renaming = false);
+            button(g, 20 + bw, y, bw, MessengerApp.tr("messenger.save"), PhoneTheme.accent(), PhoneTheme.onAccent(), mouseX, mouseY, this::saveTitle);
             y += BUTTON_H + 8;
         } else {
             PhoneDraw.centeredText(g, PhoneDraw.ellipsize(MessengerClient.title(chat), w - 20, 1f), w / 2f, y, PhoneTheme.text(), 1f, false);
@@ -111,7 +110,7 @@ final class ChatInfoView extends MessengerView {
 
         boolean owner = MessengerClient.isOwner(chat);
         if (owner && !renaming) {
-            button(g, 12, y, w - 24, MessengerApp.tr("messenger.rename"), PhoneTheme.card(), PhoneTheme.ACCENT, mouseX, mouseY, () -> {
+            button(g, 12, y, w - 24, MessengerApp.tr("messenger.rename"), PhoneTheme.card(), PhoneTheme.accent(), mouseX, mouseY, () -> {
                 renaming = true;
                 rename.setText(chat.title());
                 rename.setFocused(true);
@@ -121,7 +120,7 @@ final class ChatInfoView extends MessengerView {
         if (chat.members().size() < MessengerData.MAX_GROUP_MEMBERS) {
             Set<UUID> existing = new HashSet<>();
             chat.members().forEach(m -> existing.add(m.uuid()));
-            button(g, 12, y, w - 24, "+ " + MessengerApp.tr("messenger.add_members"), PhoneTheme.card(), PhoneTheme.ACCENT, mouseX, mouseY,
+            button(g, 12, y, w - 24, "+ " + MessengerApp.tr("messenger.add_members"), PhoneTheme.card(), PhoneTheme.accent(), mouseX, mouseY,
                     () -> app.push(UserPickerView.addMembers(app, chatId, existing)));
             y += BUTTON_H + 8;
         }
@@ -136,7 +135,7 @@ final class ChatInfoView extends MessengerView {
             if (canRemove) {
                 int bx = w - 20;
                 boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, y + 6, 14, 14);
-                PhoneDraw.roundedRect(g, bx, y + 6, bx + 14, y + 20, 7, hovered ? 0xFFFF3B30 : PhoneTheme.separator());
+                PhoneDraw.roundedRect(g, bx, y + 6, bx + 14, y + 20, 7, hovered ? PhoneTheme.danger() : PhoneTheme.separator());
                 PhoneDraw.centeredText(g, "×", bx + 7, y + 9, 0xFFFFFFFF, 1f, false);
                 hits.add(new Hit(bx, y + 6, 14, 14, () -> app.showDialog(new PhoneDialog(
                         MessengerApp.tr("messenger.remove_title"), MessengerApp.tr("messenger.remove_message", member.name()),
@@ -146,7 +145,7 @@ final class ChatInfoView extends MessengerView {
             y += UserRows.ROW_H;
         }
         y += 8;
-        button(g, 12, y, w - 24, MessengerApp.tr("messenger.leave"), PhoneTheme.card(), 0xFFFF3B30, mouseX, mouseY,
+        button(g, 12, y, w - 24, MessengerApp.tr("messenger.leave"), PhoneTheme.card(), PhoneTheme.danger(), mouseX, mouseY,
                 () -> app.showDialog(new PhoneDialog(MessengerApp.tr("messenger.leave_title"), MessengerApp.tr("messenger.leave_message"),
                         MessengerApp.tr("messenger.leave"), true,
                         () -> ClientNetwork.send(new MessengerPackets.GroupAction(chatId, Action.LEAVE, "", List.of())))));
@@ -156,9 +155,10 @@ final class ChatInfoView extends MessengerView {
 
     private void button(GuiGraphics g, int x, int y, int w, String label, int bg, int fg, int mx, int my, Runnable action) {
         boolean hovered = PhoneDraw.inside(mx, my, x, y, w, BUTTON_H);
-        PhoneDraw.roundedRect(g, x, y, x + w, y + BUTTON_H, 7, hovered ? PhoneTheme.cardHover() : bg);
-        if (hovered && bg != PhoneTheme.card()) {
-            PhoneDraw.roundedRect(g, x, y, x + w, y + BUTTON_H, 7, 0x30FFFFFF);
+        if (bg == PhoneTheme.card()) {
+            PhoneDraw.card(g, x, y, x + w, y + BUTTON_H, hovered);
+        } else {
+            PhoneDraw.roundedRect(g, x, y, x + w, y + BUTTON_H, 4, hovered ? PhoneTheme.accentHover() : bg);
         }
         PhoneDraw.centeredText(g, PhoneDraw.ellipsize(label, w - 8, 0.8f), x + w / 2f, y + 6, fg, 0.8f, false);
         hits.add(new Hit(x, y, w, BUTTON_H, action));

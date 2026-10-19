@@ -58,14 +58,13 @@ final class NewChatView extends MessengerView {
     @Override
     void render(GuiGraphics g, int mouseX, int mouseY) {
         int w = width();
-        PhoneDraw.roundedRect(g, 8, 4, w - 8, 4 + SEARCH_H, 6, PhoneTheme.card());
-        search.setBounds(10, 5, w - 20, SEARCH_H - 2);
+        search.setBounds(8, 4, w - 16, SEARCH_H);
         search.setPlaceholder(MessengerApp.tr("messenger.search_player"));
         search.render(g, mouseX, mouseY);
 
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, 8, GROUP_ROW_Y, w - 16, GROUP_ROW_H);
-        PhoneDraw.roundedRect(g, 8, GROUP_ROW_Y, w - 8, GROUP_ROW_Y + GROUP_ROW_H, 6, hovered ? PhoneTheme.cardHover() : PhoneTheme.card());
-        PhoneDraw.text(g, "+  " + MessengerApp.tr("messenger.create_group"), 16, GROUP_ROW_Y + 7, PhoneTheme.ACCENT, 0.85f, false);
+        PhoneDraw.card(g, 8, GROUP_ROW_Y, w - 8, GROUP_ROW_Y + GROUP_ROW_H, hovered);
+        PhoneDraw.text(g, "+  " + MessengerApp.tr("messenger.create_group"), 16, GROUP_ROW_Y + 7, PhoneTheme.accent(), 0.85f, false);
 
         String header = MessengerApp.tr(search.text().isBlank() ? "messenger.online_now" : "messenger.found");
         PhoneDraw.text(g, header.toUpperCase(), 12, LIST_TOP - 10, PhoneTheme.secondaryText(), 0.6f, false);

@@ -2,8 +2,10 @@
 
 Мод-«смартфон» для Minecraft: телефон открывается поверх игры как интерфейс (не предмет).
 Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11; сеть серверов — плагин Velocity.
-Дизайн — «смартфонный» (светлая/тёмная тема, скруглённые карточки). Пользователь отверг стиль Minecraft
-(он лежит в `git stash`) — новые экраны делать в текущем стиле.
+Дизайн — **свой стиль** (по образцу скриншота мода-плеера от пользователя): тёмно-синие панели с тонкой рамкой,
+скругление 4, плоские кнопки, акцентный цвет (игрок выбирает сам), тёмная основа по умолчанию + светлая.
+Отвергнуты: копия айфона и ванильный стиль Minecraft (последний лежит в `git stash`). Новые экраны — только через
+`PhoneTheme`/`PhoneDraw` (никаких зашитых iOS-цветов).
 Пользователь (владелец проекта) — новичок: код пишет Claude, пользователь тестирует в игре.
 Общение — на русском. **После каждого изменения дописывать `CHANGELOG.md`; после каждого этапа — git-коммит «Stage N: …» (без push).**
 
@@ -18,7 +20,7 @@
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
 | `./gradlew :common:test` | Тесты мессенджера (протокол + логика + SQL на H2, без Minecraft) |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
-| `python tools/gen_icons.py` | Перерисовывает PNG-иконки приложений/погоды и текстуру шума камеры |
+| `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
@@ -35,9 +37,11 @@
   Сценарий мессенджера: `BLOCKPHONE_DEV_SCENARIO=messenger BLOCKPHONE_DEV_MESSENGER=1` (+ SHOTS) — мессенджер запускается на
   встроенном сервере одиночной игры, создаются тестовые Steve/Alex, личный чат и группа «Строители», снимаются уведомление,
   значок, список, переписка, отправка, группа, инфо, новый чат, тёмная тема.
+  Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
+  (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить мессенджер в одиночной игре (только для разработки; база в `fabric/run/blockphone/`).
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
-  галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`).
+  галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`.
 - Длинные heredoc в Bash-инструменте иногда ломаются — правки больших текстов лучше делать скриптом из файла или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
 
@@ -100,20 +104,31 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 - `messenger/` — клиент мессенджера: `MessengerClient` (состояние: чаты, сообщения, неподтверждённые по nonce, онлайн, «печатает»,
   результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
-- `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, darkTheme, clock24h, gameTimeClock, animations).
+- `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
+  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
-  - `PhoneLayout` — размеры в виртуальных единицах: корпус 176×356, рамка 8, экран 160×340, статус-бар 14, навбар 12, заголовок 20. Область приложения `APP_W×APP_H` = 160×314.
+  - `PhoneLayout` — размеры в виртуальных единицах: корпус 176×356 (скругление 14), рамка 8, экран 160×340 (скругление 8),
+    статус-бар 14, навигация 14 («назад» и «домой»), заголовок 20. Область приложения `APP_W×APP_H` = 160×312.
   - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<» и кнопкой действия справа, полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`, `closeImmediately()`; диалоги `showDialog(PhoneDialog)`. ESC = закрыть диалог / назад.
   - `PhoneDialog` — модальный диалог (заголовок, текст, «Отмена» + действие); `PhoneDialog.confirmDelete(...)`.
   - `PhoneApp` — базовый класс приложения: `render`, `mouseClicked/Released/Dragged/Scrolled`, `keyPressed`, `charTyped`, `tick`, `onShown/onHidden`, `onBack`, `capturesKeyboard` (не закрывать телефон клавишей при вводе текста), внешний вид (`hasHeader`, `transparentBackground`, `backgroundColor`, `headerColor`, `lightStatusBar`), кнопка в заголовке (`headerAction`, `headerActionColor`, `onHeaderAction`). Координаты — локальные для области содержимого.
-  - `AppRegistry` — список приложений на рабочем столе (id, фабрика, условие видимости). Иконка: `textures/gui/app/<id>.png`.
+  - `AppRegistry` — список приложений на рабочем столе (id, фабрика, условие видимости, значок-число, цвет приложения).
+    Иконка (`Entry.drawIcon`) — плитка-градиент в оттенке цвета приложения + белый символ `textures/gui/glyph/<id>.png`, окрашенный.
   - `PhoneState` — экземпляры приложений и текущее приложение между открытиями телефона.
-  - `PhoneDraw` — `roundedRect`, `roundCornersMask`, `text` (с масштабом), `centeredText`, `rightText`, `ellipsize`, `wrapped`/`wrappedHeight` (перенос строк), `button`, `texture`, `inside`.
-  - `PhoneTheme` — цвета (светлая/тёмная тема), обои `WALLPAPERS`.
+  - `PhoneDraw` — `roundedRect` (радиус > 4 у прямоугольников автоматически уменьшается до `PhoneTheme.RADIUS`; круги/«таблетки»
+    остаются круглыми), `rawRoundedRect` (точный радиус), `panel`/`card` (заливка + рамка), `field` (подложка поля ввода,
+    в фокусе — рамка акцента), `gradientPill`, `button(..., ButtonStyle NORMAL|PRIMARY|SELECTED|DANGER)` и совместимый
+    `button(..., bg, fg)`, `tinted` (белая маска в цвет), `textureCover` (обрезка по центру), текст, `wrapped`, `inside`.
+  - `PhoneTheme` — палитра: `accent()` (из настроек), `accentTint(alpha)`, `accentHover()`, `onAccent()` (текст на акценте),
+    `background/card/cardHover/border/field/header/text/secondaryText/separator/danger/online`, корпус `body()`/`bodyEdge()`
+    (окантовка подсвечена акцентом), `mix()`, `ACCENTS` (12 готовых), `WALLPAPERS` (градиенты).
+  - `Wallpapers` — обои: градиент или своя картинка из `blockphone/wallpapers/` (обрезка по центру, через `PhotoTextures`);
+    `setCustom(name)`, `importAndSet(path)` (из галереи), `list()`.
   - `PhoneClock` — время (реальное/игровое, 12/24ч) и дата с локалью телефона.
-- `ui/TextArea` — поле ввода (одно-/многострочное): перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
+- `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:
+  перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
 - `apps/messenger/` — приложение: `MessengerApp` (стек экранов `MessengerView`), `ChatListView`, `NewChatView`, `UserPickerView`
@@ -121,7 +136,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   Shift+Enter — перенос, ПКМ — меню изменить/копировать/удалить), `ChatInfoView` (участники, переименование, исключение, выход),
   `UserRows`, `MessengerFormat`. `AppRegistry.Entry.badge` — число на значке иконки (мессенджер — непрочитанные).
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `PlaceholderApp` (заглушка «скоро»),
-  `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`, `settings/SettingsApp`,
+  `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
+  `settings/SettingsApp` (страницы MAIN / ACCENT — готовые цвета + HEX / WALLPAPER — градиенты + свои картинки; `openPage(name)`),
   `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
   `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
   `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;

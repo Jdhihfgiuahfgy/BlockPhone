@@ -39,7 +39,6 @@ final class ChatView extends MessengerView {
     private static final int PAD_Y = 3;
     private static final int GAP = 3;
     private static final int SEPARATOR_H = 14;
-    private static final int OWN_COLOR = 0xFF0A84FF;
     private static final int[] NAME_COLORS = {0xFFE5534B, 0xFF2F81F7, 0xFF3FB950, 0xFFD29922, 0xFFA371F7, 0xFFDB61A2};
     private static final long TYPING_SEND_MS = 3000;
 
@@ -247,7 +246,7 @@ final class ChatView extends MessengerView {
             status = chat.type() == ChatType.GROUP
                     ? MessengerApp.tr("messenger.typing_named", String.join(", ", typing))
                     : MessengerApp.tr("messenger.typing");
-            color = PhoneTheme.ACCENT;
+            color = PhoneTheme.accent();
         } else if (chat.type() == ChatType.GROUP) {
             long online = chat.members().stream().filter(MessengerClient::isOnline).count();
             status = MessengerApp.tr("messenger.members_online", chat.members().size(), online);
@@ -256,7 +255,7 @@ final class ChatView extends MessengerView {
             boolean online = partner != null && MessengerClient.isOnline(partner);
             status = MessengerApp.tr(online ? "messenger.online" : "messenger.offline");
             if (online) {
-                color = PhoneTheme.ACCENT;
+                color = PhoneTheme.accent();
             }
         }
         PhoneDraw.centeredText(g, PhoneDraw.ellipsize(status, width() - 16, 0.6f), width() / 2f, 3, color, 0.6f, false);
@@ -275,14 +274,14 @@ final class ChatView extends MessengerView {
         int x = item.own() ? w - 6 - item.width() : 6;
         boolean pending = item.pending() != null;
         boolean deleted = item.message() != null && item.message().deleted();
-        int bg = item.own() ? OWN_COLOR : PhoneTheme.card();
+        int bg = item.own() ? PhoneTheme.accent() : PhoneTheme.card();
         if (pending) {
             bg = (bg & 0x00FFFFFF) | 0x99000000;
         }
         PhoneDraw.roundedRect(g, x, y, x + item.width(), y + item.height(), 6, bg);
-        int textColor = item.own() ? 0xFFFFFFFF : PhoneTheme.text();
+        int textColor = item.own() ? PhoneTheme.onAccent() : PhoneTheme.text();
         if (deleted) {
-            textColor = item.own() ? 0xB0FFFFFF : PhoneTheme.secondaryText();
+            textColor = item.own() ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xB0000000 : PhoneTheme.secondaryText();
         }
         int ty = y + PAD_Y;
         if (item.name() != null) {
@@ -298,7 +297,7 @@ final class ChatView extends MessengerView {
             g.pose().popMatrix();
             ty += LINE_H;
         }
-        int timeColor = item.own() ? 0xC0FFFFFF : PhoneTheme.secondaryText();
+        int timeColor = item.own() ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xC0000000 : PhoneTheme.secondaryText();
         PhoneDraw.rightText(g, item.time(), x + item.width() - PAD_X, ty + 1, timeColor, SMALL);
         if (item.message() != null && !deleted) {
             hits.add(new Hit(x, y, item.width(), item.height(), item.message()));
@@ -309,10 +308,9 @@ final class ChatView extends MessengerView {
         int w = width();
         int top = inputTop();
         if (editingId >= 0) {
-            PhoneDraw.text(g, MessengerApp.tr("messenger.editing"), 10, top - 11, PhoneTheme.ACCENT, 0.6f, false);
+            PhoneDraw.text(g, MessengerApp.tr("messenger.editing"), 10, top - 11, PhoneTheme.accent(), 0.6f, false);
         }
-        PhoneDraw.roundedRect(g, 6, top, w - 30, top + INPUT_H, 8, PhoneTheme.card());
-        input.setBounds(8, top + 1, w - 40, INPUT_H - 2);
+        input.setBounds(6, top, w - 36, INPUT_H);
         input.setPlaceholder(MessengerApp.tr("messenger.message_placeholder"));
         input.render(g, mouseX, mouseY);
 
@@ -320,24 +318,24 @@ final class ChatView extends MessengerView {
         int bx = w - 26;
         int by = top + 2;
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, by, 22, 22);
-        int color = canSend ? (hovered ? 0xFF3D9BFF : OWN_COLOR) : PhoneTheme.separator();
+        int color = canSend ? (hovered ? PhoneTheme.accentHover() : PhoneTheme.accent()) : PhoneTheme.separator();
         PhoneDraw.roundedRect(g, bx, by, bx + 22, by + 22, 11, color);
-        PhoneDraw.centeredText(g, editingId >= 0 ? "✔" : "➤", bx + 11, by + 7, 0xFFFFFFFF, 1f, false);
+        PhoneDraw.centeredText(g, editingId >= 0 ? "✔" : "➤", bx + 11, by + 7, PhoneTheme.onAccent(), 1f, false);
     }
 
     private void renderMenu(GuiGraphics g, int mouseX, int mouseY) {
         int mw = 76;
         int rowH = 14;
         int mh = menu.size() * rowH + 4;
-        PhoneDraw.roundedRect(g, menuX - 1, menuY - 1, menuX + mw + 1, menuY + mh + 1, 6, 0x40000000);
-        PhoneDraw.roundedRect(g, menuX, menuY, menuX + mw, menuY + mh, 6, PhoneTheme.card());
+        PhoneDraw.roundedRect(g, menuX - 1, menuY, menuX + mw + 2, menuY + mh + 2, 4, 0x40000000);
+        PhoneDraw.panel(g, menuX, menuY, menuX + mw, menuY + mh, PhoneTheme.card());
         for (int i = 0; i < menu.size(); i++) {
             MenuItem item = menu.get(i);
             int ry = menuY + 2 + i * rowH;
             if (PhoneDraw.inside(mouseX, mouseY, menuX, ry, mw, rowH)) {
                 g.fill(menuX + 2, ry, menuX + mw - 2, ry + rowH, PhoneTheme.cardHover());
             }
-            PhoneDraw.text(g, item.label(), menuX + 6, ry + 4, item.danger() ? 0xFFFF3B30 : PhoneTheme.text(), 0.75f, false);
+            PhoneDraw.text(g, item.label(), menuX + 6, ry + 4, item.danger() ? PhoneTheme.danger() : PhoneTheme.text(), 0.75f, false);
         }
     }
 

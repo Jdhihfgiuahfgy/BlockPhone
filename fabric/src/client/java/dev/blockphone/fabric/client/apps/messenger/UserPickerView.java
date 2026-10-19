@@ -121,14 +121,12 @@ final class UserPickerView extends MessengerView {
     void render(GuiGraphics g, int mouseX, int mouseY) {
         int w = width();
         if (creating()) {
-            PhoneDraw.roundedRect(g, 8, 4, w - 8, 4 + FIELD_H, 6, PhoneTheme.card());
-            name.setBounds(10, 5, w - 20, FIELD_H - 2);
+            name.setBounds(8, 4, w - 16, FIELD_H);
             name.setPlaceholder(MessengerApp.tr("messenger.group_name"));
             name.render(g, mouseX, mouseY);
         }
         int sy = searchY();
-        PhoneDraw.roundedRect(g, 8, sy, w - 8, sy + FIELD_H, 6, PhoneTheme.card());
-        search.setBounds(10, sy + 1, w - 20, FIELD_H - 2);
+        search.setBounds(8, sy, w - 16, FIELD_H);
         search.setPlaceholder(MessengerApp.tr("messenger.search_player"));
         search.render(g, mouseX, mouseY);
 

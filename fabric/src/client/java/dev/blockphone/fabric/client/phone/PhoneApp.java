@@ -88,7 +88,7 @@ public abstract class PhoneApp {
     }
 
     public int headerActionColor() {
-        return PhoneTheme.ACCENT;
+        return PhoneTheme.accent();
     }
 
     public void onHeaderAction() {
@@ -110,7 +110,7 @@ public abstract class PhoneApp {
     }
 
     public int headerColor() {
-        return backgroundColor();
+        return PhoneTheme.header();
     }
 
     public int headerTextColor() {

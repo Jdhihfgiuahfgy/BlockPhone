@@ -7,6 +7,7 @@ import dev.blockphone.fabric.client.phone.PhoneClock;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
+import dev.blockphone.fabric.client.phone.Wallpapers;
 import dev.blockphone.fabric.client.photo.CameraFilter;
 import dev.blockphone.fabric.client.photo.ImageOps;
 import dev.blockphone.fabric.client.photo.PhotoMeta;
@@ -65,6 +66,7 @@ public final class GalleryApp extends PhoneApp {
     private boolean editDirty;
     private boolean editLoading;
     private boolean saving;
+    private long wallpaperSetAt;
 
     public GalleryApp() {
         super("gallery");
@@ -161,7 +163,7 @@ public final class GalleryApp extends PhoneApp {
 
     @Override
     public int headerActionColor() {
-        return mode == Mode.VIEWER ? 0xFFFF3B30 : PhoneTheme.ACCENT;
+        return mode == Mode.VIEWER ? PhoneTheme.danger() : PhoneTheme.accent();
     }
 
     @Override
@@ -204,12 +206,12 @@ public final class GalleryApp extends PhoneApp {
 
     @Override
     public int backgroundColor() {
-        return mode == Mode.GRID ? PhoneTheme.background() : 0xFF000000;
+        return mode == Mode.GRID ? PhoneTheme.background() : 0xFF0B0F18;
     }
 
     @Override
     public int headerColor() {
-        return mode == Mode.GRID ? PhoneTheme.background() : 0xFF000000;
+        return mode == Mode.GRID ? PhoneTheme.header() : 0xFF0B0F18;
     }
 
     @Override
@@ -340,11 +342,23 @@ public final class GalleryApp extends PhoneApp {
         }
 
         int by = contentHeight() - 24;
-        int bw = (w - 24) / 2;
-        PhoneDraw.button(g, 8, by, bw, 18, PhoneLang.tr("gallery.edit"), mouseX, mouseY, 0xFF2C2C2E, 0xFFFFFFFF);
+        int bw = (w - 16 - 8) / 3;
+        PhoneDraw.button(g, 8, by, bw, 18, PhoneLang.tr("gallery.edit"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
         hits.add(new Hit(8, by, bw, 18, this::openEditor));
-        PhoneDraw.button(g, 16 + bw, by, bw, 18, PhoneLang.tr("gallery.folder"), mouseX, mouseY, 0xFF2C2C2E, 0xFFFFFFFF);
-        hits.add(new Hit(16 + bw, by, bw, 18, this::openFolder));
+        PhoneDraw.button(g, 12 + bw, by, bw, 18, PhoneLang.tr("gallery.set_wallpaper"), mouseX, mouseY, PhoneTheme.accent(), PhoneTheme.onAccent());
+        hits.add(new Hit(12 + bw, by, bw, 18, () -> {
+            Wallpapers.importAndSet(photo.file());
+            wallpaperSetAt = System.currentTimeMillis();
+        }));
+        PhoneDraw.button(g, 16 + 2 * bw, by, bw, 18, PhoneLang.tr("gallery.folder"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
+        hits.add(new Hit(16 + 2 * bw, by, bw, 18, this::openFolder));
+        if (System.currentTimeMillis() - wallpaperSetAt < 2500) {
+            String done = PhoneLang.tr("gallery.wallpaper_set");
+            float tw = PhoneDraw.width(done, 0.75f) + 12;
+            int tx = (int) (w / 2f - tw / 2);
+            PhoneDraw.roundedRect(g, tx, by - 18, (int) (tx + tw), by - 4, 4, PhoneTheme.accent());
+            PhoneDraw.centeredText(g, done, w / 2f, by - 14, PhoneTheme.onAccent(), 0.75f, false);
+        }
     }
 
     private void arrow(GuiGraphics g, String label, int x, int y, int mx, int my, Runnable action) {
@@ -436,14 +450,14 @@ public final class GalleryApp extends PhoneApp {
 
         int y = EDIT_PREVIEW_H + 6;
         int bw = (w - 16 - 8) / 3;
-        int gray = 0xFF2C2C2E;
+        int gray = 0xFF1A2232;
         int white = 0xFFFFFFFF;
         PhoneDraw.button(g, 8, y, bw, ROW_H, PhoneLang.tr("gallery.rotate"), mouseX, mouseY, gray, white);
         hits.add(new Hit(8, y, bw, ROW_H, () -> change(() -> edit.rotation = (edit.rotation + 1) % 4)));
-        PhoneDraw.button(g, 12 + bw, y, bw, ROW_H, PhoneLang.tr("gallery.flip"), mouseX, mouseY, edit.flip ? PhoneTheme.ACCENT : gray, white);
+        PhoneDraw.button(g, 12 + bw, y, bw, ROW_H, PhoneLang.tr("gallery.flip"), mouseX, mouseY, edit.flip ? PhoneTheme.accentTint(0x90) : gray, white);
         hits.add(new Hit(12 + bw, y, bw, ROW_H, () -> change(() -> edit.flip = !edit.flip)));
         String crop = PhotoEdit.CROP_LABELS[edit.crop] == null ? PhoneLang.tr("gallery.crop_original") : PhotoEdit.CROP_LABELS[edit.crop];
-        PhoneDraw.button(g, 16 + 2 * bw, y, bw, ROW_H, crop, mouseX, mouseY, edit.crop != 0 ? PhoneTheme.ACCENT : gray, white);
+        PhoneDraw.button(g, 16 + 2 * bw, y, bw, ROW_H, crop, mouseX, mouseY, edit.crop != 0 ? PhoneTheme.accentTint(0x90) : gray, white);
         hits.add(new Hit(16 + 2 * bw, y, bw, ROW_H, () -> change(() -> edit.crop = (edit.crop + 1) % PhotoEdit.CROPS.length)));
 
         y += ROW_H + 6;
@@ -461,7 +475,7 @@ public final class GalleryApp extends PhoneApp {
 
         int by = contentHeight() - 24;
         int half = (w - 24) / 2;
-        PhoneDraw.button(g, 8, by, half, 18, PhoneLang.tr("gallery.save_copy"), mouseX, mouseY, PhoneTheme.ACCENT, white);
+        PhoneDraw.button(g, 8, by, half, 18, PhoneLang.tr("gallery.save_copy"), mouseX, mouseY, PhoneTheme.accent(), PhoneTheme.onAccent());
         hits.add(new Hit(8, by, half, 18, () -> save(false)));
         PhoneDraw.button(g, 16 + half, by, half, 18, PhoneLang.tr("gallery.replace"), mouseX, mouseY, gray, white);
         hits.add(new Hit(16 + half, by, half, 18, () -> save(true)));
@@ -473,11 +487,11 @@ public final class GalleryApp extends PhoneApp {
         PhoneDraw.text(g, label, 10, y + 6, 0xFFFFFFFF, 0.75f, false);
         int right = w - 8;
         int bs = ROW_H;
-        PhoneDraw.button(g, right - bs, y, bs, bs, "+", mx, my, 0xFF2C2C2E, 0xFFFFFFFF);
+        PhoneDraw.button(g, right - bs, y, bs, bs, "+", mx, my, 0xFF1A2232, 0xFFFFFFFF);
         hits.add(new Hit(right - bs, y, bs, bs, () -> change(() -> onStep.accept(1))));
         int valueW = 40;
-        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(value, valueW - 4, 0.75f), right - bs - valueW / 2f, y + 6, PhoneTheme.ACCENT, 0.75f, false);
-        PhoneDraw.button(g, right - bs - valueW - bs, y, bs, bs, "-", mx, my, 0xFF2C2C2E, 0xFFFFFFFF);
+        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(value, valueW - 4, 0.75f), right - bs - valueW / 2f, y + 6, PhoneTheme.accent(), 0.75f, false);
+        PhoneDraw.button(g, right - bs - valueW - bs, y, bs, bs, "-", mx, my, 0xFF1A2232, 0xFFFFFFFF);
         hits.add(new Hit(right - bs - valueW - bs, y, bs, bs, () -> change(() -> onStep.accept(-1))));
     }
 

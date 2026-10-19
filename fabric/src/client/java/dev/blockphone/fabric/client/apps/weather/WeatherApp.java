@@ -5,6 +5,7 @@ import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneApp;
 import dev.blockphone.fabric.client.phone.PhoneClock;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -51,7 +52,8 @@ public final class WeatherApp extends PhoneApp {
 
     @Override
     public boolean lightStatusBar() {
-        return true;
+        // Небо тёмное/насыщенное — светлый текст; вне мира фон обычный.
+        return Minecraft.getInstance().level != null || PhoneTheme.dark();
     }
 
     @Override

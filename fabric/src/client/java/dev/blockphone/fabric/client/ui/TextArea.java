@@ -193,7 +193,8 @@ public class TextArea {
     // --- Отрисовка ---
 
     public void render(GuiGraphics g, int mouseX, int mouseY) {
-        g.enableScissor(x, y, x + width, y + height);
+        PhoneDraw.field(g, x, y, x + width, y + height, focused);
+        g.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
         List<int[]> ls = lines();
         float lh = lineHeight();
         int textColor = PhoneTheme.text();
@@ -221,7 +222,7 @@ public class TextArea {
                 if (b == line[1] && selEnd > line[1]) {
                     x2 += 2;
                 }
-                g.fill((int) x1, (int) ly, (int) Math.ceil(x2), (int) (ly + lh), 0x803390FF);
+                g.fill((int) x1, (int) ly, (int) Math.ceil(x2), (int) (ly + lh), PhoneTheme.accentTint(0x70));
             }
             String lineText = text.substring(line[0], line[1]).replace("\n", "");
             PhoneDraw.text(g, lineText, lx, ly + 1, textColor, scale, false);
@@ -231,7 +232,7 @@ public class TextArea {
             int line = lineOf(cursor);
             float cx = x + PAD - offsetX + xOf(cursor);
             float cy = (float) (y + PAD + line * lh - (multiline ? scroll : 0));
-            g.fill((int) cx, (int) cy, (int) cx + 1, (int) (cy + lh), PhoneTheme.ACCENT);
+            g.fill((int) cx, (int) cy, (int) cx + 1, (int) (cy + lh), PhoneTheme.accent());
         }
         g.disableScissor();
     }

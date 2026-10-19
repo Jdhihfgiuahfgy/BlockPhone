@@ -7,6 +7,7 @@ import dev.blockphone.fabric.client.phone.PhoneClock;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneLayout;
 import dev.blockphone.fabric.client.phone.PhoneState;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import net.minecraft.client.gui.GuiGraphics;
 
 import java.util.List;
@@ -49,16 +50,16 @@ public final class HomeApp extends PhoneApp {
             AppRegistry.Entry entry = apps.get(i);
             int x = (i % COLUMNS) * CELL_W + (CELL_W - ICON) / 2;
             int y = GRID_TOP + (i / COLUMNS) * CELL_H;
-            PhoneDraw.texture(g, entry.icon(), x, y, ICON, ICON, 64, 64);
+            entry.drawIcon(g, x, y, ICON);
             if (PhoneDraw.inside(mouseX, mouseY, x, y, ICON, ICON)) {
-                PhoneDraw.roundedRect(g, x, y, x + ICON, y + ICON, 7, 0x40FFFFFF);
+                PhoneDraw.rawRoundedRect(g, x, y, x + ICON, y + ICON, ICON / 5, 0x30FFFFFF);
             }
             int badge = entry.badge().getAsInt();
             if (badge > 0) {
                 String count = badge > 99 ? "99+" : String.valueOf(badge);
                 float bw = Math.max(9, PhoneDraw.width(count, 0.6f) + 5);
                 int bx = (int) (x + ICON - bw + 3);
-                PhoneDraw.roundedRect(g, bx, y - 3, (int) (bx + bw), y + 6, 4, 0xFFFF3B30);
+                PhoneDraw.roundedRect(g, bx, y - 3, (int) (bx + bw), y + 6, 4, PhoneTheme.danger());
                 PhoneDraw.centeredText(g, count, bx + bw / 2f, y - 1, 0xFFFFFFFF, 0.6f, false);
             }
             String label = PhoneDraw.ellipsize(PhoneLang.tr("app." + entry.id()), CELL_W, 0.6f);

@@ -1,4 +1,7 @@
-"""Генерирует иконки приложений и погоды для BlockPhone.
+"""Генерирует текстуры BlockPhone: символы приложений, погоду, шум камеры, иконку мода.
+
+Символы приложений (textures/gui/glyph/<id>.png) — белые маски на прозрачном фоне: игра окрашивает
+их в цвет приложения и рисует на тёмной плитке (см. AppRegistry.Entry.drawIcon).
 
 Запуск из корня проекта:  python tools/gen_icons.py
 Рисует в 4x разрешении и уменьшает со сглаживанием.
@@ -11,6 +14,7 @@ from PIL import Image, ImageDraw
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, "fabric", "src", "main", "resources", "assets", "blockphone")
 APP_DIR = os.path.join(ASSETS, "textures", "gui", "app")
+GLYPH_DIR = os.path.join(ASSETS, "textures", "gui", "glyph")
 WEATHER_DIR = os.path.join(ASSETS, "textures", "gui", "weather")
 
 S = 256  # рабочее разрешение
@@ -162,6 +166,98 @@ def icon_settings():
     return img
 
 
+# ---------------- Символы приложений (белые маски) ----------------
+
+def glyph_canvas():
+    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    return img, ImageDraw.Draw(img)
+
+
+def glyph_messenger():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([40, 56, 216, 176], radius=40, outline=WHITE, width=16)
+    d.polygon([(70, 168), (58, 214), (112, 172)], fill=WHITE)
+    for x in (92, 128, 164):
+        d.ellipse([x - 11, 105, x + 11, 127], fill=WHITE)
+    return img
+
+
+def glyph_telegram():
+    img, d = glyph_canvas()
+    d.polygon([(40, 124), (214, 52), (184, 204), (124, 164)], fill=WHITE)
+    d.polygon([(112, 152), (184, 84), (124, 164), (116, 204)], fill=(255, 255, 255, 150))
+    return img
+
+
+def glyph_camera():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([36, 78, 220, 200], radius=24, outline=WHITE, width=16)
+    d.rounded_rectangle([92, 54, 164, 86], radius=10, fill=WHITE)
+    d.ellipse([88, 98, 168, 178], outline=WHITE, width=16)
+    d.ellipse([182, 98, 198, 114], fill=WHITE)
+    return img
+
+
+def glyph_gallery():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([36, 52, 220, 204], radius=22, outline=WHITE, width=16)
+    d.polygon([(52, 188), (110, 118), (150, 162), (174, 138), (204, 188)], fill=WHITE)
+    d.ellipse([150, 76, 182, 108], fill=WHITE)
+    return img
+
+
+def glyph_music():
+    img, d = glyph_canvas()
+    d.ellipse([52, 160, 108, 206], fill=WHITE)
+    d.ellipse([148, 140, 204, 186], fill=WHITE)
+    d.rectangle([92, 62, 108, 186], fill=WHITE)
+    d.rectangle([188, 42, 204, 166], fill=WHITE)
+    d.polygon([(92, 62), (204, 36), (204, 76), (92, 102)], fill=WHITE)
+    return img
+
+
+def glyph_notes():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([56, 36, 200, 220], radius=20, outline=WHITE, width=16)
+    for y in (88, 124, 160):
+        d.line([(86, y), (170, y)], fill=WHITE, width=14)
+    return img
+
+
+def glyph_calculator():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([56, 32, 200, 224], radius=20, outline=WHITE, width=16)
+    d.rectangle([84, 60, 172, 92], fill=WHITE)
+    for row in range(2):
+        for col in range(3):
+            cx, cy = 92 + col * 36, 132 + row * 40
+            d.rounded_rectangle([cx - 12, cy - 12, cx + 12, cy + 12], radius=5, fill=WHITE)
+    return img
+
+
+def glyph_weather():
+    img, d = glyph_canvas()
+    sun(d, 104, 100, 34, WHITE)
+    # Облако «вырезано» поверх солнца — тёмный контур не нужен, просто сплошная форма.
+    cloud(d, 150, 170, 0.95, WHITE)
+    return img
+
+
+def glyph_settings():
+    img, d = glyph_canvas()
+    cx = cy = 128
+    teeth = 8
+    points = []
+    for i in range(teeth * 2):
+        a = i * math.pi / teeth
+        r = 96 if i % 2 == 0 else 76
+        for da in (-0.14, 0.14):
+            points.append((cx + math.cos(a + da) * r, cy + math.sin(a + da) * r))
+    d.polygon(points, fill=WHITE)
+    d.ellipse([cx - 32, cy - 32, cx + 32, cy + 32], fill=(0, 0, 0, 0))
+    return img
+
+
 # ---------------- Погода (прозрачный фон) ----------------
 
 def blank():
@@ -243,13 +339,18 @@ def mod_icon():
 
 
 if __name__ == "__main__":
-    apps = {
-        "messenger": icon_messenger, "telegram": icon_telegram, "camera": icon_camera,
-        "gallery": icon_gallery, "music": icon_music, "notes": icon_notes,
-        "calculator": icon_calculator, "weather": icon_weather, "settings": icon_settings,
+    glyphs = {
+        "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
+        "gallery": glyph_gallery, "music": glyph_music, "notes": glyph_notes,
+        "calculator": glyph_calculator, "weather": glyph_weather, "settings": glyph_settings,
     }
-    for name, fn in apps.items():
-        save(fn(), APP_DIR, name)
+    for name, fn in glyphs.items():
+        save(fn(), GLYPH_DIR, name)
+    # Старые цветные иконки (дизайн «как айфон») больше не используются.
+    if os.path.isdir(APP_DIR):
+        for f in os.listdir(APP_DIR):
+            os.remove(os.path.join(APP_DIR, f))
+        os.rmdir(APP_DIR)
     weather = {"sun": weather_sun, "moon": weather_moon, "rain": weather_rain,
                "thunder": weather_thunder, "snow": weather_snow}
     for name, fn in weather.items():

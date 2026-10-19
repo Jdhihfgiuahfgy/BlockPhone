@@ -3,6 +3,7 @@ package dev.blockphone.fabric.client.messenger;
 import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
+import dev.blockphone.fabric.client.phone.PhoneTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
@@ -42,7 +43,7 @@ public final class Avatars {
         int cx = x + size - d;
         int cy = y + size - d;
         PhoneDraw.roundedRect(g, cx - 1, cy - 1, cx + d + 1, cy + d + 1, (d + 2) / 2, background);
-        PhoneDraw.roundedRect(g, cx, cy, cx + d, cy + d, d / 2, 0xFF34C759);
+        PhoneDraw.roundedRect(g, cx, cy, cx + d, cy + d, d / 2, PhoneTheme.online());
     }
 
     private static PlayerSkin skin(UserInfo user) {
