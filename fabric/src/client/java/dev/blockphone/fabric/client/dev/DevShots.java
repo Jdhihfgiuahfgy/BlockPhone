@@ -28,6 +28,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import dev.blockphone.common.protocol.data.MessengerData;
+import dev.blockphone.common.server.BlockPhoneServer;
+import dev.blockphone.fabric.client.apps.messenger.MessengerApp;
+import dev.blockphone.fabric.client.messenger.MessengerClient;
+import dev.blockphone.fabric.server.FabricServerHandler;
 
 /**
  * Только для разработки. Если задана переменная окружения {@code BLOCKPHONE_DEV_SHOTS=<папка>}:
@@ -46,6 +53,10 @@ public final class DevShots {
     private record Step(int delayTicks, Predicate<Minecraft> ready, Consumer<Minecraft> action) {
     }
 
+    /** Сценарий: "all" (по умолчанию) или "messenger" (нужен ещё BLOCKPHONE_DEV_MESSENGER=1). */
+    private final String scenario = System.getenv().getOrDefault("BLOCKPHONE_DEV_SCENARIO", "all");
+    private final AtomicLong directChat = new AtomicLong(-1);
+    private final AtomicLong groupChat = new AtomicLong(-1);
     private final Path dir;
     private final List<Step> steps = new ArrayList<>();
     private int index = -1;
@@ -92,7 +103,7 @@ public final class DevShots {
         step(1, mc -> mc.options.pauseOnLostFocus = false);
 
         // 1. Все приложения в главном меню.
-        for (boolean dark : new boolean[]{false, true}) {
+        for (boolean dark : scenario.equals("messenger") ? new boolean[0] : new boolean[]{false, true}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
                 settings.darkTheme = dark;
@@ -129,6 +140,22 @@ public final class DevShots {
         step(1, mc -> phone(mc, p -> p.openApp("weather")));
         shot(20, "world_weather");
 
+        if (scenario.equals("messenger")) {
+            planMessenger(settings);
+        } else {
+            planCameraGalleryNotes();
+        }
+
+        step(5, mc -> {
+            settings.darkTheme = originalDark;
+            settings.language = originalLanguage;
+            CameraMode.SETTINGS.reset();
+            BlockPhoneFabric.LOGGER.info("[DevShots] done");
+            mc.stop();
+        });
+    }
+
+    private void planCameraGalleryNotes() {
         // 3. Камера.
         step(1, mc -> phone(mc, p -> p.openApp("camera")));
         shot(40, "camera_viewfinder");
@@ -170,14 +197,102 @@ public final class DevShots {
             phone(mc, p -> p.openApp("notes"));
         });
         shot(20, "notes_list");
+    }
 
-        step(5, mc -> {
-            settings.darkTheme = originalDark;
-            settings.language = originalLanguage;
-            CameraMode.SETTINGS.reset();
-            BlockPhoneFabric.LOGGER.info("[DevShots] done");
-            mc.stop();
+    // --- Мессенджер (одиночная игра с BLOCKPHONE_DEV_MESSENGER=1) ---
+
+    private static final UUID STEVE = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7");
+    private static final UUID ALEX = UUID.fromString("ec561538-f3fd-461d-aff5-086b22154bce");
+
+    private void planMessenger(PhoneSettings settings) {
+        waitFor(mc -> MessengerClient.loaded());
+        step(5, this::seedMessenger);
+        waitFor(mc -> directChat.get() > 0 && MessengerClient.chat(directChat.get()) != null);
+        // Сообщение, пока телефон закрыт: уведомление + значок.
+        step(20, mc -> FabricServerHandler.core().messenger().injectMessage(STEVE, "Steve", directChat.get(),
+                "Ты где? Я жду у портала в Незер"));
+        shot(15, "msg_toast");
+        step(60, mc -> {
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
         });
+        shot(30, "msg_home_badge");
+        step(1, mc -> phone(mc, p -> p.openApp("messenger")));
+        shot(20, "msg_list");
+        step(1, mc -> messenger(app -> app.openChat(directChat.get())));
+        shot(30, "msg_chat");
+        step(1, mc -> MessengerClient.sendMessage(directChat.get(), "Уже бегу! Захвати обсидиан на всякий случай"));
+        shot(30, "msg_chat_sent");
+        step(1, mc -> messenger(app -> app.openChat(groupChat.get())));
+        shot(30, "msg_group");
+        step(1, mc -> messenger(MessengerApp::onHeaderAction));
+        shot(20, "msg_group_info");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        step(1, mc -> messenger(MessengerApp::onHeaderAction));
+        shot(30, "msg_new_chat");
+        step(1, mc -> {
+            settings.darkTheme = true;
+            messenger(app -> app.openChat(groupChat.get()));
+        });
+        shot(30, "msg_group_dark");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        shot(20, "msg_list_dark");
+    }
+
+    private static void messenger(Consumer<MessengerApp> action) {
+        if (PhoneState.app("messenger") instanceof MessengerApp app) {
+            action.accept(app);
+        }
+    }
+
+    /** Тестовые игроки, личный чат и группа с историей (прямо в базе встроенного сервера). */
+    private void seedMessenger(Minecraft mc) {
+        BlockPhoneServer core = FabricServerHandler.core();
+        if (core == null || core.messenger() == null || mc.player == null) {
+            BlockPhoneFabric.LOGGER.warn("[DevShots] messenger is not running; set BLOCKPHONE_DEV_MESSENGER=1");
+            return;
+        }
+        UUID self = mc.player.getUUID();
+        String selfName = mc.player.getName().getString();
+        core.messenger().runInThread(repo -> {
+            long now = System.currentTimeMillis();
+            long yesterday = now - 26 * 3600_000L;
+            repo.upsertUser(STEVE, "Steve", now);
+            repo.upsertUser(ALEX, "Alex", now - 3600_000L);
+            String key = self.toString().compareTo(STEVE.toString()) < 0 ? self + ":" + STEVE : STEVE + ":" + self;
+            Long dm = repo.findDirectChat(key);
+            if (dm == null) {
+                dm = repo.createChat(MessengerData.ChatType.DIRECT, "", STEVE, key, yesterday);
+                repo.addMember(dm, STEVE, yesterday);
+                repo.addMember(dm, self, yesterday);
+                repo.insertMessage(dm, STEVE, "Привет! Пойдёшь завтра в шахту?", yesterday);
+                repo.insertMessage(dm, self, "Конечно, возьму кирки", yesterday + 60_000);
+                repo.insertMessage(dm, STEVE, "Отлично. Встречаемся у дома в 18:00 по серверу", now - 600_000);
+                long last = repo.insertMessage(dm, self, "Договорились :)", now - 540_000);
+                repo.markRead(dm, self, last);
+            }
+            long group = -1;
+            for (var row : repo.chatsOf(self)) {
+                if (row.type() == MessengerData.ChatType.GROUP) {
+                    group = row.id();
+                }
+            }
+            if (group < 0) {
+                group = repo.createChat(MessengerData.ChatType.GROUP, "Строители", self, null, yesterday);
+                repo.addMember(group, self, yesterday);
+                repo.addMember(group, STEVE, yesterday + 1);
+                repo.addMember(group, ALEX, yesterday + 2);
+                repo.insertMessage(group, self, "Всем привет! Строим замок у реки", yesterday + 120_000);
+                repo.insertMessage(group, ALEX, "Я принесу камень и стекло", yesterday + 180_000);
+                repo.insertMessage(group, STEVE, "А я займусь крышей. Нужно много тёмного дуба", now - 1_200_000);
+                repo.insertMessage(group, ALEX, "Скину координаты позже, сейчас фармлю опыт", now - 900_000);
+            }
+            directChat.set(dm);
+            groupChat.set(group);
+        });
+        // Перечитать список чатов, как при входе.
+        core.messenger().onJoin(self, selfName);
     }
 
     private void tick(Minecraft mc) {

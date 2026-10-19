@@ -1,71 +1,107 @@
 package dev.blockphone.fabric.server;
 
-import dev.blockphone.common.BlockPhone;
-import dev.blockphone.common.protocol.Packet;
-import dev.blockphone.common.protocol.Packets;
-import dev.blockphone.common.protocol.ProtocolException;
-import dev.blockphone.common.protocol.packet.ClientHelloPacket;
-import dev.blockphone.common.protocol.packet.ServerHelloPacket;
+import dev.blockphone.common.server.BlockPhoneServer;
+import dev.blockphone.common.server.ServerPlatform;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.network.RawPayload;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Серверная часть мода на Fabric (аналог Paper-плагина).
- * Работает только на выделенном сервере: в одиночной игре мессенджера нет.
+ * Серверная часть мода на Fabric (аналог Paper-плагина). Вся логика — в common ({@link BlockPhoneServer}).
+ * Работает только на выделенном сервере: в одиночной игре мессенджера нет
+ * (кроме режима разработки: переменная окружения {@code BLOCKPHONE_DEV_MESSENGER=1}).
  */
 public final class FabricServerHandler {
-    private static final Set<UUID> MODDED_PLAYERS = ConcurrentHashMap.newKeySet();
-    private static FabricServerConfig config = new FabricServerConfig();
+    private static @Nullable BlockPhoneServer core;
+    /**
+     * Игроки с момента события входа. В JOIN игрок ещё не в списке игроков сервера,
+     * поэтому для отправки приветствия держим ссылку сами.
+     */
+    private static final Map<UUID, ServerPlayer> PLAYERS = new ConcurrentHashMap<>();
 
     public static void init() {
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            if (server.isDedicatedServer()) {
-                config = FabricServerConfig.load();
+            if (!server.isDedicatedServer() && !devMessenger()) {
+                return;
+            }
+            FabricServerConfig config = FabricServerConfig.load();
+            core = new BlockPhoneServer(new FabricPlatform(server), config.toSettings());
+            core.start();
+        });
+
+        ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+            if (core != null) {
+                core.stop();
+                core = null;
             }
         });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            if (!server.isDedicatedServer() || !ServerPlayNetworking.canSend(handler.player, RawPayload.TYPE)) {
-                return;
+            PLAYERS.put(handler.player.getUUID(), handler.player);
+            if (core != null && ServerPlayNetworking.canSend(handler.player, RawPayload.TYPE)) {
+                core.onChannelReady(handler.player.getUUID());
             }
-            send(handler.player, new ServerHelloPacket(BlockPhone.PROTOCOL_VERSION, "fabric",
-                    config.messengerEnabled, config.phoneInHandVisible));
         });
 
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-                MODDED_PLAYERS.remove(handler.player.getUUID()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            PLAYERS.remove(handler.player.getUUID());
+            if (core != null) {
+                core.onQuit(handler.player.getUUID());
+            }
+        });
 
         ServerPlayNetworking.registerGlobalReceiver(RawPayload.TYPE, (payload, context) -> {
-            ServerPlayer player = context.player();
-            Packet packet;
-            try {
-                packet = Packets.decode(payload.data());
-            } catch (ProtocolException e) {
-                BlockPhoneFabric.LOGGER.warn("Bad packet from {}: {}", player.getName().getString(), e.getMessage());
-                return;
-            }
-            if (packet instanceof ClientHelloPacket hello) {
-                MODDED_PLAYERS.add(player.getUUID());
-                BlockPhoneFabric.LOGGER.info("{} joined with BlockPhone {} (protocol {})",
-                        player.getName().getString(), hello.modVersion(), hello.protocolVersion());
+            if (core != null) {
+                ServerPlayer player = context.player();
+                core.onMessage(player.getUUID(), player.getName().getString(), payload.data());
             }
         });
     }
 
-    public static void send(ServerPlayer player, Packet packet) {
-        ServerPlayNetworking.send(player, new RawPayload(Packets.encode(packet)));
+    /** Ядро сервера (null — не выделенный сервер или ещё не запущен). Для отладки. */
+    public static @Nullable BlockPhoneServer core() {
+        return core;
     }
 
-    public static boolean hasMod(ServerPlayer player) {
-        return MODDED_PLAYERS.contains(player.getUUID());
+    private static boolean devMessenger() {
+        return "1".equals(System.getenv("BLOCKPHONE_DEV_MESSENGER"));
+    }
+
+    /** Доставка пакетов на Fabric: в поток сервера, затем в соединение игрока. */
+    private record FabricPlatform(MinecraftServer server) implements ServerPlatform {
+        @Override
+        public String name() {
+            return "fabric";
+        }
+
+        @Override
+        public void send(UUID player, byte[] data) {
+            server.execute(() -> {
+                ServerPlayer target = PLAYERS.get(player);
+                if (target != null && !target.hasDisconnected()) {
+                    ServerPlayNetworking.send(target, new RawPayload(data));
+                }
+            });
+        }
+
+        @Override
+        public void info(String message) {
+            BlockPhoneFabric.LOGGER.info(message);
+        }
+
+        @Override
+        public void warn(String message, Throwable error) {
+            BlockPhoneFabric.LOGGER.warn(message, error);
+        }
     }
 
     private FabricServerHandler() {

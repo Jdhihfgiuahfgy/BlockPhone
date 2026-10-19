@@ -42,6 +42,28 @@ public final class PacketWriter {
         return this;
     }
 
+    public PacketWriter writeUuid(java.util.UUID value) {
+        return writeLong(value.getMostSignificantBits()).writeLong(value.getLeastSignificantBits());
+    }
+
+    /** Список: VarInt размер + элементы. */
+    public <T> PacketWriter writeList(java.util.Collection<T> values, java.util.function.BiConsumer<PacketWriter, T> element) {
+        writeVarInt(values.size());
+        for (T value : values) {
+            element.accept(this, value);
+        }
+        return this;
+    }
+
+    /** Необязательное значение: boolean «есть» + само значение. */
+    public <T> PacketWriter writeNullable(T value, java.util.function.BiConsumer<PacketWriter, T> element) {
+        writeBoolean(value != null);
+        if (value != null) {
+            element.accept(this, value);
+        }
+        return this;
+    }
+
     public byte[] toByteArray() {
         return out.toByteArray();
     }

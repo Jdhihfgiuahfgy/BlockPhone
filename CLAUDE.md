@@ -1,7 +1,9 @@
 # BlockPhone — заметки для разработки
 
 Мод-«смартфон» для Minecraft: телефон открывается поверх игры как интерфейс (не предмет).
-Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11.
+Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11; сеть серверов — плагин Velocity.
+Дизайн — «смартфонный» (светлая/тёмная тема, скруглённые карточки). Пользователь отверг стиль Minecraft
+(он лежит в `git stash`) — новые экраны делать в текущем стиле.
 Пользователь (владелец проекта) — новичок: код пишет Claude, пользователь тестирует в игре.
 Общение — на русском. **После каждого изменения дописывать `CHANGELOG.md`; после каждого этапа — git-коммит «Stage N: …» (без push).**
 
@@ -12,7 +14,9 @@
 | `./gradlew build` | Собирает всё. Jar-ы: `fabric/build/libs/BlockPhone-fabric-*.jar`, `paper/build/libs/BlockPhone-paper-*.jar` |
 | `./gradlew :fabric:runClient` | Клиент Minecraft с модом (папка игры — `fabric/run/`) |
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
-| `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`) |
+| `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
+| `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
+| `./gradlew :common:test` | Тесты мессенджера (протокол + логика + SQL на H2, без Minecraft) |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Перерисовывает PNG-иконки приложений/погоды и текстуру шума камеры |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -28,6 +32,10 @@
   длинная выдержка), галерея (просмотр, редактор, сетка), заметки; игра закрывается. Выключает pauseOnLostFocus.
   Паузы между шагами большие: окно игры в фоне рисует мало кадров, иначе снимок отстаёт на шаг.
   Код: `fabric/src/client/.../dev/DevShots.java`. Запуск (bash): `BLOCKPHONE_DEV_SHOTS=<папка> ./gradlew :fabric:runClient`.
+  Сценарий мессенджера: `BLOCKPHONE_DEV_SCENARIO=messenger BLOCKPHONE_DEV_MESSENGER=1` (+ SHOTS) — мессенджер запускается на
+  встроенном сервере одиночной игры, создаются тестовые Steve/Alex, личный чат и группа «Строители», снимаются уведомление,
+  значок, список, переписка, отправка, группа, инфо, новый чат, тёмная тема.
+- `BLOCKPHONE_DEV_MESSENGER=1` — включить мессенджер в одиночной игре (только для разработки; база в `fabric/run/blockphone/`).
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
   галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`).
 - Длинные heredoc в Bash-инструменте иногда ломаются — правки больших текстов лучше делать скриптом из файла или Edit.
@@ -36,12 +44,16 @@
 ## Модули
 
 ```
-common/   чистая Java без Minecraft: протокол, (позже) модели и логика мессенджера, хранилище
-fabric/   мод: src/main = общий+серверный код, src/client = клиент (телефон)
-paper/    плагин Paper
-tools/    скрипты (генерация иконок и фильтров)
+common/    чистая Java без Minecraft: протокол, серверная логика (рукопожатие, мессенджер, SQL), тесты
+fabric/    мод: src/main = общий+серверный код, src/client = клиент (телефон)
+paper/     плагин Paper
+velocity/  плагин Velocity (мессенджер на прокси для всей сети)
+tools/     скрипты (генерация иконок и фильтров)
 ```
-Классы `common` копируются внутрь jar-ов fabric и paper (`jar { from(project(':common')...) }`).
+Классы `common` копируются внутрь jar-ов fabric, paper и velocity (`jar { from(project(':common')...) }`).
+JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без транзитивных), в Velocity — встраиваются (`shade`),
+Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
+**При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity).
 
 Пакет: `dev.blockphone`. Mod id: `blockphone`.
 
@@ -52,6 +64,21 @@ tools/    скрипты (генерация иконок и фильтров)
 - `protocol/packet/*` — пакеты-record'ы с `read(PacketReader)` и `write(PacketWriter)`.
   - `ServerHelloPacket` (S→C, id 0): protocolVersion, serverPlatform, messengerEnabled, phoneInHandVisible.
   - `ClientHelloPacket` (C→S, id 1): protocolVersion, modVersion.
+  - `MessengerPackets.*` (id 2–22): S→C ChatList, ChatUpdate, ChatRemoved, History, NewMessage, MessageUpdated, UserList,
+    ChatOpened, TypingState, Presence, Failure(ключ messenger.error.*); C→S RequestHistory, SendMessage(nonce), EditMessage,
+    DeleteMessage, MarkRead, SearchUsers, OpenDirect, CreateGroup, GroupAction(RENAME/ADD/REMOVE/LEAVE), Typing.
+- `protocol/data/MessengerData` — UserInfo, MessageInfo, ChatInfo, ChatType и ограничения (1000 символов, 32 на название,
+  50 участников, страница истории 40).
+- `PacketWriter/Reader` также: UUID, списки (`writeList/readList` с лимитом), `writeNullable/readNullable`, `readString(max)`.
+- `server/` — серверная логика для всех платформ:
+  - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → мессенджер.onJoin,
+    остальное → мессенджер); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно, info/warn).
+  - `ServerSettings` (+ `Storage`: h2 | mysql, путь H2, MySQL-параметры, префикс таблиц).
+  - `Database` — одно JDBC-соединение, драйвер создаётся напрямую (без DriverManager); SQL в диалекте MySQL, H2 в `MODE=MySQL`.
+    Таблицы `<prefix>users/chats/members/messages`.
+  - `MessengerRepository` — все SQL-запросы. `MessengerService` — логика в одном фоновом потоке: онлайн-игроки, лимит 8 сообщений/10 с,
+    личные чаты (direct_key = два UUID по порядку), группы (владелец; при выходе владельца — следующему; пустая группа удаляется),
+    непрочитанные (members.last_read), поиск по началу ника, «печатает», присутствие. `runInThread`/`injectMessage` — для отладки.
 
 **Как добавить пакет:** record в `protocol/packet` → `register(<следующий id>, …)` в `Packets` →
 обработка в `ClientNetwork.handle` (клиент), `FabricServerHandler` (Fabric-сервер) и `BlockPhonePaper.onPluginMessageReceived` (Paper).
@@ -60,13 +87,19 @@ tools/    скрипты (генерация иконок и фильтров)
 ### fabric — общий/серверный код (`fabric/src/main`, `dev.blockphone.fabric`)
 - `BlockPhoneFabric` — `ModInitializer`; `LOGGER`, `VERSION`; регистрирует `RawPayload` для S2C и C2S.
 - `network/RawPayload` — `CustomPacketPayload` с сырыми байтами канала (тот же формат, что plugin message у Paper).
-- `server/FabricServerHandler` — только на выделенном сервере: при входе шлёт `ServerHelloPacket`, принимает `ClientHelloPacket`, хранит игроков с модом.
-- `server/FabricServerConfig` — `config/blockphone/server.json` (аналог config.yml Paper).
+- `server/FabricServerHandler` — адаптер `BlockPhoneServer` (только выделенный сервер или dev-флаг). Держит ссылки на игроков
+  с события JOIN (в JOIN игрок ещё не в списке игроков сервера — отправка через `getPlayerList()` теряла приветствие).
+- `server/FabricServerConfig` — `config/blockphone/server.json`: messengerEnabled, phoneInHandVisible, storage{type,host,port,...}.
+  База H2: `<папка сервера>/blockphone/messenger.mv.db`.
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
 - `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`) и `cameraKey`
   (камера сразу, по умолчанию не назначена); `CameraMode.init()`.
-- `network/ClientNetwork` — приём пакетов; `serverHello()`, `messengerAvailable()`; при выходе с сервера сбрасывает `PhoneState`.
+- `network/ClientNetwork` — приём пакетов (мессенджер → `MessengerClient.handle`); `serverHello()`, `messengerAvailable()`;
+  при выходе с сервера сбрасывает `PhoneState` и `MessengerClient`. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
+- `messenger/` — клиент мессенджера: `MessengerClient` (состояние: чаты, сообщения, неподтверждённые по nonce, онлайн, «печатает»,
+  результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
+  `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, darkTheme, clock24h, gameTimeClock, animations).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
@@ -83,6 +116,10 @@ tools/    скрипты (генерация иконок и фильтров)
 - `ui/TextArea` — поле ввода (одно-/многострочное): перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
+- `apps/messenger/` — приложение: `MessengerApp` (стек экранов `MessengerView`), `ChatListView`, `NewChatView`, `UserPickerView`
+  (создать группу / добавить участников), `ChatView` (пузыри, разделители дней, подгрузка истории, Enter — отправить,
+  Shift+Enter — перенос, ПКМ — меню изменить/копировать/удалить), `ChatInfoView` (участники, переименование, исключение, выход),
+  `UserRows`, `MessengerFormat`. `AppRegistry.Entry.badge` — число на значке иконки (мессенджер — непрочитанные).
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `PlaceholderApp` (заглушка «скоро»),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`, `settings/SettingsApp`,
   `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
@@ -108,8 +145,14 @@ tools/    скрипты (генерация иконок и фильтров)
 - `dev/DevShots` — автоскриншоты (см. выше).
 
 ### paper (`dev.blockphone.paper`)
-- `BlockPhonePaper` — `JavaPlugin`: канал `blockphone:main` (incoming/outgoing), на `PlayerRegisterChannelEvent` шлёт `ServerHelloPacket`, принимает `ClientHelloPacket`.
-- `config.yml`: `messenger.enabled`, `phone-in-hand.visible`.
+- `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
+  (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
+- `config.yml`: `messenger.enabled`, `phone-in-hand.visible`, `storage.type` (h2/mysql), `storage.table-prefix`, `storage.mysql.*`.
+
+### velocity (`dev.blockphone.velocity`)
+- `BlockPhoneVelocity` — `@Plugin`: регистрирует канал, на `ServerPostConnectEvent` (каждый переход между серверами) — приветствие,
+  `PluginMessageEvent` на нашем канале обрабатывает сам и **не пропускает** ни к серверам, ни от серверов к клиенту.
+  Настройки: `plugins/blockphone/config.json` (messengerEnabled, storage). BungeeCord пока не поддержан.
 
 ## Особенности API Minecraft 1.21.11 (Mojang mappings)
 - `ResourceLocation` переименован в **`Identifier`** (`Identifier.fromNamespaceAndPath(ns, path)`); у `ResourceKey` — `identifier()`.
@@ -139,7 +182,8 @@ tools/    скрипты (генерация иконок и фильтров)
 1. ✅ Каркас: модули, протокол-рукопожатие, экран телефона, рабочий стол, калькулятор, погода, настройки.
 2. ✅ Заметки, камера (фильтры, зум, ISO/выдержка/EV, таймер, сетка, длинная выдержка), галерея (просмотр, редактор, удаление).
    Не сделано из камеры: глубина резкости (диафрагма) — нужен буфер глубины; можно добавить позже.
-3. Серверный мессенджер: личные и групповые чаты (Fabric + Paper, хранилище SQLite/MySQL), поддержка Velocity/Bungee.
+3. ✅ Серверный мессенджер: личные и групповые чаты (Fabric + Paper + Velocity, H2/MySQL), уведомления, значок непрочитанных.
+   Не сделано: BungeeCord-адаптер, фото в чатах (этап 4).
 4. Посты, лента, паблики, профили; фото с политикой админа (скриншоты этого сервера / любые / никакие); модерация, права (LuckPerms / fabric-permissions-api).
 5. Музыка: локальные файлы, виджет на HUD, Яндекс Музыка (неоф. API), управление Spotify.
 6. Simple Voice Chat: голосовые сообщения, групповые звонки.

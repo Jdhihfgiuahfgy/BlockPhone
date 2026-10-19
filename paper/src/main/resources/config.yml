@@ -1,9 +1,22 @@
 # BlockPhone — настройки сервера
 
 messenger:
-  # Включить серверный мессенджер для игроков с модом
+  # Включить серверный мессенджер для игроков с модом.
+  # В сети серверов (Velocity) мессенджер работает на прокси — здесь можно выключить.
   enabled: true
 
 phone-in-hand:
   # Показывать другим игрокам телефон в руке, пока игрок им пользуется
   visible: true
+
+storage:
+  # h2 — встроенная база в папке плагина (ничего настраивать не нужно)
+  # mysql — сервер MySQL или MariaDB (настройки ниже)
+  type: h2
+  table-prefix: bp_
+  mysql:
+    host: localhost
+    port: 3306
+    database: blockphone
+    user: root
+    password: ""

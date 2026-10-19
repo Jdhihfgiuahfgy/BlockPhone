@@ -14,7 +14,7 @@ dependencies {
 }
 
 processResources {
-    def props = [version: project.version]
+    def props = [version: project.version, h2_version: rootProject.h2_version, mariadb_version: rootProject.mariadb_version]
     inputs.properties props
     filteringCharset 'UTF-8'
     filesMatching('plugin.yml') {

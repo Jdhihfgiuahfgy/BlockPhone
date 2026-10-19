@@ -60,6 +60,35 @@ public final class PacketReader {
         return result;
     }
 
+    public java.util.UUID readUuid() {
+        return new java.util.UUID(readLong(), readLong());
+    }
+
+    /** Строка не длиннее maxChars символов (защита от огромных строк). */
+    public String readString(int maxChars) {
+        String value = readString();
+        if (value.length() > maxChars) {
+            throw new ProtocolException("String too long: " + value.length());
+        }
+        return value;
+    }
+
+    public <T> java.util.List<T> readList(int maxSize, java.util.function.Function<PacketReader, T> element) {
+        int size = readVarInt();
+        if (size < 0 || size > maxSize) {
+            throw new ProtocolException("Bad list size: " + size);
+        }
+        java.util.List<T> result = new java.util.ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            result.add(element.apply(this));
+        }
+        return result;
+    }
+
+    public <T> T readNullable(java.util.function.Function<PacketReader, T> element) {
+        return readBoolean() ? element.apply(this) : null;
+    }
+
     public int remaining() {
         return data.length - pos;
     }

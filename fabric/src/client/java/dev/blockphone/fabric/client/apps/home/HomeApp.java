@@ -53,6 +53,14 @@ public final class HomeApp extends PhoneApp {
             if (PhoneDraw.inside(mouseX, mouseY, x, y, ICON, ICON)) {
                 PhoneDraw.roundedRect(g, x, y, x + ICON, y + ICON, 7, 0x40FFFFFF);
             }
+            int badge = entry.badge().getAsInt();
+            if (badge > 0) {
+                String count = badge > 99 ? "99+" : String.valueOf(badge);
+                float bw = Math.max(9, PhoneDraw.width(count, 0.6f) + 5);
+                int bx = (int) (x + ICON - bw + 3);
+                PhoneDraw.roundedRect(g, bx, y - 3, (int) (bx + bw), y + 6, 4, 0xFFFF3B30);
+                PhoneDraw.centeredText(g, count, bx + bw / 2f, y - 1, 0xFFFFFFFF, 0.6f, false);
+            }
             String label = PhoneDraw.ellipsize(PhoneLang.tr("app." + entry.id()), CELL_W, 0.6f);
             PhoneDraw.centeredText(g, label, x + ICON / 2f, y + ICON + 3, 0xFFFFFFFF, 0.6f, true);
         }
