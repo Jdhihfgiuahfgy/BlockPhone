@@ -1,0 +1,32 @@
+apply plugin: 'xyz.jpenilla.run-paper'
+
+base {
+    archivesName = "${rootProject.mod_name}-paper"
+}
+
+repositories {
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+}
+
+dependencies {
+    compileOnly "io.papermc.paper:paper-api:${rootProject.paper_api_version}"
+    implementation project(':common')
+}
+
+processResources {
+    def props = [version: project.version]
+    inputs.properties props
+    filteringCharset 'UTF-8'
+    filesMatching('plugin.yml') {
+        expand props
+    }
+}
+
+jar {
+    from(project(':common').sourceSets.main.output)
+}
+
+tasks.named('runServer') {
+    minecraftVersion(rootProject.minecraft_version)
+    jvmArgs('-Xms2G', '-Xmx2G')
+}

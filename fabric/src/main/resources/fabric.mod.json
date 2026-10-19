@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "blockphone",
+  "version": "${version}",
+  "name": "BlockPhone",
+  "description": "A smartphone in your HUD: camera, gallery, music, notes, Telegram and a server messenger.",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/blockphone/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.blockphone.fabric.BlockPhoneFabric"
+    ],
+    "client": [
+      "dev.blockphone.fabric.client.BlockPhoneClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}",
+    "java": ">=21"
+  }
+}

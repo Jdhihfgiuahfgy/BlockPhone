@@ -1,0 +1,5 @@
+name: BlockPhone
+version: '${version}'
+main: dev.blockphone.paper.BlockPhonePaper
+api-version: '1.21.11'
+description: Server side of the BlockPhone mod (messenger, posts, moderation)

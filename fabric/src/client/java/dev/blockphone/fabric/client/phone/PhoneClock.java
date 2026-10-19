@@ -1,0 +1,60 @@
+package dev.blockphone.fabric.client.phone;
+
+import dev.blockphone.fabric.client.config.PhoneSettings;
+import dev.blockphone.fabric.client.i18n.PhoneLang;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.level.Level;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+
+/** Время для строки состояния и рабочего стола: реальное или игровое (по настройке). */
+public final class PhoneClock {
+
+    /** Время по настройке «Часы»: реальное или игровое. */
+    public static String time() {
+        Minecraft mc = Minecraft.getInstance();
+        if (PhoneSettings.get().gameTimeClock && mc.level != null) {
+            return gameTime(mc.level);
+        }
+        LocalTime now = LocalTime.now();
+        return format(now.getHour(), now.getMinute());
+    }
+
+    /** Игровое время мира. В Minecraft 0 тиков = 6:00 утра. */
+    public static String gameTime(Level level) {
+        long dayTime = Math.floorMod(level.getDayTime(), 24000L);
+        int hours = (int) ((dayTime / 1000 + 6) % 24);
+        int minutes = (int) (dayTime % 1000 * 60 / 1000);
+        return format(hours, minutes);
+    }
+
+    private static String format(int hours, int minutes) {
+        if (PhoneSettings.get().clock24h) {
+            return String.format("%d:%02d", hours, minutes);
+        }
+        int h12 = hours % 12 == 0 ? 12 : hours % 12;
+        return String.format("%d:%02d", h12, minutes);
+    }
+
+    /** «Понедельник, 19 октября» / «Monday, October 19» (или «День 42» в режиме игрового времени). */
+    public static String date() {
+        Minecraft mc = Minecraft.getInstance();
+        if (PhoneSettings.get().gameTimeClock && mc.level != null) {
+            return PhoneLang.tr("clock.game_day", mc.level.getDayTime() / 24000L + 1);
+        }
+        Locale locale = locale();
+        String pattern = locale.getLanguage().equals("ru") ? "EEEE, d MMMM" : "EEEE, MMMM d";
+        String s = LocalDate.now().format(DateTimeFormatter.ofPattern(pattern, locale));
+        return s.substring(0, 1).toUpperCase(locale) + s.substring(1);
+    }
+
+    public static Locale locale() {
+        return PhoneLang.current().startsWith("ru") ? Locale.forLanguageTag("ru-RU") : Locale.US;
+    }
+
+    private PhoneClock() {
+    }
+}
