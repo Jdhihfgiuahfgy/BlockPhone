@@ -14,7 +14,8 @@
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`) |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
-| `python tools/gen_icons.py` | Перерисовывает PNG-иконки приложений/погоды |
+| `python tools/gen_icons.py` | Перерисовывает PNG-иконки приложений/погоды и текстуру шума камеры |
+| `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
   (`gradle/gradle-daemon-jvm.properties` + foojay в `settings.gradle`). Сам мод компилируется под Java 21.
@@ -22,9 +23,14 @@
 - Исходники игры после genSources: `.gradle/loom-cache/minecraftMaven/net/minecraft/minecraft-*/…/*-sources.jar`,
   Fabric API: `.gradle/loom-cache/remapped_mods/remapped/net/fabricmc/fabric-api/**/*-sources.jar`.
 - **Автоскриншоты UI (для Claude):** переменная окружения `BLOCKPHONE_DEV_SHOTS=<папка>` + `runClient` →
-  в главном меню открывается телефон, снимаются все приложения (светлая тема — EN, тёмная — RU), игра закрывается.
+  в главном меню снимаются все приложения (светлая тема — EN, тёмная — RU), затем создаётся/грузится мир
+  `blockphone_dev` (`fabric/run/saves/`) и снимаются: игра, телефон, погода, камера (фильтр, зум), фото (обычное и
+  длинная выдержка), галерея (просмотр, редактор, сетка), заметки; игра закрывается. Выключает pauseOnLostFocus.
   Паузы между шагами большие: окно игры в фоне рисует мало кадров, иначе снимок отстаёт на шаг.
-  Код: `fabric/src/client/.../dev/DevShots.java`.
+  Код: `fabric/src/client/.../dev/DevShots.java`. Запуск (bash): `BLOCKPHONE_DEV_SHOTS=<папка> ./gradlew :fabric:runClient`.
+- **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
+  галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`).
+- Длинные heredoc в Bash-инструменте иногда ломаются — правки больших текстов лучше делать скриптом из файла или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
 
 ## Модули
@@ -33,7 +39,7 @@
 common/   чистая Java без Minecraft: протокол, (позже) модели и логика мессенджера, хранилище
 fabric/   мод: src/main = общий+серверный код, src/client = клиент (телефон)
 paper/    плагин Paper
-tools/    скрипты (генерация иконок)
+tools/    скрипты (генерация иконок и фильтров)
 ```
 Классы `common` копируются внутрь jar-ов fabric и paper (`jar { from(project(':common')...) }`).
 
@@ -58,22 +64,47 @@ tools/    скрипты (генерация иконок)
 - `server/FabricServerConfig` — `config/blockphone/server.json` (аналог config.yml Paper).
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
-- `BlockPhoneClient` — клавиша `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`), открывает `PhoneScreen`.
+- `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`) и `cameraKey`
+  (камера сразу, по умолчанию не назначена); `CameraMode.init()`.
 - `network/ClientNetwork` — приём пакетов; `serverHello()`, `messengerAvailable()`; при выходе с сервера сбрасывает `PhoneState`.
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, darkTheme, clock24h, gameTimeClock, animations).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
   - `PhoneLayout` — размеры в виртуальных единицах: корпус 176×356, рамка 8, экран 160×340, статус-бар 14, навбар 12, заголовок 20. Область приложения `APP_W×APP_H` = 160×314.
-  - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<», полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`. ESC = назад.
-  - `PhoneApp` — базовый класс приложения: `render`, `mouseClicked/Released/Dragged/Scrolled`, `keyPressed`, `charTyped`, `tick`, `onShown/onHidden`, `onBack`, `capturesKeyboard` (не закрывать телефон клавишей при вводе текста), внешний вид (`hasHeader`, `transparentBackground`, `backgroundColor`, `headerColor`, `lightStatusBar`). Координаты — локальные для области содержимого.
+  - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<» и кнопкой действия справа, полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`, `closeImmediately()`; диалоги `showDialog(PhoneDialog)`. ESC = закрыть диалог / назад.
+  - `PhoneDialog` — модальный диалог (заголовок, текст, «Отмена» + действие); `PhoneDialog.confirmDelete(...)`.
+  - `PhoneApp` — базовый класс приложения: `render`, `mouseClicked/Released/Dragged/Scrolled`, `keyPressed`, `charTyped`, `tick`, `onShown/onHidden`, `onBack`, `capturesKeyboard` (не закрывать телефон клавишей при вводе текста), внешний вид (`hasHeader`, `transparentBackground`, `backgroundColor`, `headerColor`, `lightStatusBar`), кнопка в заголовке (`headerAction`, `headerActionColor`, `onHeaderAction`). Координаты — локальные для области содержимого.
   - `AppRegistry` — список приложений на рабочем столе (id, фабрика, условие видимости). Иконка: `textures/gui/app/<id>.png`.
   - `PhoneState` — экземпляры приложений и текущее приложение между открытиями телефона.
-  - `PhoneDraw` — `roundedRect`, `roundCornersMask`, `text` (с масштабом), `centeredText`, `rightText`, `ellipsize`, `texture`, `inside`.
+  - `PhoneDraw` — `roundedRect`, `roundCornersMask`, `text` (с масштабом), `centeredText`, `rightText`, `ellipsize`, `wrapped`/`wrappedHeight` (перенос строк), `button`, `texture`, `inside`.
   - `PhoneTheme` — цвета (светлая/тёмная тема), обои `WALLPAPERS`.
   - `PhoneClock` — время (реальное/игровое, 12/24ч) и дата с локалью телефона.
+- `ui/TextArea` — поле ввода (одно-/многострочное): перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
+  Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
+- `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `PlaceholderApp` (заглушка «скоро»),
-  `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`, `settings/SettingsApp`.
+  `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`, `settings/SettingsApp`,
+  `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
+  `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
+  `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;
+  `PhotoEdit` — правки: поворот → отражение → кадр → фильтр → яркость/контраст/насыщенность).
+- `photo/` — фото: `Picture` (ARGB-пиксели), `ImageOps` (фильтр, экспозиция в линейном пространстве, шум, поворот, кадр,
+  уменьшение, чтение/запись PNG через ImageIO, `toNativeImage`), `CameraFilter` (enum; параметры читаются из `post_effect/filter_<id>.json`),
+  `PhotoMeta` (сведения о снимке), `PhotoStore` (список/сохранение/удаление; `version()` растёт при изменениях),
+  `PhotoTextures` (миниатюры и превью как `DynamicTexture` с линейной фильтрацией, LRU на 120, `invalidate`).
+- `camera/` — режим камеры:
+  - `CameraMode` — вход/выход, такт (ЛКМ снимок, ПКМ следующий фильтр), клавиши (Esc, ←→↑↓, H, R, G), зум колесом,
+    `renderOverlay` (видоискатель вместо HUD; тут же берётся кадр для снимка — мир уже нарисован, интерфейс ещё нет).
+  - `CameraSettings` — ISO/выдержка/EV/фильтр/сетка/таймер/зум и расчёт экспозиции: 0 ступеней = ISO 400 + 1/125;
+    AUTO-параметр компенсирует ручной; выдержка от 1/15 — накопление кадров (смаз), шум растёт выше ISO 400.
+  - `PhotoCapture` — копит кадры `Screenshot.takeScreenshot`, усредняет, на `IO`: экспозиция + шум → `PhotoStore.save`.
+  - Фильтр в видоискателе — постэффект (шейдер `shaders/post/filter.fsh`, та же формула в `ImageOps.applyFilter`);
+    яркость и шум в видоискателе — приблизительное превью оверлеем, точная обработка — на сохранённом кадре.
+- `mixin/` (`blockphone.client.mixins.json`, действуют только пока `CameraMode.active()`):
+  `GuiMixin` (HUD → видоискатель), `GameRendererMixin` (FOV/зум, без руки, без обводки блока), `GameRendererAccessor`
+  (`setPostEffect`), `MinecraftMixin` (отключает `handleKeybinds`), `KeyboardHandlerMixin` (клавиши камеры),
+  `MouseHandlerMixin` (колесо = зум, чувствительность делится на зум), `ToastManagerMixin` (без тостов).
 - `dev/DevShots` — автоскриншоты (см. выше).
 
 ### paper (`dev.blockphone.paper`)
@@ -92,11 +123,22 @@ tools/    скрипты (генерация иконок)
 - HUD-оверлеи — `HudElementRegistry` (Fabric API), не `HudRenderCallback`.
 - Сеть Fabric: `PayloadTypeRegistry.playS2C()/playC2S().register(type, codec)`; для больших данных есть `registerLarge(...)`.
   Пакет клиент→сервер в ванилле ограничен ~32 КБ — большие данные (фото) резать на куски.
-- Скриншот: `Screenshot.takeScreenshot(mc.getMainRenderTarget(), NativeImage -> ...)`.
+- Скриншот: `Screenshot.takeScreenshot(mc.getMainRenderTarget(), NativeImage -> ...)` — копия ставится в очередь GPU сразу,
+  callback приходит позже на потоке рендера. Порядок кадра в `GameRenderer.render`: мир → постэффект → `gui.render` → экраны.
+- Постэффекты: `assets/<ns>/post_effect/<id>.json` (passes; uniform-блоки со статичными значениями: float, vec2..4, int, ivec3, matrix4x4),
+  шейдеры `assets/<ns>/shaders/post/*.fsh` (`#version 330`, `layout(std140) uniform <Блок>`). Включение — приватный
+  `GameRenderer.setPostEffect(Identifier)` (через accessor), выключение — `clearPostEffect()`.
+- `DynamicTexture(Supplier<String>, NativeImage)` сразу загружает на GPU (только поток рендера); регистрация —
+  `TextureManager.register(Identifier, texture)`, освобождение — `release(Identifier)`. Сэмплер — protected-поле `sampler`.
+- `NativeImage.getPixels()` отдаёт ARGB, `setPixel(x, y, argb)`.
+- `SoundEvents.UI_BUTTON_CLICK` — `Holder.Reference`, для `SimpleSoundInstance.forUI` нужен `.value()`.
+- Создание мира из кода: `mc.createWorldOpenFlows().createFreshLevel(id, LevelSettings, WorldOptions, WorldPresets::createNormalWorldDimensions, screen)`,
+  загрузка — `openWorld(id, onCancel)`.
 
 ## План (этапы)
 1. ✅ Каркас: модули, протокол-рукопожатие, экран телефона, рабочий стол, калькулятор, погода, настройки.
-2. Заметки, камера (фильтры, зум, ISO/выдержка), галерея (папка мода, редактирование/удаление).
+2. ✅ Заметки, камера (фильтры, зум, ISO/выдержка/EV, таймер, сетка, длинная выдержка), галерея (просмотр, редактор, удаление).
+   Не сделано из камеры: глубина резкости (диафрагма) — нужен буфер глубины; можно добавить позже.
 3. Серверный мессенджер: личные и групповые чаты (Fabric + Paper, хранилище SQLite/MySQL), поддержка Velocity/Bungee.
 4. Посты, лента, паблики, профили; фото с политикой админа (скриншоты этого сервера / любые / никакие); модерация, права (LuckPerms / fabric-permissions-api).
 5. Музыка: локальные файлы, виджет на HUD, Яндекс Музыка (неоф. API), управление Spotify.

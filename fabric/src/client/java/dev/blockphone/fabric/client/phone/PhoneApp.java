@@ -80,6 +80,20 @@ public abstract class PhoneApp {
         return false;
     }
 
+    // --- Кнопка справа в заголовке («+», «Удалить», «Папка»...) ---
+
+    /** Текст кнопки справа в заголовке; null — кнопки нет. */
+    public String headerAction() {
+        return null;
+    }
+
+    public int headerActionColor() {
+        return PhoneTheme.ACCENT;
+    }
+
+    public void onHeaderAction() {
+    }
+
     // --- Внешний вид ---
 
     public boolean hasHeader() {

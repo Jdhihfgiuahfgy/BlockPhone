@@ -28,6 +28,7 @@ public class PhoneScreen extends Screen {
     private float originY;
 
     private PhoneApp app;
+    private PhoneDialog dialog;
 
     public PhoneScreen() {
         super(Component.translatable("key.blockphone.open"));
@@ -71,6 +72,15 @@ public class PhoneScreen extends Screen {
         }
     }
 
+    public void showDialog(PhoneDialog dialog) {
+        this.dialog = dialog;
+    }
+
+    /** Закрыть телефон сразу, без анимации (например, при переходе в камеру). */
+    public void closeImmediately() {
+        minecraft.setScreen(null);
+    }
+
     public void closePhone() {
         if (closingAt >= 0) {
             return;
@@ -86,6 +96,7 @@ public class PhoneScreen extends Screen {
         if (app != null && app != next) {
             app.onHidden();
         }
+        dialog = null;
         app = next;
         app.attach(this);
         app.onShown();
@@ -196,6 +207,9 @@ public class PhoneScreen extends Screen {
         }
         renderStatusBar(g);
         renderNavBar(g, sx, sy);
+        if (dialog != null) {
+            dialog.render(g, sx, sy);
+        }
 
         g.disableScissor();
         // Скруглённые углы экрана и «островок» камеры.
@@ -210,7 +224,16 @@ public class PhoneScreen extends Screen {
         int textColor = app.headerTextColor();
         boolean backHovered = PhoneDraw.inside(sx, sy, 0, top, 24, HEADER_H);
         PhoneDraw.text(g, "<", 8, top + 6, backHovered ? PhoneTheme.ACCENT : textColor, 1f, false);
-        String title = PhoneDraw.ellipsize(app.title(), SCREEN_W - 50, 1f);
+        String action = app.headerAction();
+        int actionWidth = 0;
+        if (action != null) {
+            actionWidth = (int) PhoneDraw.width(action, 0.75f) + 8;
+            boolean hovered = PhoneDraw.inside(sx, sy, SCREEN_W - actionWidth - 4, top, actionWidth + 4, HEADER_H);
+            int color = app.headerActionColor();
+            PhoneDraw.rightText(g, action, SCREEN_W - 8, top + 7, hovered ? (color & 0x00FFFFFF) | 0xB0000000 : color, 0.75f);
+        }
+        int titleRoom = SCREEN_W - 2 * Math.max(28, actionWidth + 6);
+        String title = PhoneDraw.ellipsize(app.title(), titleRoom, 1f);
         PhoneDraw.centeredText(g, title, SCREEN_W / 2f, top + 6, textColor, 1f, false);
     }
 
@@ -270,6 +293,12 @@ public class PhoneScreen extends Screen {
         }
         double sx = toScreenX(event.x());
         double sy = toScreenY(event.y());
+        if (dialog != null) {
+            if (dialog.mouseClicked(sx, sy)) {
+                dialog = null;
+            }
+            return true;
+        }
         if (sy >= SCREEN_H - NAV_H && sy < SCREEN_H && sx >= 0 && sx < SCREEN_W) {
             goHome();
             return true;
@@ -277,6 +306,14 @@ public class PhoneScreen extends Screen {
         if (app.hasHeader() && PhoneDraw.inside(sx, sy, 0, STATUS_H, 24, HEADER_H)) {
             back();
             return true;
+        }
+        String action = app.hasHeader() ? app.headerAction() : null;
+        if (action != null) {
+            int actionWidth = (int) PhoneDraw.width(action, 0.75f) + 8;
+            if (PhoneDraw.inside(sx, sy, SCREEN_W - actionWidth - 4, STATUS_H, actionWidth + 4, HEADER_H)) {
+                app.onHeaderAction();
+                return true;
+            }
         }
         if (inContent(sx, sy)) {
             return app.mouseClicked(sx, sy - contentTop(), event.button());
@@ -286,11 +323,17 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (dialog != null) {
+            return true;
+        }
         return app.mouseReleased(toScreenX(event.x()), toScreenY(event.y()) - contentTop(), event.button());
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        if (dialog != null) {
+            return true;
+        }
         return app.mouseDragged(toScreenX(event.x()), toScreenY(event.y()) - contentTop(), event.button(),
                 dx / scale, dy / scale);
     }
@@ -305,7 +348,14 @@ public class PhoneScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (event.isEscape()) {
-            back();
+            if (dialog != null) {
+                dialog = null;
+            } else {
+                back();
+            }
+            return true;
+        }
+        if (dialog != null) {
             return true;
         }
         if (app.keyPressed(event)) {
@@ -320,6 +370,6 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
-        return app.charTyped(event);
+        return dialog == null && app.charTyped(event);
     }
 }

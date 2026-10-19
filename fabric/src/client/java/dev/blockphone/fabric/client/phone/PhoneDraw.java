@@ -4,7 +4,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.network.chat.FormattedText;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
+
+import java.util.List;
 
 /** Помощники отрисовки для приложений телефона. Все координаты — в единицах телефона. */
 public final class PhoneDraw {
@@ -87,9 +91,39 @@ public final class PhoneDraw {
         return s.substring(0, end) + dots;
     }
 
+    /** Многострочный текст с переносом по словам. Возвращает высоту в единицах телефона. */
+    public static int wrapped(GuiGraphics g, String s, float x, float y, float maxWidth, int color, float scale, boolean centered) {
+        List<FormattedCharSequence> lines = font().split(FormattedText.of(s), (int) (maxWidth / scale));
+        float lh = 10 * scale;
+        for (int i = 0; i < lines.size(); i++) {
+            FormattedCharSequence line = lines.get(i);
+            float lx = centered ? x + (maxWidth - font().width(line) * scale) / 2f : x;
+            g.pose().pushMatrix();
+            g.pose().translate(lx, y + i * lh);
+            g.pose().scale(scale, scale);
+            g.drawString(font(), line, 0, 0, color, false);
+            g.pose().popMatrix();
+        }
+        return (int) Math.ceil(lines.size() * lh);
+    }
+
+    public static int wrappedHeight(String s, float maxWidth, float scale) {
+        return (int) Math.ceil(font().split(FormattedText.of(s), (int) (maxWidth / scale)).size() * 10 * scale);
+    }
+
     /** Текстура целиком, растянутая в прямоугольник w×h. */
     public static void texture(GuiGraphics g, Identifier texture, int x, int y, int w, int h, int texW, int texH) {
         g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, w, h, texW, texH, texW, texH);
+    }
+
+    /** Кнопка-«таблетка» с подписью; подсвечивается при наведении. */
+    public static void button(GuiGraphics g, int x, int y, int w, int h, String label, int mx, int my, int bg, int fg) {
+        roundedRect(g, x, y, x + w, y + h, Math.min(h / 2, 8), bg);
+        if (inside(mx, my, x, y, w, h)) {
+            roundedRect(g, x, y, x + w, y + h, Math.min(h / 2, 8), 0x30FFFFFF);
+        }
+        String text = ellipsize(label, w - 6, 0.75f);
+        centeredText(g, text, x + w / 2f, y + (h - 6) / 2f, fg, 0.75f, false);
     }
 
     public static boolean inside(double mx, double my, double x, double y, double w, double h) {

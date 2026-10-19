@@ -212,6 +212,19 @@ def weather_snow():
     return img
 
 
+def camera_noise():
+    """Текстура шума для превью ISO в видоискателе (128x128, серый шум)."""
+    import random
+    rnd = random.Random(42)
+    img = Image.new("RGBA", (128, 128))
+    px = img.load()
+    for y in range(128):
+        for x in range(128):
+            v = max(0, min(255, int(rnd.gauss(128, 70))))
+            px[x, y] = (v, v, v, 255)
+    return img
+
+
 def mod_icon():
     img = blank()
     d = ImageDraw.Draw(img)
@@ -242,4 +255,6 @@ if __name__ == "__main__":
     for name, fn in weather.items():
         save(fn(), WEATHER_DIR, name)
     save(mod_icon(), ASSETS, "icon", 128)
+    os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
+    camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))
     print("Icons written to", ASSETS)

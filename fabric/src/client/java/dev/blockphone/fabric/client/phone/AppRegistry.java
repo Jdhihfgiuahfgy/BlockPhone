@@ -3,6 +3,9 @@ package dev.blockphone.fabric.client.phone;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.client.apps.PlaceholderApp;
 import dev.blockphone.fabric.client.apps.calculator.CalculatorApp;
+import dev.blockphone.fabric.client.apps.camera.CameraApp;
+import dev.blockphone.fabric.client.apps.gallery.GalleryApp;
+import dev.blockphone.fabric.client.apps.notes.NotesApp;
 import dev.blockphone.fabric.client.apps.settings.SettingsApp;
 import dev.blockphone.fabric.client.apps.weather.WeatherApp;
 import dev.blockphone.fabric.client.network.ClientNetwork;
@@ -29,10 +32,10 @@ public final class AppRegistry {
     static {
         add("messenger", () -> new PlaceholderApp("messenger"), ClientNetwork::messengerAvailable);
         add("telegram", () -> new PlaceholderApp("telegram"));
-        add("camera", () -> new PlaceholderApp("camera"));
-        add("gallery", () -> new PlaceholderApp("gallery"));
+        add("camera", CameraApp::new);
+        add("gallery", GalleryApp::new);
         add("music", () -> new PlaceholderApp("music"));
-        add("notes", () -> new PlaceholderApp("notes"));
+        add("notes", NotesApp::new);
         add("calculator", CalculatorApp::new);
         add("weather", WeatherApp::new);
         add("settings", SettingsApp::new);

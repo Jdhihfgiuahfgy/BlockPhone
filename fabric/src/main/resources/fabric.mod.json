@@ -17,6 +17,12 @@
       "dev.blockphone.fabric.client.BlockPhoneClient"
     ]
   },
+  "mixins": [
+    {
+      "config": "blockphone.client.mixins.json",
+      "environment": "client"
+    }
+  ],
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",

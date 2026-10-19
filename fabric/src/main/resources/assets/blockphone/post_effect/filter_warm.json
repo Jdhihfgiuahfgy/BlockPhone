@@ -1,0 +1,87 @@
+{
+  "targets": {
+    "swap": {}
+  },
+  "passes": [
+    {
+      "vertex_shader": "minecraft:core/screenquad",
+      "fragment_shader": "blockphone:post/filter",
+      "inputs": [
+        {
+          "sampler_name": "In",
+          "target": "minecraft:main"
+        }
+      ],
+      "output": "swap",
+      "uniforms": {
+        "FilterConfig": [
+          {
+            "name": "RowR",
+            "type": "vec4",
+            "value": [
+              1.1,
+              0,
+              0,
+              0.03
+            ]
+          },
+          {
+            "name": "RowG",
+            "type": "vec4",
+            "value": [
+              0,
+              1.02,
+              0,
+              0.01
+            ]
+          },
+          {
+            "name": "RowB",
+            "type": "vec4",
+            "value": [
+              0,
+              0,
+              0.85,
+              0
+            ]
+          },
+          {
+            "name": "Params",
+            "type": "vec4",
+            "value": [
+              1.05,
+              1.02,
+              0.0,
+              0.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "vertex_shader": "minecraft:core/screenquad",
+      "fragment_shader": "minecraft:post/blit",
+      "inputs": [
+        {
+          "sampler_name": "In",
+          "target": "swap"
+        }
+      ],
+      "uniforms": {
+        "BlitConfig": [
+          {
+            "name": "ColorModulate",
+            "type": "vec4",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        ]
+      },
+      "output": "minecraft:main"
+    }
+  ]
+}
