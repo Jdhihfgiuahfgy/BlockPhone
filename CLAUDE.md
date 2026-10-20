@@ -352,7 +352,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     `Covers` (обложки из тегов или по адресу → текстуры, LRU 40), `Accounts` (accounts.json), `Http` (HttpURLConnection).
   - `yandex/YandexApi` — неофициальный API (заголовок `Authorization: OAuth`): account/status, likes, tracks, search,
     rotor «Моя волна» (продолжение по `queue=<последний трек>`), лайки, download-info → XML → ссылка
-    `https://host/get-mp3/md5(соль + path[1:] + s)/ts + path`. `yandex/YandexMusic` — состояние, вход вставкой адреса
+    `https://host/get-mp3/md5(соль + path[1:] + s)/ts + path`. Заголовки: OAuth, X-Yandex-Music-Client, User-Agent «Yandex-Music-API»
+    (и при скачивании файла). Скачанное проверяет `audio/AudioSniffer` (MP3 или что пришло — в журнал), не MP3 → следующий
+    вариант качества; испорченный файл кэша удаляется в `Playback`. `yandex/YandexMusic` — состояние, вход вставкой адреса
     со страницы OAuth (`access_token=...`), кэш треков.
   - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
     браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,

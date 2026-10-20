@@ -663,5 +663,6 @@
   "photo.error.quota": "Too much uploaded: the server allows %s MB per player.",
   "photo.error.daily_limit": "Daily upload limit reached (%s).",
   "voice.error.quota": "Too much uploaded: the server allows %s MB per player.",
-  "voice.error.daily_limit": "Daily upload limit reached (%s)."
+  "voice.error.daily_limit": "Daily upload limit reached (%s).",
+  "music.error.yandex_format": "Yandex sent the track in a format other than MP3. Details are in the game log (\"Yandex track … not downloaded\")."
 }

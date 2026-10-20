@@ -50,7 +50,15 @@ final class Playback implements Runnable {
             if (stopped) {
                 return;
             }
-            decoder = Decoders.open(file);
+            try {
+                decoder = Decoders.open(file);
+            } catch (java.io.IOException e) {
+                // Испорченный файл из кэша Яндекса — удалить, чтобы в следующий раз скачать заново.
+                if (track.source() == Track.Source.YANDEX) {
+                    java.nio.file.Files.deleteIfExists(file);
+                }
+                throw e;
+            }
             if (decoder.durationMs() > 0 && durationMs <= 0) {
                 durationMs = decoder.durationMs();
             }

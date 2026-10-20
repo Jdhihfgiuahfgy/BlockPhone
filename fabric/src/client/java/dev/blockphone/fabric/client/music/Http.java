@@ -54,7 +54,11 @@ public final class Http {
             }
             Files.createDirectories(target.getParent());
             Path tmp = target.resolveSibling(target.getFileName() + ".part");
-            try (InputStream in = c.getInputStream(); OutputStream out = Files.newOutputStream(tmp)) {
+            // Сервер может прислать сжатое (gzip), хотя мы не просили — распаковываем.
+            boolean gzip = "gzip".equalsIgnoreCase(c.getContentEncoding());
+            try (InputStream raw = c.getInputStream();
+                 InputStream in = gzip ? new java.util.zip.GZIPInputStream(raw) : raw;
+                 OutputStream out = Files.newOutputStream(tmp)) {
                 byte[] buffer = new byte[64 * 1024];
                 long total = 0;
                 int n;

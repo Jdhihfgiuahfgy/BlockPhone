@@ -1,5 +1,9 @@
 package dev.blockphone.fabric.client.music.yandex;
 
+import dev.blockphone.fabric.BlockPhoneFabric;
+import dev.blockphone.fabric.client.music.audio.AudioSniffer;
+import java.nio.file.Files;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -49,8 +53,9 @@ public final class YandexApi {
     }
 
     private Map<String, String> headers() {
+        // Представляемся как известные клиенты API: на незнакомый User-Agent хранилище может ответить заглушкой.
         return Map.of("Authorization", "OAuth " + token, "X-Yandex-Music-Client", "YandexMusicAndroid/24023621",
-                "Accept-Language", "ru");
+                "Accept-Language", "ru", "User-Agent", "Yandex-Music-API");
     }
 
     private JsonObject get(String path) throws IOException {
@@ -157,34 +162,53 @@ public final class YandexApi {
         post("/users/" + uid + "/likes/tracks/" + (like ? "add-multiple" : "remove"), Map.of("track-ids", trackId));
     }
 
-    /** Скачать mp3 трека (лучшее качество, доступное аккаунту) в файл. */
+    /**
+     * Скачать mp3 трека в файл: варианты mp3 от лучшего качества к худшему. Скачанное проверяется — если это не MP3
+     * (страница-заглушка, другой формат), в журнал пишется, что пришло, файл удаляется и пробуется следующий вариант.
+     */
     public void download(String trackId, Path target) throws IOException {
         JsonArray infos = get("/tracks/" + Http.encode(trackId) + "/download-info").getAsJsonArray("result");
-        JsonObject best = null;
+        List<JsonObject> mp3 = new ArrayList<>();
+        StringBuilder codecs = new StringBuilder();
         for (JsonElement e : infos) {
             JsonObject o = e.getAsJsonObject();
-            if (!"mp3".equals(str(o, "codec"))) {
+            codecs.append(str(o, "codec")).append('/').append(o.has("bitrateInKbps") ? o.get("bitrateInKbps").getAsInt() : 0).append(' ');
+            if ("mp3".equals(str(o, "codec"))) {
+                mp3.add(o);
+            }
+        }
+        if (mp3.isEmpty()) {
+            BlockPhoneFabric.LOGGER.warn("Yandex track {}: no mp3 variants ({})", trackId, codecs.toString().strip());
+            throw new ApiException("music.error.yandex_unavailable");
+        }
+        mp3.sort((a, b) -> Integer.compare(b.get("bitrateInKbps").getAsInt(), a.get("bitrateInKbps").getAsInt()));
+        String lastProblem = "";
+        for (JsonObject variant : mp3) {
+            Http.Response xml = Http.request("GET", str(variant, "downloadInfoUrl"), headers(), null);
+            String url = xml.ok() ? signedUrl(xml.body()) : null;
+            if (url == null) {
+                lastProblem = "download-info " + xml.code() + ": " + snippet(xml.body());
                 continue;
             }
-            if (best == null || o.get("bitrateInKbps").getAsInt() > best.get("bitrateInKbps").getAsInt()) {
-                best = o;
+            int code = Http.download(url, headers(), target, 64L * 1024 * 1024);
+            if (code >= 400) {
+                lastProblem = "storage HTTP " + code;
+                continue;
             }
+            String problem = AudioSniffer.problem(target);
+            if (problem == null) {
+                return;
+            }
+            lastProblem = variant.get("bitrateInKbps").getAsInt() + " kbps: " + problem;
+            Files.deleteIfExists(target);
         }
-        if (best == null) {
-            throw new ApiException("music.error.yandex_unavailable");
-        }
-        Http.Response xml = Http.request("GET", str(best, "downloadInfoUrl"), headers(), null);
-        if (!xml.ok()) {
-            throw new ApiException("music.error.network");
-        }
-        String url = signedUrl(xml.body());
-        if (url == null) {
-            throw new ApiException("music.error.yandex_unavailable");
-        }
-        int code = Http.download(url, Map.of(), target, 64L * 1024 * 1024);
-        if (code >= 400) {
-            throw new ApiException("music.error.network");
-        }
+        BlockPhoneFabric.LOGGER.warn("Yandex track {} not downloaded ({}): {}", trackId, codecs.toString().strip(), lastProblem);
+        throw new ApiException("music.error.yandex_format");
+    }
+
+    private static String snippet(String body) {
+        String s = body == null ? "" : body.replaceAll("\\s+", " ").strip();
+        return s.length() > 200 ? s.substring(0, 200) + "…" : s;
     }
 
     // --- Разбор ---
