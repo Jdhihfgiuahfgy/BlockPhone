@@ -354,7 +354,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     rotor «Моя волна» (продолжение по `queue=<последний трек>`), лайки, download-info → XML → ссылка
     `https://host/get-mp3/md5(соль + path[1:] + s)/ts + path`. Заголовки: OAuth, X-Yandex-Music-Client, User-Agent «Yandex-Music-API»
     (и при скачивании файла). Скачанное проверяет `audio/AudioSniffer` (MP3 или что пришло — в журнал), не MP3 → следующий
-    вариант качества; испорченный файл кэша удаляется в `Playback`. `yandex/YandexMusic` — состояние, вход вставкой адреса
+    вариант качества; испорченный файл кэша удаляется в `Playback`. `Http.download` → `Download(code, bytes, type, finalUrl)`: перенаправления
+    вручную (до 5, https↔http; Authorization на другой хост не уходит), пустой ответ — не файл; при неудаче Яндекс пробует
+    ещё раз без токена. `yandex/YandexMusic` — состояние, вход вставкой адреса
     со страницы OAuth (`access_token=...`), кэш треков.
   - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
     браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,

@@ -44,37 +44,91 @@ public final class Http {
         }
     }
 
-    /** Скачать в файл (через временный). Возвращает HTTP-код. */
-    public static int download(String url, Map<String, String> headers, Path target, long maxBytes) throws IOException {
-        HttpURLConnection c = open("GET", url, headers);
-        try {
-            int code = c.getResponseCode();
-            if (code >= 400) {
-                return code;
-            }
-            Files.createDirectories(target.getParent());
-            Path tmp = target.resolveSibling(target.getFileName() + ".part");
-            // Сервер может прислать сжатое (gzip), хотя мы не просили — распаковываем.
-            boolean gzip = "gzip".equalsIgnoreCase(c.getContentEncoding());
-            try (InputStream raw = c.getInputStream();
-                 InputStream in = gzip ? new java.util.zip.GZIPInputStream(raw) : raw;
-                 OutputStream out = Files.newOutputStream(tmp)) {
-                byte[] buffer = new byte[64 * 1024];
-                long total = 0;
-                int n;
-                while ((n = in.read(buffer)) > 0) {
-                    total += n;
-                    if (total > maxBytes) {
-                        throw new IOException("File too large");
-                    }
-                    out.write(buffer, 0, n);
-                }
-            }
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-            return code;
-        } finally {
-            c.disconnect();
+    /**
+     * Итог скачивания.
+     *
+     * @param code     HTTP-код последнего ответа
+     * @param bytes    сколько байт записано (0 — сервер ничего не прислал)
+     * @param type     Content-Type ответа ("" — нет)
+     * @param finalUrl адрес после всех перенаправлений (для журнала)
+     */
+    public record Download(int code, long bytes, String type, String finalUrl) {
+        public boolean ok() {
+            return code >= 200 && code < 300 && bytes > 0;
         }
+
+        /** Коротко для журнала: код, тип, размер и сервер. */
+        public String describe() {
+            String host;
+            try {
+                host = URI.create(finalUrl).getHost();
+            } catch (IllegalArgumentException e) {
+                host = "?";
+            }
+            return "HTTP " + code + ", " + (type.isEmpty() ? "no type" : type) + ", " + bytes + " bytes from " + host;
+        }
+    }
+
+    /**
+     * Скачать в файл (через временный). Перенаправления проходятся вручную (до 5), в том числе https↔http — сама Java
+     * между протоколами не переходит и отдаёт пустой ответ. При переходе на другой сервер заголовок Authorization не
+     * передаётся (чтобы токен не ушёл чужому серверу). Файл появляется, только если что-то скачано.
+     */
+    public static Download download(String url, Map<String, String> headers, Path target, long maxBytes) throws IOException {
+        String current = url;
+        Map<String, String> currentHeaders = headers;
+        for (int hop = 0; hop <= 5; hop++) {
+            HttpURLConnection c = open("GET", current, currentHeaders);
+            c.setInstanceFollowRedirects(false);
+            try {
+                int code = c.getResponseCode();
+                String type = c.getContentType() == null ? "" : c.getContentType();
+                if (code >= 300 && code < 400) {
+                    String location = c.getHeaderField("Location");
+                    if (location == null || location.isBlank()) {
+                        return new Download(code, 0, type, current);
+                    }
+                    URI next = URI.create(current).resolve(location.strip());
+                    if (!next.getHost().equalsIgnoreCase(URI.create(current).getHost()) && currentHeaders.containsKey("Authorization")) {
+                        Map<String, String> without = new java.util.HashMap<>(currentHeaders);
+                        without.remove("Authorization");
+                        currentHeaders = without;
+                    }
+                    current = next.toString();
+                    continue;
+                }
+                if (code >= 400) {
+                    return new Download(code, 0, type, current);
+                }
+                Files.createDirectories(target.getParent());
+                Path tmp = target.resolveSibling(target.getFileName() + ".part");
+                long total = 0;
+                // Сервер может прислать сжатое (gzip), хотя мы не просили — распаковываем.
+                boolean gzip = "gzip".equalsIgnoreCase(c.getContentEncoding());
+                try (InputStream raw = c.getInputStream();
+                     InputStream in = gzip ? new java.util.zip.GZIPInputStream(raw) : raw;
+                     OutputStream out = Files.newOutputStream(tmp)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buffer)) > 0) {
+                        total += n;
+                        if (total > maxBytes) {
+                            throw new IOException("File too large");
+                        }
+                        out.write(buffer, 0, n);
+                    }
+                }
+                if (total > 0) {
+                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.deleteIfExists(tmp);
+                }
+                return new Download(code, total, type, current);
+            } finally {
+                c.disconnect();
+            }
+        }
+        throw new IOException("Too many redirects");
     }
 
     private static HttpURLConnection open(String method, String url, Map<String, String> headers) throws IOException {

@@ -190,10 +190,15 @@ public final class YandexApi {
                 lastProblem = "download-info " + xml.code() + ": " + snippet(xml.body());
                 continue;
             }
-            int code = Http.download(url, headers(), target, 64L * 1024 * 1024);
-            if (code >= 400) {
-                lastProblem = "storage HTTP " + code;
-                continue;
+            Http.Download result = Http.download(url, headers(), target, 64L * 1024 * 1024);
+            if (!result.ok()) {
+                // Хранилище иногда не любит заголовки API — пробуем ещё раз «как браузер», без токена.
+                Http.Download plain = Http.download(url, Map.of("User-Agent", "Mozilla/5.0"), target, 64L * 1024 * 1024);
+                if (!plain.ok()) {
+                    lastProblem = variant.get("bitrateInKbps").getAsInt() + " kbps: storage " + result.describe() + "; without token "
+                            + plain.describe();
+                    continue;
+                }
             }
             String problem = AudioSniffer.problem(target);
             if (problem == null) {
