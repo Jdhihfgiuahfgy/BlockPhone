@@ -220,6 +220,34 @@ public final class MessengerRepository {
                 rs.getBoolean("deleted"));
     }
 
+    /** Отметить сообщение как стикер. */
+    public void setSticker(long messageId, long stickerId) throws SQLException {
+        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET sticker_id = ? WHERE id = ?")) {
+            ps.setLong(1, stickerId);
+            ps.setLong(2, messageId);
+            ps.executeUpdate();
+        }
+    }
+
+    /** id сообщения → id стикера (только сообщения-стикеры). */
+    public java.util.Map<Long, Long> stickerIds(java.util.Collection<Long> messageIds) throws SQLException {
+        java.util.Map<Long, Long> result = new java.util.HashMap<>();
+        if (messageIds.isEmpty()) {
+            return result;
+        }
+        StringBuilder in = new StringBuilder();
+        for (long id : messageIds) {
+            in.append(in.length() == 0 ? "" : ",").append(id);
+        }
+        try (PreparedStatement ps = c().prepareStatement("SELECT id, sticker_id FROM " + messages + " WHERE sticker_id > 0 AND id IN ("
+                + in + ")"); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                result.put(rs.getLong(1), rs.getLong(2));
+            }
+        }
+        return result;
+    }
+
     public long insertMessage(long chatId, UUID sender, String text, long now) throws SQLException {
         return insertMessage(chatId, sender, text, 0, 0, now);
     }

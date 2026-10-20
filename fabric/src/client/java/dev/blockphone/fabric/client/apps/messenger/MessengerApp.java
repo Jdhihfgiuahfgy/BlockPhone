@@ -60,6 +60,32 @@ public final class MessengerApp extends PhoneApp {
         }
     }
 
+    /** Для автоскриншотов: «Мои стикеры». */
+    public void debugStickers() {
+        push(new StickersView(this));
+    }
+
+    /** Для автоскриншотов: редактор стикера с готовым фото. */
+    public void debugStickerEditor(long packId, dev.blockphone.fabric.client.photo.PhotoStore.Photo photo) {
+        StickerEditorView editor = new StickerEditorView(this, packId);
+        push(editor);
+        editor.debugPrepare(photo, dev.blockphone.fabric.client.photo.StickerMaker.Shape.CIRCLE, true, 1.4f);
+    }
+
+    /** Для автоскриншотов: нажать «Добавить» в редакторе стикера. */
+    public void debugAddSticker() {
+        if (view() instanceof StickerEditorView editor) {
+            editor.onHeaderAction();
+        }
+    }
+
+    /** Для автоскриншотов: панель стикеров в открытом чате. */
+    public void debugChatStickers(boolean open, boolean sendFirst) {
+        if (view() instanceof ChatView chat) {
+            chat.debugStickers(open, sendFirst);
+        }
+    }
+
     /** Для автоскриншотов: отправить сообщение из поля ввода открытого чата. */
     public void debugSubmit() {
         if (view() instanceof ChatView chat) {

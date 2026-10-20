@@ -1,5 +1,8 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.common.protocol.data.StickerData;
+import dev.blockphone.fabric.client.messenger.StickerClient;
+
 import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.common.protocol.data.MessengerData;
@@ -60,6 +63,9 @@ final class ChatView extends MessengerView {
     private static final int[] NAME_COLORS = {0xFFE5534B, 0xFF2F81F7, 0xFF3FB950, 0xFFD29922, 0xFFA371F7, 0xFFDB61A2};
     private static final long TYPING_SEND_MS = 3000;
     private static final int IMAGE_W = 100;
+    private static final int STICKER = 72;
+    private static final int PANEL_H = 118;
+    private static final int PANEL_CELL = 34;
     private static final int ATTACH_H = 24;
     private static final int VOICE_W = 96;
     private static final int VOICE_H = 16;
@@ -73,7 +79,7 @@ final class ChatView extends MessengerView {
     /** Элемент ленты: сообщение (или неподтверждённое) либо разделитель дня. */
     private record Item(MessageInfo message, MessengerClient.Pending pending, String separator,
                         List<FormattedCharSequence> lines, String name, String time, ImageRef image, int imageH, VoiceRef voice,
-                        int width, int height, boolean own) {
+                        int width, int height, boolean own, dev.blockphone.common.protocol.data.StickerData.StickerRef sticker) {
     }
 
     /** Голосовое на экране (клик — играть/пауза). */
@@ -110,6 +116,11 @@ final class ChatView extends MessengerView {
     private String voiceError;
     private long voiceErrorAt;
     private final PhotoPicker picker = new PhotoPicker(this::attach);
+    /** Панель стикеров открыта; выбранный набор. */
+    private boolean stickerPanel;
+    private long stickerPack;
+    private final List<ButtonHit> panelHits = new ArrayList<>();
+    private final List<ButtonHit> stickerHits = new ArrayList<>();
     private final ImageViewer viewer = new ImageViewer();
     /** Прикреплённое фото (загружается или загружено), null — нет. */
     private ImageUploads.Upload attachment;
@@ -266,7 +277,80 @@ final class ChatView extends MessengerView {
     }
 
     private int inputX() {
+        return 6 + (canAttach() ? 22 : 0) + (canSticker() ? 22 : 0);
+    }
+
+    private boolean canSticker() {
+        return editingId < 0 && StickerClient.enabled();
+    }
+
+    private int stickerButtonX() {
         return canAttach() ? 28 : 6;
+    }
+
+    /** Панель над полем ввода: вкладки наборов, «⚙» (мои стикеры), стикеры выбранного набора. */
+    private void renderStickerPanel(GuiGraphics g, int mouseX, int mouseY) {
+        int w = width();
+        int bottom = inputTop() - 4;
+        int top = bottom - PANEL_H;
+        PhoneDraw.panel(g, 4, top, w - 4, bottom, PhoneTheme.card());
+        List<StickerData.PackInfo> packs = StickerClient.mine();
+        if (packs.stream().noneMatch(p -> p.id() == stickerPack) && !packs.isEmpty()) {
+            stickerPack = packs.get(0).id();
+        }
+        // Вкладки.
+        int tx = 8;
+        int ty = top + 4;
+        PhoneDraw.button(g, w - 26, ty, 18, 14, "⚙", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
+        panelHits.add(new ButtonHit(w - 26, ty, 18, 14, () -> {
+            stickerPanel = false;
+            app.push(new StickersView(app));
+        }));
+        for (StickerData.PackInfo pack : packs) {
+            String label = PhoneDraw.ellipsize(pack.title(), 60, 0.6f);
+            int tw = (int) PhoneDraw.width(label, 0.6f) + 10;
+            if (tx + tw > w - 30) {
+                break;
+            }
+            boolean selected = pack.id() == stickerPack;
+            PhoneDraw.button(g, tx, ty, tw, 14, label, mouseX, mouseY, selected ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+            long id = pack.id();
+            panelHits.add(new ButtonHit(tx, ty, tw, 14, () -> stickerPack = id));
+            tx += tw + 3;
+        }
+        StickerData.PackInfo pack = StickerClient.pack(stickerPack);
+        int gy = ty + 18;
+        if (pack == null || pack.stickers().isEmpty()) {
+            PhoneDraw.wrapped(g, MessengerApp.tr(packs.isEmpty() ? "sticker.panel_empty" : "sticker.pack_empty"), 10, gy + 4, w - 20,
+                    PhoneTheme.secondaryText(), 0.65f, false);
+            return;
+        }
+        int perRow = Math.max(1, (w - 16) / (PANEL_CELL + 4));
+        int rows = (bottom - gy - 4) / (PANEL_CELL + 4);
+        for (int i = 0; i < Math.min(pack.stickers().size(), perRow * rows); i++) {
+            StickerData.StickerRef sticker = pack.stickers().get(i);
+            int x = 8 + (i % perRow) * (PANEL_CELL + 4);
+            int y = gy + (i / perRow) * (PANEL_CELL + 4);
+            if (PhoneDraw.inside(mouseX, mouseY, x, y, PANEL_CELL, PANEL_CELL)) {
+                PhoneDraw.roundedRect(g, x - 1, y - 1, x + PANEL_CELL + 1, y + PANEL_CELL + 1, 4, PhoneTheme.cardHover());
+            }
+            Images.drawFit(g, sticker.image(), x, y, PANEL_CELL, PANEL_CELL);
+            panelHits.add(new ButtonHit(x, y, PANEL_CELL, PANEL_CELL, () -> sendSticker(sticker)));
+        }
+    }
+
+    private void sendSticker(StickerData.StickerRef sticker) {
+        ClientNetwork.send(new MessengerPackets.SendMessage(chatId, "st" + System.nanoTime(), "", 0, 0, sticker.id()));
+        scroll = 0;
+    }
+
+    /** Для автоскриншотов: открыть панель стикеров / отправить первый стикер выбранного набора. */
+    void debugStickers(boolean open, boolean sendFirst) {
+        stickerPanel = open;
+        StickerData.PackInfo pack = StickerClient.pack(stickerPack);
+        if (sendFirst && pack != null && !pack.stickers().isEmpty()) {
+            sendSticker(pack.stickers().get(0));
+        }
     }
 
     private int maxTextWidth() {
@@ -295,7 +379,13 @@ final class ChatView extends MessengerView {
             String senderKey = m.sender().uuid().toString();
             String name = group && !own && !senderKey.equals(prevSender) ? m.sender().name() : null;
             String time = (m.editedAt() > 0 && !m.deleted() ? MessengerApp.tr("messenger.edited") + " " : "") + MessengerFormat.time(m.sentAt());
-            items.add(bubble(m, null, lines, name, time, m.deleted() ? null : m.image(), m.deleted() ? null : m.voice(), own));
+            if (m.sticker() != null && !m.deleted()) {
+                // Стикер — картинка без пузыря.
+                items.add(new Item(m, null, null, List.of(), name, time, m.sticker().image(), STICKER, null, STICKER,
+                        STICKER + 10 + (name != null ? 7 : 0), own, m.sticker()));
+            } else {
+                items.add(bubble(m, null, lines, name, time, m.deleted() ? null : m.image(), m.deleted() ? null : m.voice(), own));
+            }
             prevTime = m.sentAt();
             prevSender = senderKey;
         }
@@ -307,7 +397,7 @@ final class ChatView extends MessengerView {
     }
 
     private Item separator(String label) {
-        return new Item(null, null, label, List.of(), null, null, null, 0, null, 0, SEPARATOR_H, false);
+        return new Item(null, null, label, List.of(), null, null, null, 0, null, 0, SEPARATOR_H, false, null);
     }
 
     private Item bubble(MessageInfo m, MessengerClient.Pending p, List<FormattedCharSequence> lines, String name, String time,
@@ -330,7 +420,7 @@ final class ChatView extends MessengerView {
         int width = (int) Math.ceil(contentW) + PAD_X * 2;
         int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0) + (image != null ? imageH + 3 : 0)
                 + (voice != null ? VOICE_H + 6 : 0);
-        return new Item(m, p, null, lines, name, time, image, imageH, voice, width, height, own);
+        return new Item(m, p, null, lines, name, time, image, imageH, voice, width, height, own, null);
     }
 
     private static int totalHeight(List<Item> items) {
@@ -363,6 +453,7 @@ final class ChatView extends MessengerView {
         hits.clear();
         imageHits.clear();
         voiceHits.clear();
+        stickerHits.clear();
         g.enableScissor(0, areaTop, w, areaBottom);
         if (!data.loaded) {
             MessengerApp.centerHint(g, this, MessengerApp.tr("messenger.loading"), (areaTop + areaBottom) / 2 - 4);
@@ -379,6 +470,10 @@ final class ChatView extends MessengerView {
         g.disableScissor();
 
         renderInput(g, mouseX, mouseY);
+        panelHits.clear();
+        if (stickerPanel) {
+            renderStickerPanel(g, mouseX, mouseY);
+        }
         if (menu != null) {
             renderMenu(g, mouseX, mouseY);
         }
@@ -508,6 +603,21 @@ final class ChatView extends MessengerView {
             return;
         }
         int x = item.own() ? w - 6 - item.width() : 6;
+        if (item.sticker() != null) {
+            int sy = y;
+            if (item.name() != null) {
+                int color = NAME_COLORS[Math.floorMod(item.message().sender().uuid().hashCode(), NAME_COLORS.length)];
+                PhoneDraw.text(g, item.name(), x, sy, color, SMALL, false);
+                sy += 7;
+            }
+            Images.drawFit(g, item.sticker().image(), x, sy, STICKER, STICKER);
+            PhoneDraw.text(g, item.time(), item.own() ? x + STICKER - PhoneDraw.width(item.time(), SMALL) : x, sy + STICKER + 2,
+                    PhoneTheme.secondaryText(), SMALL, false);
+            long packId = item.sticker().packId();
+            stickerHits.add(new ButtonHit(x, sy, STICKER, STICKER, () -> app.push(new StickerPackView(app, packId))));
+            hits.add(new Hit(x, y, item.width(), item.height(), item.message()));
+            return;
+        }
         boolean pending = item.pending() != null;
         boolean deleted = item.message() != null && item.message().deleted();
         int bg = item.own() ? PhoneTheme.accent() : PhoneTheme.card();
@@ -563,6 +673,10 @@ final class ChatView extends MessengerView {
         if (canAttach()) {
             PhoneDraw.button(g, 6, top + 2, 18, 22, "+", mouseX, mouseY,
                     attachment != null ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+        }
+        if (canSticker()) {
+            PhoneDraw.button(g, stickerButtonX(), top + 2, 18, 22, "☺", mouseX, mouseY,
+                    stickerPanel ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
         }
         if (attachment != null) {
             renderAttachment(g, mouseX, mouseY, top - ATTACH_H - 2);
@@ -733,8 +847,32 @@ final class ChatView extends MessengerView {
             return picker.mouseClicked(x, y, button);
         }
         if (canAttach() && PhoneDraw.inside(x, y, 6, inputTop() + 2, 18, 22)) {
+            stickerPanel = false;
             picker.open();
             return true;
+        }
+        if (canSticker() && PhoneDraw.inside(x, y, stickerButtonX(), inputTop() + 2, 18, 22)) {
+            stickerPanel = !stickerPanel;
+            return true;
+        }
+        if (stickerPanel) {
+            for (ButtonHit hit : panelHits) {
+                if (button == 0 && PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    hit.action().run();
+                    return true;
+                }
+            }
+            if (PhoneDraw.inside(x, y, 4, inputTop() - 4 - PANEL_H, width() - 8, PANEL_H)) {
+                return true;
+            }
+        }
+        if (button == 0 && menu == null) {
+            for (ButtonHit hit : stickerHits) {
+                if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    hit.action().run();
+                    return true;
+                }
+            }
         }
         if (attachment != null && PhoneDraw.inside(x, y, width() - 24, inputTop() - ATTACH_H + 1, 15, 15)) {
             clearAttachment();
@@ -853,6 +991,10 @@ final class ChatView extends MessengerView {
     boolean onBack() {
         if (recorder != null) {
             cancelRecording();
+            return true;
+        }
+        if (stickerPanel) {
+            stickerPanel = false;
             return true;
         }
         if (viewer.isOpen()) {

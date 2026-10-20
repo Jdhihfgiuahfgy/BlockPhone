@@ -11,7 +11,7 @@ public final class BlockPhone {
     public static final String CHANNEL = CHANNEL_NAMESPACE + ":" + CHANNEL_PATH;
 
     /** Увеличивать при любом несовместимом изменении протокола. */
-    public static final int PROTOCOL_VERSION = 7;
+    public static final int PROTOCOL_VERSION = 8;
 
     private BlockPhone() {
     }

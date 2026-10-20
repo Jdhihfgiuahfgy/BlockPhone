@@ -42,6 +42,6 @@ public record ImageRef(long id, int width, int height) {
         }
     }
 
-    /** Для чего загружается картинка (у ленты свои ограничения — заглушение, право на фото). */
-    public enum Purpose { POST, CHAT }
+    /** Для чего загружается картинка (у ленты свои ограничения — заглушение, право на фото; у стикеров — свои размеры). */
+    public enum Purpose { POST, CHAT, STICKER }
 }

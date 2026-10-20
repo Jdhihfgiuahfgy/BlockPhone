@@ -184,18 +184,21 @@ public final class ImageOps {
             for (int x = 0; x < w; x++) {
                 int sx0 = x * src.width() / w;
                 int sx1 = Math.max(sx0 + 1, (x + 1) * src.width() / w);
-                long r = 0, g = 0, b = 0;
+                // Цвет усредняется с весом прозрачности (у стикеров края прозрачные), альфа — просто среднее.
+                long r = 0, g = 0, b = 0, a = 0;
                 int n = 0;
                 for (int sy = sy0; sy < sy1; sy++) {
                     for (int sx = sx0; sx < sx1; sx++) {
                         int c = src.argb()[sy * src.width() + sx];
-                        r += (c >> 16) & 255;
-                        g += (c >> 8) & 255;
-                        b += c & 255;
+                        int alpha = (c >>> 24) & 255;
+                        r += (long) ((c >> 16) & 255) * alpha;
+                        g += (long) ((c >> 8) & 255) * alpha;
+                        b += (long) (c & 255) * alpha;
+                        a += alpha;
                         n++;
                     }
                 }
-                out[y * w + x] = 0xFF000000 | (int) (r / n) << 16 | (int) (g / n) << 8 | (int) (b / n);
+                out[y * w + x] = a == 0 ? 0 : (int) (a / n) << 24 | (int) (r / a) << 16 | (int) (g / a) << 8 | (int) (b / a);
             }
         }
         return new Picture(w, h, out);
@@ -216,8 +219,10 @@ public final class ImageOps {
         int w = image.getWidth();
         int h = image.getHeight();
         int[] argb = image.getRGB(0, 0, w, h, null, 0, w);
-        for (int i = 0; i < argb.length; i++) {
-            argb[i] |= 0xFF000000;
+        if (!image.getColorModel().hasAlpha()) {
+            for (int i = 0; i < argb.length; i++) {
+                argb[i] |= 0xFF000000;
+            }
         }
         return new Picture(w, h, argb);
     }
@@ -238,7 +243,7 @@ public final class ImageOps {
         NativeImage image = new NativeImage(picture.width(), picture.height(), false);
         for (int y = 0; y < picture.height(); y++) {
             for (int x = 0; x < picture.width(); x++) {
-                image.setPixel(x, y, picture.get(x, y) | 0xFF000000);
+                image.setPixel(x, y, picture.get(x, y)); // прозрачность сохраняется (стикеры)
             }
         }
         return image;

@@ -180,14 +180,20 @@ public final class MessengerPackets {
      * Новое сообщение; imageId — загруженное фото, voiceId — загруженное голосовое (0 — нет).
      * Без фото и голосового текст обязателен.
      */
-    public record SendMessage(long chatId, String nonce, String text, long imageId, long voiceId) implements Packet {
+    /** stickerId > 0 — сообщение-стикер (текст, фото и голос тогда не нужны). */
+    public record SendMessage(long chatId, String nonce, String text, long imageId, long voiceId, long stickerId) implements Packet {
+        public SendMessage(long chatId, String nonce, String text, long imageId, long voiceId) {
+            this(chatId, nonce, text, imageId, voiceId, 0);
+        }
+
         public static SendMessage read(PacketReader r) {
-            return new SendMessage(r.readLong(), r.readString(64), r.readString(MAX_MESSAGE_LENGTH), r.readLong(), r.readLong());
+            return new SendMessage(r.readLong(), r.readString(64), r.readString(MAX_MESSAGE_LENGTH), r.readLong(), r.readLong(),
+                    r.readLong());
         }
 
         @Override
         public void write(PacketWriter w) {
-            w.writeLong(chatId).writeString(nonce).writeString(text).writeLong(imageId).writeLong(voiceId);
+            w.writeLong(chatId).writeString(nonce).writeString(text).writeLong(imageId).writeLong(voiceId).writeLong(stickerId);
         }
     }
 

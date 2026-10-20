@@ -5,6 +5,7 @@ import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.common.protocol.packet.PhoneUsePackets;
+import dev.blockphone.common.protocol.packet.StickerPackets;
 import dev.blockphone.common.protocol.packet.PrivacyPackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.common.protocol.packet.SessionPacket;
@@ -122,6 +123,14 @@ public final class Packets {
         register(84, AppPackets.Variables.class, AppPackets.Variables::read);
         register(85, AppPackets.Call.class, AppPackets.Call::read);
         register(86, AppPackets.CallResult.class, AppPackets.CallResult::read);
+        // Стикеры
+        register(87, StickerPackets.RequestMine.class, StickerPackets.RequestMine::read);
+        register(88, StickerPackets.Mine.class, StickerPackets.Mine::read);
+        register(89, StickerPackets.RequestPack.class, StickerPackets.RequestPack::read);
+        register(90, StickerPackets.Pack.class, StickerPackets.Pack::read);
+        register(91, StickerPackets.EditPack.class, StickerPackets.EditPack::read);
+        register(92, StickerPackets.AddSticker.class, StickerPackets.AddSticker::read);
+        register(93, StickerPackets.RemoveSticker.class, StickerPackets.RemoveSticker::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

@@ -493,6 +493,29 @@ public final class DevShots {
         shot(80, "social_chat_attach");
         step(1, mc -> messenger(MessengerApp::debugSubmit));
         shot(80, "social_chat_photo");
+        // Стикеры: свой набор, стикер из снимка (круг с обводкой), панель в чате, отправка.
+        step(1, mc -> {
+            dev.blockphone.fabric.client.messenger.StickerClient.ensureLoaded();
+            messenger(MessengerApp::debugStickers);
+        });
+        waitFor(mc -> dev.blockphone.fabric.client.messenger.StickerClient.limits() != null);
+        step(5, mc -> {
+            if (dev.blockphone.fabric.client.messenger.StickerClient.ownCount() == 0) {
+                dev.blockphone.fabric.client.messenger.StickerClient.edit(
+                        dev.blockphone.common.protocol.packet.StickerPackets.PackAction.CREATE, 0, "Мои стикеры");
+            }
+        });
+        waitFor(mc -> dev.blockphone.fabric.client.messenger.StickerClient.ownCount() > 0);
+        step(5, mc -> messenger(app -> app.debugStickerEditor(dev.blockphone.fabric.client.messenger.StickerClient.mine().stream()
+                .filter(dev.blockphone.common.protocol.data.StickerData.PackInfo::own).findFirst().orElseThrow().id(), newestPhoto())));
+        shot(60, "sticker_editor");
+        step(1, mc -> messenger(MessengerApp::debugAddSticker));
+        shot(80, "stickers_mine");
+        step(1, mc -> messenger(app -> app.openChat(directChat.get())));
+        step(10, mc -> messenger(app -> app.debugChatStickers(true, false)));
+        shot(40, "sticker_panel");
+        step(1, mc -> messenger(app -> app.debugChatStickers(false, true)));
+        shot(60, "sticker_sent");
         step(1, mc -> {
             settings.darkTheme = true;
             phone(mc, p -> p.openApp("feed"));

@@ -220,6 +220,27 @@ public final class Database implements AutoCloseable {
                     + "created_at BIGINT NOT NULL,"
                     + "PRIMARY KEY (owner, target))");
         }
+        try (Statement st = connection().createStatement()) {
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("sticker_packs") + " ("
+                    + "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,"
+                    + "owner CHAR(36) NOT NULL,"
+                    + "title VARCHAR(128) NOT NULL,"
+                    + "created_at BIGINT NOT NULL)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("stickers") + " ("
+                    + "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,"
+                    + "pack_id BIGINT NOT NULL,"
+                    + "image_id BIGINT NOT NULL,"
+                    + "position INT NOT NULL,"
+                    + "created_at BIGINT NOT NULL)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("sticker_installs") + " ("
+                    + "uuid CHAR(36) NOT NULL,"
+                    + "pack_id BIGINT NOT NULL,"
+                    + "added_at BIGINT NOT NULL,"
+                    + "PRIMARY KEY (uuid, pack_id))");
+        }
+        column("messages", "sticker_id BIGINT NOT NULL DEFAULT 0");
+        index("idx_stickers_pack", "stickers", "pack_id");
+        index("idx_sticker_packs_owner", "sticker_packs", "owner");
         // Оформление личной страницы.
         column("profiles", "avatar_type INT NOT NULL DEFAULT 0");
         column("profiles", "avatar_pose INT NOT NULL DEFAULT 0");

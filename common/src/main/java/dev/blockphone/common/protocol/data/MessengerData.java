@@ -39,19 +39,25 @@ public final class MessengerData {
      * Сообщение. image — фото или null; voice — голосовое или null; editedAt = 0 — не редактировалось;
      * deleted — удалено (текст пустой).
      */
+    /** sticker — сообщение-стикер (картинка без пузыря), null — обычное. */
     public record MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
-                              long sentAt, long editedAt, boolean deleted) {
+                              long sentAt, long editedAt, boolean deleted, StickerData.StickerRef sticker) {
+        public MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
+                           long sentAt, long editedAt, boolean deleted) {
+            this(id, chatId, sender, text, image, voice, sentAt, editedAt, deleted, null);
+        }
+
         public static MessageInfo read(PacketReader r) {
             return new MessageInfo(r.readLong(), r.readLong(), UserInfo.read(r), r.readString(MAX_MESSAGE_LENGTH * 2),
                     r.readNullable(ImageRef::read), r.readNullable(VoiceData.VoiceRef::read), r.readLong(), r.readLong(),
-                    r.readBoolean());
+                    r.readBoolean(), r.readNullable(StickerData.StickerRef::read));
         }
 
         public static void write(PacketWriter w, MessageInfo m) {
             w.writeLong(m.id).writeLong(m.chatId);
             UserInfo.write(w, m.sender);
             w.writeString(m.text).writeNullable(m.image, ImageRef::write).writeNullable(m.voice, VoiceData.VoiceRef::write)
-                    .writeLong(m.sentAt).writeLong(m.editedAt).writeBoolean(m.deleted);
+                    .writeLong(m.sentAt).writeLong(m.editedAt).writeBoolean(m.deleted).writeNullable(m.sticker, StickerData.StickerRef::write);
         }
     }
 

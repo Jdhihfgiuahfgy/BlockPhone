@@ -60,6 +60,9 @@ final class ImageService {
 
     /** Можно ли игроку прикреплять фото (без учёта размера и происхождения). null — можно, иначе ключ ошибки. */
     String checkAllowed(UUID player, ImageRef.Purpose purpose) throws SQLException {
+        if (purpose == ImageRef.Purpose.STICKER) {
+            return backend.stickers().enabled(player) ? null : "sticker.error.disabled";
+        }
         if (backend.settings().social().photos() == PhotoPolicy.NONE) {
             return "photo.error.disabled";
         }
@@ -76,10 +79,15 @@ final class ImageService {
         uploads.remove(player);
         ServerSettings.Social s = backend.settings().social();
         String error = checkAllowed(player, p.purpose());
-        if (error == null && (p.size() <= 0 || p.size() > s.maxPhotoBytes())) {
+        boolean sticker = p.purpose() == ImageRef.Purpose.STICKER;
+        int maxBytes = sticker ? backend.settings().uploads().stickers.maxKb * 1024 : s.maxPhotoBytes();
+        if (error == null && (p.size() <= 0 || p.size() > maxBytes)) {
             error = "photo.error.too_big";
         }
-        if (error == null && s.photos() == PhotoPolicy.SERVER && !backend.serverId().equals(p.serverId())) {
+        if (error == null) {
+            error = backend.quotaError(player, p.size(), "photo.");
+        }
+        if (error == null && !sticker && s.photos() == PhotoPolicy.SERVER && !backend.serverId().equals(p.serverId())) {
             error = "photo.error.not_this_server";
         }
         if (error == null && !uploadLimit.allow(player)) {
@@ -110,7 +118,8 @@ final class ImageService {
         }
         uploads.remove(player);
         ImageHeader.Info info = ImageHeader.read(upload.data);
-        int maxSide = backend.settings().social().maxPhotoSide();
+        int maxSide = upload.purpose == ImageRef.Purpose.STICKER ? backend.settings().uploads().stickers.maxSide
+                : backend.settings().social().maxPhotoSide();
         if (info == null || info.width() <= 0 || info.height() <= 0) {
             backend.send(player, new ImagePackets.UploadResult(p.uploadId(), null, "photo.error.broken"));
             return;
@@ -160,7 +169,7 @@ final class ImageService {
         return switch (meta.kind()) {
             case ImageRepository.KIND_POST -> backend.social() != null && backend.social().postVisible(meta.refId());
             case ImageRepository.KIND_MESSAGE -> backend.imageRepo().isChatMember(meta.refId(), player);
-            case ImageRepository.KIND_BANNER -> true;
+            case ImageRepository.KIND_BANNER, ImageRepository.KIND_STICKER -> true;
             default -> false;
         };
     }

@@ -37,6 +37,23 @@ voice:
 #        blockphone.moderate.posts, .publics, .mute, .reports, blockphone.moderator — все сразу (у операторов).
 moderators: []
 
+# Ограничения загружаемых файлов. Размер фото — social.max-photo-kb / max-photo-side, длина голосовых — voice.max-seconds.
+uploads:
+  stickers:
+    # Стикеры в мессенджере (свои наборы из фото галереи). Право: blockphone.stickers (у всех).
+    enabled: true
+    # Предел файла стикера, КБ, и стороны, пикселей (телефон уменьшает сам).
+    max-kb: 128
+    max-side: 320
+    # Своих наборов на игрока и стикеров в наборе.
+    max-packs: 10
+    max-per-pack: 30
+  quota:
+    # Сколько всего МБ может занимать всё, что загрузил игрок (фото, стикеры, голосовые). 0 — без ограничения.
+    per-player-mb: 50
+    # Сколько загрузок в сутки. 0 — без ограничения.
+    uploads-per-day: 300
+
 # Клиентские приложения игроков (игрок ставит их себе в папку игры blockphone/apps).
 # Серверные части приложений — в папке plugins/BlockPhone/apps (см. CUSTOM_APPS.md там же).
 apps:

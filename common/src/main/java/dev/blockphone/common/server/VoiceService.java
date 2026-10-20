@@ -95,6 +95,12 @@ final class VoiceService {
             error = "voice.error.too_long";
         } else if (!uploadLimit.allow(player)) {
             error = "voice.error.rate_limit";
+        } else {
+            try {
+                error = backend.quotaError(player, p.size(), "voice.");
+            } catch (java.sql.SQLException e) {
+                backend.platform().warn("BlockPhone quota check failed", e);
+            }
         }
         if (error != null) {
             backend.send(player, new VoicePackets.UploadResult(p.uploadId(), null, error));

@@ -41,7 +41,8 @@
   значок, список, переписка, отправка, группа, инфо, новый чат, тёмная тема.
   Сценарий ленты: `BLOCKPHONE_DEV_SCENARIO=social BLOCKPHONE_DEV_MESSENGER=1` — паблик «Новости сервера», посты, лайки,
   комментарии и жалоба прямо в базе; снимок камерой (с id сервера) → пост с фото через настоящую загрузку; снимаются лента,
-  пост, «Новый пост», профили (Стив — фигура «машет»), «Оформление» (`profile_look`), своя страница после сохранения
+  пост, «Новый пост», стикеры (набор, редактор `sticker_editor`, `stickers_mine`, панель `sticker_panel`, `sticker_sent`),
+  профили (Стив — фигура «машет»), «Оформление» (`profile_look`), своя страница после сохранения
   (`profile_self_look`), «Приватность» (`privacy`), паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
   играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
@@ -106,6 +107,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
     maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports, maxVoiceSeconds (0 — голосовых нет),
     callsAvailable. Приходит после рукопожатия.
+  - `StickerPackets` (id 87–93, обрабатывает `StickerService`): C→S RequestMine, RequestPack, EditPack(CREATE/RENAME/DELETE/
+    INSTALL/UNINSTALL), AddSticker(pack, imageId — загрузка с Purpose STICKER), RemoveSticker; S→C Mine(Limits, packs), Pack.
+    `SendMessage.stickerId`, `MessageInfo.sticker` (StickerRef: id, packId (0 — набор удалён), картинка). Ошибки — sticker.error.*.
   - `AppPackets` (id 82–86): S→C `Policy`(mode, blacklist, whitelist, serverApps — у каких приложений есть серверная часть;
     после рукопожатия и при изменении), C→S `RequestVariables`(app, page) → S→C `Variables`, C→S `Call`(app, function, page,
     inputs) → S→C `CallResult`(toast, error, navigate, values). Телефон не сообщает серверу список своих приложений.
@@ -129,6 +133,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     RequestPublics(SUBSCRIBED/MANAGED/POPULAR), Search, Report, RequestReports, ResolveReport(DISMISS/DELETE/DELETE_AND_MUTE), Mute.
 - `protocol/data/MessengerData` — UserInfo, MessageInfo, ChatInfo, ChatType и ограничения (1000 символов, 32 на название,
   50 участников, страница истории 40).
+- `protocol/data/StickerData` — StickerRef, PackInfo (own, installed), Limits (enabled, maxBytes, maxSide, maxPacks, maxPerPack).
 - `protocol/data/PrivacyData` — `Audience` (EVERYONE, FOLLOWING — на кого подписан владелец, MUTUAL, NOBODY), `Kind` (MESSAGES,
   VOICE, PHOTOS, INVITES, CALLS), `Privacy` (по Audience на каждый Kind; `with`, `get`), MAX_LIST 200.
   `SocialData.ProfileLook` — avatarType (0 — голова, 1 — фигура), pose (0..7), background (0..11), bannerStyle (0..9), bannerImage.
@@ -183,6 +188,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     функции — в главном потоке (`platform.runOnMain`), лимит 12 вызовов / 6 с, команды пишутся в лог `[apps]`.
     `ServerPlatform`: `hasPermissionNode(uuid, node, default)`, `runCommand(uuid, command, console)`, `placeholders(uuid, text)`
     (PlaceholderAPI на Paper через отражение; softdepend).
+  - `UploadSettings` (POJO; `uploads` в настройках) — стикеры (enabled, maxKb, maxSide, maxPacks, maxPerPack) и квота игрока
+    (perPlayerMb — всё загруженное: images + voices по owner; uploadsPerDay). `Backend.quotaError(player, size, "photo."|"voice.")`
+    → «photo.error.quota|50» / «…daily_limit|300» (телефон переводит «ключ|аргумент» в `PhoneLang.tr`).
+  - `StickerService` — таблицы sticker_packs, stickers, sticker_installs; картинки — images.kind 4 (KIND_STICKER, видны всем);
+    messages.sticker_id; своё право `blockphone.stickers`. Удалённый набор пропадает у всех, отправленные стикеры остаются.
+    В личке стикер считается фото (приватность «фото»).
   - `PrivacyService` — таблицы `privacy` и `privacy_lists` (kind 0 — «всегда можно», 1 — заблокирован; игрок только в одном списке);
     `allows(owner, other, Kind)`: списки важнее настроек, FOLLOWING/MUTUAL — по таблице follows. Проверки: новая личка
     (OpenDirect), сообщение/фото/голосовое в личном чате (`MessengerService.directAllowed`), приглашения в группу при создании и
@@ -214,7 +225,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   с события JOIN (в JOIN игрок ещё не в списке игроков сервера — отправка через `getPlayerList()` теряла приветствие).
 - `server/FabricServerHandler` — права: fabric-permissions-api (LuckPerms) через отражение, иначе обычные — у всех,
   модераторские — у операторов уровня 2+ (`player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)`).
-- `server/FabricServerConfig` — `config/blockphone/server.json`: apps{mode, blacklist, whitelist}, filter{...} (как FilterSettings), messengerEnabled, phoneInHandVisible, social{enabled, photos,
+- `server/FabricServerConfig` — `config/blockphone/server.json`: uploads{stickers{...}, quota{...}}, apps{mode, blacklist, whitelist}, filter{...} (как FilterSettings), messengerEnabled, phoneInHandVisible, social{enabled, photos,
   maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], voice{messages, maxSeconds, calls, callGroupType}, storage{type,host,port,...}.
 - Simple Voice Chat: точка входа `voicechat` в fabric.mod.json → `SvcPlugin` (из common); главный поток для SVC — `server::execute`.
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
@@ -267,6 +278,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `Wallpapers` — обои: градиент или своя картинка из `blockphone/wallpapers/` (обрезка по центру, через `PhotoTextures`);
     `setCustom(name)`, `importAndSet(path)` (из галереи), `list()`.
   - `PhoneClock` — время (реальное/игровое, 12/24ч) и дата с локалью телефона.
+- Стикеры: `messenger/StickerClient` (ограничения, мои наборы, просмотренные наборы), `photo/StickerMaker` (квадрат со сдвигом
+  и приближением, форма SQUARE/ROUNDED/CIRCLE с прозрачным фоном, белая обводка), `ImageUploads.startSticker` (PNG, уменьшение
+  до предела), экраны `StickersView` (наборы: создать/переименовать/удалить, «+» — новый стикер, ПКМ — убрать), `StickerEditorView`
+  (фото из галереи, форма, обводка, «−/+», перетаскивание), `StickerPackView` (набор по стикеру из чата, «Добавить себе»).
+  В `ChatView`: кнопка «☺» → панель (вкладки наборов, «⚙» — мои стикеры, сетка), стикер в переписке — без пузыря (72 px),
+  нажатие — набор. `ImageOps` сохраняет прозрачность (read, downscale, toNativeImage).
 - `social/ProfileLooks` — аватар по `ProfileLook`: фон-градиент (12) + голова или фигура из скина (`submitSkinRenderState`, своя
   модель на каждую из 8 поз, широкая и тонкая; координаты переводятся через `g.pose()` — модель рисуется отдельной картинкой в
   экранных координатах) и баннер (фото или один из 10 градиентов). `social/PrivacyClient` — мои настройки приватности.
@@ -385,7 +402,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 ### paper (`dev.blockphone.paper`)
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
   (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
-- `config.yml`: `apps.*` (mode, blacklist, whitelist), `filter.*` (автомодерация, с комментариями), `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
+- `config.yml`: `uploads.*` (stickers.enabled/max-kb/max-side/max-packs/max-per-pack, quota.per-player-mb/uploads-per-day), `apps.*` (mode, blacklist, whitelist), `filter.*` (автомодерация, с комментариями), `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
   max-publics-per-player), `voice.*` (messages, max-seconds, calls, call-group-type), `moderators`, `storage.type` (h2/mysql),
   `storage.table-prefix`, `storage.mysql.*`. Simple Voice Chat: `softdepend: [voicechat]`, регистрация через `PaperVoicechat`
   (`BukkitVoicechatService`); главный поток для SVC — планировщик Bukkit (`runOnMain`).
@@ -450,6 +467,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 Принятые доп. функции (✅ все сделаны, 0.7.1–0.7.4): BungeeCord, экран блокировки и уведомления, режим «на ходу», телефон в руке
 виден другим (выключатель `phoneInHandVisible`/`phone-in-hand.visible`, предмет в руке не меняется, работает и на Paper/прокси).
 Доп. после плана: текст песни в мире (0.7.5), оформления виджета музыки (0.7.6), автомодерация (0.7.7), приватность и
-личная страница (0.7.8), свои приложения с серверными частями (0.8.0, docs/CUSTOM_APPS.md).
+личная страница (0.7.8), свои приложения с серверными частями (0.8.0, docs/CUSTOM_APPS.md),
+стикеры и ограничения загрузок (0.8.1).
 Отклонено пока: геометки в чатах, команды для игроков без мода.
 Одиночная игра = только клиентские функции (мессенджер шлётся только с выделенного сервера).

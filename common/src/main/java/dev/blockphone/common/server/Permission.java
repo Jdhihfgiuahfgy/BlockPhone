@@ -15,6 +15,7 @@ public enum Permission {
     CREATE_PUBLIC("blockphone.public.create", true, Rights.CREATE_PUBLIC, "Create publics"),
     VOICE("blockphone.voice", true, Rights.VOICE, "Send voice messages"),
     CALL("blockphone.call", true, Rights.CALL, "Make calls (Simple Voice Chat)"),
+    STICKERS("blockphone.stickers", true, 0, "Create sticker packs"),
     MOD_POSTS("blockphone.moderate.posts", false, Rights.MOD_POSTS, "Delete any post or comment"),
     MOD_PUBLICS("blockphone.moderate.publics", false, Rights.MOD_PUBLICS, "Delete any public"),
     MOD_MUTE("blockphone.moderate.mute", false, Rights.MOD_MUTE, "Mute players in the feed"),

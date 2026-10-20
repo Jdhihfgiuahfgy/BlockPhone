@@ -92,6 +92,45 @@ public final class ImageUploads {
         return upload;
     }
 
+    /**
+     * Загрузить готовый стикер (PNG с прозрачностью). Если файл больше предела сервера — картинка уменьшается.
+     * photo — исходное фото (для подписи загрузки).
+     */
+    public static Upload startSticker(PhotoStore.Photo photo, Picture sticker, int maxBytes, Consumer<Upload> onDone) {
+        Upload upload = new Upload(++counter, photo, ImageRef.Purpose.STICKER, onDone);
+        ACTIVE.put(upload.id, upload);
+        ClientFiles.IO.execute(() -> {
+            byte[] data = null;
+            try {
+                Picture current = sticker;
+                for (int attempt = 0; attempt < 8 && current.width() >= 48; attempt++) {
+                    byte[] png = png(current);
+                    if (png.length <= maxBytes) {
+                        data = png;
+                        break;
+                    }
+                    int side = Math.round(current.width() * 0.85f);
+                    current = ImageOps.downscale(current, side, side);
+                }
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("Failed to prepare sticker", e);
+                Minecraft.getInstance().execute(() -> finish(upload, null, "photo.error.read"));
+                return;
+            }
+            byte[] result = data;
+            Minecraft.getInstance().execute(() -> send(upload, result, ""));
+        });
+        return upload;
+    }
+
+    private static byte[] png(Picture picture) throws IOException {
+        BufferedImage image = new BufferedImage(picture.width(), picture.height(), BufferedImage.TYPE_INT_ARGB);
+        image.setRGB(0, 0, picture.width(), picture.height(), picture.argb(), 0, picture.width());
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", bytes);
+        return bytes.toByteArray();
+    }
+
     private static void send(Upload upload, byte[] data, String serverId) {
         if (ACTIVE.get(upload.id) != upload) {
             return; // Отменена.

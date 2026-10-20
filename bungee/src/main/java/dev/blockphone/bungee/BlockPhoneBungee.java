@@ -48,6 +48,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
         /** Какие клиентские приложения игроков работают в сети (mode: blacklist | whitelist | none). */
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
+        /** Стикеры и квота загрузок игрока. */
+        dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
         Storage storage = new Storage();
 
         static final class Social {
@@ -85,7 +87,7 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps));
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
         core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
         core.start();
         getProxy().registerChannel(BlockPhone.CHANNEL);
@@ -157,6 +159,10 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             config.apps = new dev.blockphone.common.apps.AppsSettings();
         }
         config.apps.fixNulls();
+        if (config.uploads == null) {
+            config.uploads = new dev.blockphone.common.server.UploadSettings();
+        }
+        config.uploads.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }

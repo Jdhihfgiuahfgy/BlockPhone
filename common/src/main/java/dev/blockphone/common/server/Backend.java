@@ -52,6 +52,7 @@ public final class Backend {
     private final Map<UUID, String> online = new ConcurrentHashMap<>();
     private final ContentFilter filter;
     private final PrivacyService privacy;
+    private final StickerService stickers;
     private volatile boolean available;
     private volatile String serverId = "";
 
@@ -73,6 +74,7 @@ public final class Backend {
         this.calls = new CallService(this, bridges);
         this.filter = new ContentFilter(settings.filter());
         this.privacy = new PrivacyService(this);
+        this.stickers = new StickerService(this);
         for (String bad : filter.badEntries()) {
             platform.warn("BlockPhone filter: bad entry ignored: " + bad, null);
         }
@@ -153,6 +155,26 @@ public final class Backend {
 
     public MessengerService messenger() {
         return messenger;
+    }
+
+    public StickerService stickers() {
+        return stickers;
+    }
+
+    /**
+     * Квота загрузок игрока (настройки uploads.quota): null — можно загрузить ещё {@code size} байт, иначе ключ ошибки
+     * с префиксом (photo./voice.) и аргументом через «|».
+     */
+    String quotaError(UUID player, int size, String prefix) throws SQLException {
+        UploadSettings.Quota q = settings.uploads().quota;
+        String voices = database.table("voices");
+        if (q.uploadsPerDay > 0 && imageRepo.uploadsSince(player, System.currentTimeMillis() - 86_400_000L, voices) >= q.uploadsPerDay) {
+            return prefix + "error.daily_limit|" + q.uploadsPerDay;
+        }
+        if (q.perPlayerMb > 0 && imageRepo.usedBytes(player, voices) + size > q.perPlayerMb * 1024L * 1024L) {
+            return prefix + "error.quota|" + q.perPlayerMb;
+        }
+        return null;
     }
 
     public PrivacyService privacy() {
@@ -305,6 +327,10 @@ public final class Backend {
         if (group == MessengerPackets.class) {
             if (messenger != null) {
                 run(player, true, "messenger.error.internal", () -> messenger.handle(player, packet));
+            }
+        } else if (group == dev.blockphone.common.protocol.packet.StickerPackets.class) {
+            if (messenger != null) {
+                run(player, true, "messenger.error.internal", () -> stickers.handle(player, packet));
             }
         } else if (group == dev.blockphone.common.protocol.packet.PrivacyPackets.class) {
             run(player, true, "messenger.error.internal", () -> privacy.handle(player, packet));

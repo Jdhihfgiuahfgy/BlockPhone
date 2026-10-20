@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.8.0",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.8.1",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -69,6 +69,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
         /** Какие клиентские приложения игроков работают в сети (mode: blacklist | whitelist | none). */
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
+        /** Стикеры и квота загрузок игрока. */
+        dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
         Storage storage = new Storage();
 
         static final class Voice {
@@ -107,7 +109,7 @@ public final class BlockPhoneVelocity implements ServerPlatform {
                 config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps));
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
         core.setAppsDirectory(dataDir.resolve("apps"));
         core.start();
         proxy.getChannelRegistrar().register(CHANNEL);
@@ -179,6 +181,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             config.apps = new dev.blockphone.common.apps.AppsSettings();
         }
         config.apps.fixNulls();
+        if (config.uploads == null) {
+            config.uploads = new dev.blockphone.common.server.UploadSettings();
+        }
+        config.uploads.fixNulls();
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {

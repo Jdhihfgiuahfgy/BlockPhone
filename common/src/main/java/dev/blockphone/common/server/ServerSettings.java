@@ -16,7 +16,12 @@ import java.util.List;
  */
 public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social,
                              List<String> moderators, Voice voice, dev.blockphone.common.server.filter.FilterSettings filter,
-                             dev.blockphone.common.apps.AppsSettings apps) {
+                             dev.blockphone.common.apps.AppsSettings apps, UploadSettings uploads) {
+
+    public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social, List<String> moderators,
+                          Voice voice, dev.blockphone.common.server.filter.FilterSettings filter, dev.blockphone.common.apps.AppsSettings apps) {
+        this(messengerEnabled, phoneInHandVisible, storage, social, moderators, voice, filter, apps, new UploadSettings());
+    }
 
     public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social, List<String> moderators,
                           Voice voice, dev.blockphone.common.server.filter.FilterSettings filter) {
@@ -31,6 +36,7 @@ public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisibl
     public ServerSettings {
         filter = (filter == null ? new dev.blockphone.common.server.filter.FilterSettings() : filter).fixNulls();
         apps = (apps == null ? new dev.blockphone.common.apps.AppsSettings() : apps).fixNulls();
+        uploads = (uploads == null ? new UploadSettings() : uploads).fixNulls();
     }
 
     public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage) {

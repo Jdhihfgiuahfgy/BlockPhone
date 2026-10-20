@@ -80,6 +80,8 @@ public final class ClientNetwork {
             VoiceMessages.onChunk(chunk);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.PrivacyPackets.State state) {
             dev.blockphone.fabric.client.social.PrivacyClient.onState(state);
+        } else if (group == dev.blockphone.common.protocol.packet.StickerPackets.class) {
+            dev.blockphone.fabric.client.messenger.StickerClient.handle(packet);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Policy policy) {
             dev.blockphone.fabric.client.apps.custom.CustomApps.onPolicy(policy);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Variables variables) {
@@ -107,6 +109,7 @@ public final class ClientNetwork {
         PhoneHolders.reset();
         dev.blockphone.fabric.client.social.PrivacyClient.reset();
         dev.blockphone.fabric.client.apps.custom.CustomApps.reset();
+        dev.blockphone.fabric.client.messenger.StickerClient.reset();
     }
 
     /**

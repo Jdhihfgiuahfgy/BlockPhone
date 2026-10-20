@@ -78,7 +78,19 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
                 c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators, voice, readFilter(c), readApps(c));
+                social, moderators, voice, readFilter(c), readApps(c), readUploads(c));
+    }
+
+    private static dev.blockphone.common.server.UploadSettings readUploads(FileConfiguration c) {
+        dev.blockphone.common.server.UploadSettings u = new dev.blockphone.common.server.UploadSettings();
+        u.stickers.enabled = c.getBoolean("uploads.stickers.enabled", u.stickers.enabled);
+        u.stickers.maxKb = c.getInt("uploads.stickers.max-kb", u.stickers.maxKb);
+        u.stickers.maxSide = c.getInt("uploads.stickers.max-side", u.stickers.maxSide);
+        u.stickers.maxPacks = c.getInt("uploads.stickers.max-packs", u.stickers.maxPacks);
+        u.stickers.maxPerPack = c.getInt("uploads.stickers.max-per-pack", u.stickers.maxPerPack);
+        u.quota.perPlayerMb = c.getInt("uploads.quota.per-player-mb", u.quota.perPlayerMb);
+        u.quota.uploadsPerDay = c.getInt("uploads.quota.uploads-per-day", u.quota.uploadsPerDay);
+        return u.fixNulls();
     }
 
     private static dev.blockphone.common.apps.AppsSettings readApps(FileConfiguration c) {

@@ -115,6 +115,10 @@ public final class MessengerService {
 
     private void sendMessage(UUID player, MessengerPackets.SendMessage p) throws SQLException {
         String text = p.text().strip();
+        if (p.stickerId() > 0) {
+            sendSticker(player, p);
+            return;
+        }
         if (text.isEmpty() && p.imageId() <= 0 && p.voiceId() <= 0) {
             return;
         }
@@ -454,10 +458,17 @@ public final class MessengerService {
         Map<UUID, String> names = names(rows.stream().map(MessageRow::sender).toList());
         Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(MessageRow::imageId).toList());
         Map<Long, VoiceRef> voices = backend.voices().repo().refs(rows.stream().map(MessageRow::voiceId).toList());
+        Map<Long, Long> stickerIds = repo.stickerIds(rows.stream().map(MessageRow::id).toList());
+        Map<Long, Long> stickerPacks = backend.stickers().packsOf(stickerIds.values());
         List<MessageInfo> result = new ArrayList<>(rows.size());
         for (MessageRow row : rows) {
+            ImageRef image = images.get(row.imageId());
+            Long stickerId = stickerIds.get(row.id());
+            dev.blockphone.common.protocol.data.StickerData.StickerRef sticker = stickerId != null && image != null && !row.deleted()
+                    ? new dev.blockphone.common.protocol.data.StickerData.StickerRef(stickerId, stickerPacks.getOrDefault(stickerId, 0L), image)
+                    : null;
             result.add(new MessageInfo(row.id(), row.chatId(), backend.user(row.sender(), names.get(row.sender())), row.text(),
-                    images.get(row.imageId()), voices.get(row.voiceId()), row.sentAt(), row.editedAt(), row.deleted()));
+                    image, voices.get(row.voiceId()), row.sentAt(), row.editedAt(), row.deleted(), sticker));
         }
         return result;
     }
@@ -472,6 +483,37 @@ public final class MessengerService {
 
     private void fail(UUID player, String key) {
         send(player, new MessengerPackets.Failure("messenger.error." + key, ""));
+    }
+
+    /** Сообщение-стикер: стикер должен существовать; в личке — как фото (приватность «фото»). */
+    private void sendSticker(UUID player, MessengerPackets.SendMessage p) throws SQLException {
+        if (!repo.isMember(p.chatId(), player)) {
+            fail(player, "not_member");
+            return;
+        }
+        if (filterMuted(player) || !directAllowed(player, p.chatId(), Kind.PHOTOS, "privacy_photos")) {
+            return;
+        }
+        if (!sendLimit.allow(player)) {
+            fail(player, "rate_limit");
+            return;
+        }
+        dev.blockphone.common.protocol.data.StickerData.StickerRef sticker = backend.stickers().sticker(p.stickerId());
+        if (sticker == null) {
+            send(player, new MessengerPackets.Failure("sticker.error.not_found", ""));
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long id = repo.insertMessage(p.chatId(), player, "", sticker.image().id(), 0, now);
+        repo.setSticker(id, sticker.id());
+        repo.markRead(p.chatId(), player, id);
+        MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), "", sticker.image(), null, now, 0,
+                false, sticker);
+        for (UUID member : repo.members(p.chatId())) {
+            if (backend.isOnline(member)) {
+                send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
+            }
+        }
     }
 
     /** Автомьют фильтра: сообщить игроку, сколько ещё минут, и не пропустить сообщение. */

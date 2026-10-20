@@ -25,6 +25,11 @@ public final class PhoneLang {
 
     /** Перевод ключа на текущий язык телефона. Аргументы подставляются через {@link String#format}. */
     public static String tr(String key, Object... args) {
+        // Ключ ошибки с сервера может нести аргумент: «photo.error.quota|50».
+        int bar = key.indexOf('|');
+        if (bar > 0 && args.length == 0) {
+            return tr(key.substring(0, bar), key.substring(bar + 1));
+        }
         String value = table(current()).get(key);
         if (value == null) {
             value = table(FALLBACK).getOrDefault(key, key);
