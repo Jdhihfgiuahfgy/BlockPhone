@@ -5,6 +5,7 @@ import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.ProtocolException;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
+import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 
 import java.util.Map;
@@ -25,6 +26,8 @@ public final class BlockPhoneServer {
     private final Backend backend;
     /** Игроки, приславшие ClientHello с совместимой версией: UUID → ник. */
     private final Map<UUID, String> modded = new ConcurrentHashMap<>();
+    /** Кто сейчас с телефоном в руках (для «телефона в руке» у других). */
+    private final java.util.Set<UUID> phoneUsers = ConcurrentHashMap.newKeySet();
 
     public BlockPhoneServer(ServerPlatform platform, ServerSettings settings) {
         this(platform, settings, dev.blockphone.common.voice.VoiceBridges::current);
@@ -80,6 +83,9 @@ public final class BlockPhoneServer {
     }
 
     public void onQuit(UUID player) {
+        if (phoneUsers.remove(player)) {
+            broadcastPhoneUse(player, false);
+        }
         if (modded.remove(player) != null && backend != null) {
             backend.onQuit(player);
         }
@@ -108,13 +114,35 @@ public final class BlockPhoneServer {
             if (first) {
                 platform.info(name + " joined with BlockPhone " + hello.modVersion());
             }
+            if (settings.phoneInHandVisible()) {
+                for (UUID user : phoneUsers) {
+                    platform.send(player, Packets.encode(new PhoneUsePackets.State(user, true)));
+                }
+            }
             if (backend != null) {
                 backend.onJoin(player, name);
             }
             return;
         }
+        if (packet instanceof PhoneUsePackets.InUse use) {
+            if (modded.containsKey(player) && settings.phoneInHandVisible()
+                    && (use.using() ? phoneUsers.add(player) : phoneUsers.remove(player))) {
+                broadcastPhoneUse(player, use.using());
+            }
+            return;
+        }
         if (backend != null && modded.containsKey(player)) {
             backend.handle(player, packet);
+        }
+    }
+
+    /** Разослать всем игрокам с модом (кроме самого игрока), что он взял/убрал телефон. */
+    private void broadcastPhoneUse(UUID player, boolean using) {
+        byte[] data = Packets.encode(new PhoneUsePackets.State(player, using));
+        for (UUID other : modded.keySet()) {
+            if (!other.equals(player)) {
+                platform.send(other, data);
+            }
         }
     }
 }

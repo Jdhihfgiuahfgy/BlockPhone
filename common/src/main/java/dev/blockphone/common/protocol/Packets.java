@@ -3,6 +3,7 @@ package dev.blockphone.common.protocol;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
 import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
+import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.common.protocol.packet.SessionPacket;
 import dev.blockphone.common.protocol.packet.SocialPackets;
@@ -104,6 +105,9 @@ public final class Packets {
         register(72, VoicePackets.StartCall.class, VoicePackets.StartCall::read);
         register(73, VoicePackets.AnswerCall.class, VoicePackets.AnswerCall::read);
         register(74, VoicePackets.LeaveCall.class, VoicePackets.LeaveCall::read);
+        // Телефон в руке
+        register(75, PhoneUsePackets.InUse.class, PhoneUsePackets.InUse::read);
+        register(76, PhoneUsePackets.State.class, PhoneUsePackets.State::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

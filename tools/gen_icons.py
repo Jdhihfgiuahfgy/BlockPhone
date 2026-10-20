@@ -168,6 +168,24 @@ def icon_settings():
 
 # ---------------- Символы приложений (белые маски) ----------------
 
+def phone_in_hand():
+    """Текстура телефона в руке (32x32, развёртка коробки 6x12x1: юг — экран к игроку, север — задняя крышка)."""
+    img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    px = img.load()
+    body, edge = (27, 35, 51, 255), (60, 72, 96, 255)
+    for x in range(0, 14):
+        for y in range(0, 13):
+            px[x, y] = body
+    for y in range(2, 12):
+        for x in range(9, 13):
+            t = (y - 2) / 9
+            px[x, y] = (int(61 + 61 * t), int(123 - 46 * t), 255, 255)
+    px[10, 1] = px[11, 1] = edge
+    px[5, 2] = (10, 12, 18, 255)
+    px[5, 3] = edge
+    return img
+
+
 def glyph_canvas():
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     return img, ImageDraw.Draw(img)
@@ -529,4 +547,6 @@ if __name__ == "__main__":
     save(mod_icon(), ASSETS, "icon", 128)
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))
+    os.makedirs(os.path.join(ASSETS, "textures", "entity"), exist_ok=True)
+    phone_in_hand().save(os.path.join(ASSETS, "textures", "entity", "phone_in_hand.png"))
     print("Icons written to", ASSETS)

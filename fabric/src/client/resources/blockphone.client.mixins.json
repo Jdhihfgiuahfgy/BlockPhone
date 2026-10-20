@@ -4,9 +4,11 @@
   "package": "dev.blockphone.fabric.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AvatarRendererMixin",
     "GameRendererAccessor",
     "GameRendererMixin",
     "GuiMixin",
+    "HumanoidModelMixin",
     "KeyboardHandlerMixin",
     "MinecraftMixin",
     "MouseHandlerMixin",

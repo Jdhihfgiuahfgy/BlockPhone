@@ -103,6 +103,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
     maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports, maxVoiceSeconds (0 — голосовых нет),
     callsAvailable. Приходит после рукопожатия.
+  - `PhoneUsePackets` (id 75–76): C→S `InUse(using)` (открыл/закрыл телефон или камеру), S→C `State(player, using)`.
+    Обрабатывает сам `BlockPhoneServer` (без базы): набор «с телефоном», рассылка игрокам с модом, новому — текущий набор,
+    при выходе — снятие. Только при `phoneInHandVisible`.
   - `VoicePackets.*` (id 66–74): голосовые — UploadBegin(uploadId, size, codec, durationMs) → UploadChunk × N → UploadResult(VoiceRef |
     voice.error.*), RequestVoice → VoiceChunk × N; звонки — S→C CallState(CallInfo: участники, кому звонят, начало, active),
     C→S StartCall (позвонить или войти), AnswerCall(accept), LeaveCall. Ошибки звонков — `MessengerPackets.Failure` (call.error.*).
@@ -299,7 +302,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `GuiMixin` (HUD → видоискатель), `GameRendererMixin` (FOV/зум, без руки, без обводки блока), `GameRendererAccessor`
   (`setPostEffect`), `MinecraftMixin` (отключает `handleKeybinds`), `KeyboardHandlerMixin` (клавиши камеры),
   `MouseHandlerMixin` (колесо = зум, чувствительность делится на зум), `ToastManagerMixin` (без тостов).
-- `dev/DevShots` — автоскриншоты (см. выше). Экран блокировки на время сценариев выключается (снимок — `lock_screen` в design).
+- Телефон в руке: `phone/PhoneHolders` (свой — экран телефона или камера, шлётся серверу при изменении; чужие — из `State`),
+  `phone/PhoneInHandLayer` (слой игрока через `LivingEntityFeatureRendererRegistrationCallback`; флаг в состоянии отрисовки —
+  `RenderStateDataKey`; модель-коробка 3×6×0,5 пикс., текстура `textures/entity/phone_in_hand.png` из gen_icons.py),
+  миксины `AvatarRendererMixin` (флаг, предмет главной руки не рисуется) и `HumanoidModelMixin` (рука поднята) — действуют всегда.
+- `dev/DevShots` — автоскриншоты (см. выше). Сценарий `hand` — только общая часть с миром (снимок `world_phone_in_hand`). Экран блокировки на время сценариев выключается (снимок — `lock_screen` в design).
 
 ### paper (`dev.blockphone.paper`)
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
@@ -366,6 +373,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, отправка текста; «кружочки» из кадров игры
    (JCodec). Не сделано: проигрывание голосовых и видео из Telegram (нужны декодеры Opus/H.264 с CABAC), стикеры WEBP, звук в «кружочках».
 
-Принятые доп. функции: режим «на ходу» (маленький телефон, можно ходить); телефон в руке виден другим (с выключателем в конфиге сервера, без поломки предмета в руке, работает и на Paper); уведомления/экран блокировки.
+Принятые доп. функции (✅ все сделаны, 0.7.1–0.7.4): BungeeCord, экран блокировки и уведомления, режим «на ходу», телефон в руке
+виден другим (выключатель `phoneInHandVisible`/`phone-in-hand.visible`, предмет в руке не меняется, работает и на Paper/прокси).
 Отклонено пока: геометки в чатах, команды для игроков без мода.
 Одиночная игра = только клиентские функции (мессенджер шлётся только с выделенного сервера).

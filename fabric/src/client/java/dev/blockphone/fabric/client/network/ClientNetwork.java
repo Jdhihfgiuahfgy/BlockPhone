@@ -6,6 +6,7 @@ import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.ProtocolException;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
 import dev.blockphone.common.protocol.packet.ImagePackets;
+import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.common.protocol.packet.SessionPacket;
 import dev.blockphone.common.protocol.packet.SocialPackets;
@@ -17,6 +18,7 @@ import dev.blockphone.fabric.client.messenger.MessengerClient;
 import dev.blockphone.fabric.client.photo.ImageUploads;
 import dev.blockphone.fabric.client.photo.RemoteImages;
 import dev.blockphone.fabric.client.social.SocialClient;
+import dev.blockphone.fabric.client.phone.PhoneHolders;
 import dev.blockphone.fabric.client.phone.PhoneState;
 import dev.blockphone.fabric.network.RawPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -76,6 +78,8 @@ public final class ClientNetwork {
             VoiceMessages.onUploadResult(result);
         } else if (packet instanceof VoicePackets.VoiceChunk chunk) {
             VoiceMessages.onChunk(chunk);
+        } else if (packet instanceof PhoneUsePackets.State state) {
+            PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {
             CallClient.handle(state);
         } else {
@@ -92,6 +96,7 @@ public final class ClientNetwork {
         VoiceMessages.reset();
         CallClient.reset();
         ClientSession.reset();
+        PhoneHolders.reset();
     }
 
     /**

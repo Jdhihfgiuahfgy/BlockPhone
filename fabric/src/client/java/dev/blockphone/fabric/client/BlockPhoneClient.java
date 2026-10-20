@@ -50,6 +50,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
             MusicPlayer.tick();
             Spotify.tick();
             passMovementThrough(client);
+            dev.blockphone.fabric.client.phone.PhoneHolders.tick(client);
             while (compactKey.consumeClick()) {
                 if (client.screen == null && client.player != null) {
                     dev.blockphone.fabric.client.config.PhoneSettings.get().compactPhone = true;
@@ -94,6 +95,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
             }
         });
         CameraMode.init();
+        dev.blockphone.fabric.client.phone.PhoneInHandLayer.init();
         MusicHud.init();
         dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {

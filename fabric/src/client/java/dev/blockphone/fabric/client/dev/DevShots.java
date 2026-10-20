@@ -232,6 +232,10 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
         });
         shot(30, "world_compact");
+        // Телефон в руке: свой персонаж от третьего лица спереди.
+        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));
+        shot(30, "world_phone_in_hand");
+        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
         step(1, mc -> {
             settings.compactPhone = false;
             mc.setScreen(null);
@@ -248,6 +252,8 @@ public final class DevShots {
             planVoice(settings);
         } else if (scenario.equals("telegram")) {
             planTelegram();
+        } else if (scenario.equals("hand")) {
+            // только общая часть (мир, телефон, «на ходу», телефон в руке)
         } else {
             planCameraGalleryNotes();
         }
