@@ -18,7 +18,8 @@
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
-| `./gradlew :common:test` | Тесты мессенджера (протокол + логика + SQL на H2, без Minecraft) |
+| `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация (протокол + логика + SQL на H2, без Minecraft) |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG (на музыке Minecraft из кэша Loom) |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -40,13 +41,17 @@
   Сценарий ленты: `BLOCKPHONE_DEV_SCENARIO=social BLOCKPHONE_DEV_MESSENGER=1` — паблик «Новости сервера», посты, лайки,
   комментарии и жалоба прямо в базе; снимок камерой (с id сервера) → пост с фото через настоящую загрузку; снимаются лента,
   пост, «Новый пост», профили, паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
+  Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
+  играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
+  в лог пишет позицию воспроизведения.
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
   база в `fabric/run/blockphone/`). Dev-игрок в мире с читами — оператор, поэтому у него права модератора.
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
   галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`;
-  кэш фото с серверов `blockphone/cache/<id сервера>/<id>.img`.
+  кэш фото с серверов `blockphone/cache/<id сервера>/<id>.img`; своя музыка `blockphone/music/` (MP3/OGG/WAV, подпапки),
+  кэш треков Яндекса `blockphone/cache/music/` (последние 40); входы в сервисы `config/blockphone/accounts.json` (секреты!).
 - Длинные heredoc в Bash-инструменте иногда ломаются, а `\n` внутри heredoc превращается в настоящий перевод строки —
   правки больших текстов делать скриптом, записанным через Write, или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
@@ -63,6 +68,8 @@ tools/     скрипты (генерация иконок и фильтров)
 Классы `common` копируются внутрь jar-ов fabric, paper и velocity (`jar { from(project(':common')...) }`).
 JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без транзитивных), в Velocity — встраиваются (`shade`),
 Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
+Декодер MP3 JLayer (`javazoom:jlayer`, LGPL) — jar-in-jar в Fabric (`jlayer_version`); OGG — stb_vorbis из LWJGL (есть в игре).
+Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
 **При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity).
 
 Пакет: `dev.blockphone`. Mod id: `blockphone`.
@@ -139,8 +146,9 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
-- `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`) и `cameraKey`
-  (камера сразу, по умолчанию не назначена); `CameraMode.init()`.
+- `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`), `cameraKey`
+  (камера сразу) и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст — Spotify; не назначены);
+  каждый тик `MusicPlayer.tick()` и `Spotify.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
 - `network/ClientNetwork` — приём пакетов (Session → `ClientSession`, SocialPackets → `SocialClient`, фото → `ImageUploads`/
   `RemoteImages`, остальное → `MessengerClient`); `serverHello()`, `messengerAvailable()`, `socialAvailable()`; при выходе с сервера
   (в потоке рендера!) сбрасывает всё серверное состояние. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
@@ -153,7 +161,7 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
-  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations).
+  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -205,6 +213,28 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   `PhotoTextures` (миниатюры и превью как `DynamicTexture` с линейной фильтрацией, LRU на 120, `invalidate`),
   `ImageUploads` (загрузка на сервер: уменьшение до maxPhotoSide, JPEG с подбором качества до maxPhotoBytes, куски),
   `RemoteImages` (фото с сервера: скачивание кусками, кэш на диске, текстуры нужного размера, LRU на 80).
+- `music/` — музыка (работает и с закрытым телефоном):
+  - `MusicPlayer` — очередь, текущий трек, пауза, перемотка, перемешивание, повтор (OFF/ALL/ONE), история «назад»,
+    подгружаемая очередь (`more` — для «Моей волны»), громкость = `musicVolume²` × общая громкость игры. Поток рендера.
+  - `Playback` — один трек в своём потоке: файл (`TrackSources`: локальный или скачанный из Яндекса) → `AudioDecoder` →
+    `javax.sound` SourceDataLine (буфер 0,25 с); пауза/перемотка/стоп — volatile-полями. `Track` — запись трека.
+  - `audio/` — `Mp3Decoder` (JLayer; перемотка пропуском кадров), `OggDecoder` (stb_vorbis из памяти — пути с кириллицей),
+    `WavDecoder` (javax.sound), `Decoders` (по подписи файла), `TrackTags` (ID3v2.2–2.4/ID3v1 с Windows-1251, Vorbis comments,
+    обложки APIC/METADATA_BLOCK_PICTURE).
+  - `LocalLibrary` (сканирование `blockphone/music`, кэш по времени изменения; «Исполнитель - Название» из имени файла),
+    `Covers` (обложки из тегов или по адресу → текстуры, LRU 40), `Accounts` (accounts.json), `Http` (HttpURLConnection).
+  - `yandex/YandexApi` — неофициальный API (заголовок `Authorization: OAuth`): account/status, likes, tracks, search,
+    rotor «Моя волна» (продолжение по `queue=<последний трек>`), лайки, download-info → XML → ссылка
+    `https://host/get-mp3/md5(соль + path[1:] + s)/ts + path`. `yandex/YandexMusic` — состояние, вход вставкой адреса
+    со страницы OAuth (`access_token=...`), кэш треков.
+  - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
+    браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,
+    команды play/pause/next/previous/seek/volume/shuffle/repeat (нужен Premium).
+  - `MusicHud` — виджет «сейчас играет» слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
+- `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
+  `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
+  поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
+  `QueueView`. Иконки `textures/gui/music/*` (gen_icons.py).
 - `camera/` — режим камеры:
   - `CameraMode` — вход/выход, такт (ЛКМ снимок, ПКМ следующий фильтр), клавиши (Esc, ←→↑↓, H, R, G), зум колесом,
     `renderOverlay` (видоискатель вместо HUD; тут же берётся кадр для снимка — мир уже нарисован, интерфейс ещё нет).
@@ -267,7 +297,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 4. ✅ Лента: посты (от себя и от пабликов), лайки, комментарии, профили, подписки, паблики; фото в постах и чатах с политикой
    админа (только снятые на этом сервере / любые / никакие); жалобы, модерация, заглушение, права (LuckPerms / fabric-permissions-api).
    Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.
-5. Музыка: локальные файлы, виджет на HUD, Яндекс Музыка (неоф. API), управление Spotify.
+5. ✅ Музыка: свои файлы (MP3/OGG/WAV), плеер с очередью, виджет на HUD, клавиши; Яндекс Музыка (неоф. API: Моя волна,
+   Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
 6. Simple Voice Chat: голосовые сообщения, групповые звонки.
 7. Telegram через TDLib (только Windows), кружочки из кадров игры.
 

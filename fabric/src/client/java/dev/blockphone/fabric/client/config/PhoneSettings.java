@@ -36,6 +36,10 @@ public final class PhoneSettings {
     public boolean gameTimeClock = false;
     /** Анимация выезда телефона. */
     public boolean animations = true;
+    /** Громкость музыкального плеера 0..1 (умножается на общую громкость игры). */
+    public float musicVolume = 0.7f;
+    /** Показывать виджет «сейчас играет» на экране игры. */
+    public boolean musicHud = true;
 
     public static PhoneSettings get() {
         if (instance == null) {

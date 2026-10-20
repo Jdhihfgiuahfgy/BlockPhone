@@ -34,6 +34,9 @@ import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.server.BlockPhoneServer;
 import dev.blockphone.fabric.client.apps.messenger.MessengerApp;
 import dev.blockphone.fabric.client.apps.social.SocialApp;
+import dev.blockphone.fabric.client.apps.music.MusicApp;
+import dev.blockphone.fabric.client.music.LocalLibrary;
+import dev.blockphone.fabric.client.music.MusicPlayer;
 import dev.blockphone.common.protocol.data.SocialData;
 import dev.blockphone.fabric.client.network.ClientSession;
 import dev.blockphone.fabric.client.photo.PhotoStore;
@@ -58,7 +61,7 @@ public final class DevShots {
     private record Step(int delayTicks, Predicate<Minecraft> ready, Consumer<Minecraft> action) {
     }
 
-    /** Сценарий: "all" (по умолчанию), "design", "messenger" или "social" (два последних — с BLOCKPHONE_DEV_MESSENGER=1). */
+    /** Сценарий: "all" (по умолчанию), "design", "music", "messenger" или "social" (два последних — с BLOCKPHONE_DEV_MESSENGER=1). */
     private final String scenario = System.getenv().getOrDefault("BLOCKPHONE_DEV_SCENARIO", "all");
     private final AtomicLong directChat = new AtomicLong(-1);
     private final AtomicLong groupChat = new AtomicLong(-1);
@@ -110,7 +113,7 @@ public final class DevShots {
         step(1, mc -> mc.options.pauseOnLostFocus = false);
 
         // 1. Все приложения в главном меню.
-        boolean server = scenario.equals("messenger") || scenario.equals("social");
+        boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music");
         for (boolean dark : server ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
@@ -184,6 +187,8 @@ public final class DevShots {
             planMessenger(settings);
         } else if (scenario.equals("social")) {
             planSocial(settings);
+        } else if (scenario.equals("music")) {
+            planMusic(settings);
         } else {
             planCameraGalleryNotes();
         }
@@ -333,6 +338,76 @@ public final class DevShots {
             social(app -> app.switchTab(SocialApp.Tab.FEED));
         });
         shot(40, "social_feed_dark");
+    }
+
+    // --- Музыка ---
+
+    /** Музыка Minecraft (из ресурсов игры) копируется в blockphone/music; громкость почти нулевая, чтобы не шуметь. */
+    private void planMusic(PhoneSettings settings) {
+        float originalVolume = settings.musicVolume;
+        step(1, mc -> {
+            settings.musicVolume = 0.05f;
+            copyMinecraftMusic(mc);
+            LocalLibrary.rescan();
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        waitFor(mc -> LocalLibrary.scanned() && !LocalLibrary.scanning());
+        step(10, mc -> phone(mc, p -> p.openApp("music")));
+        shot(40, "music_local");
+        step(1, mc -> MusicPlayer.play(LocalLibrary.tracks(), 0, null, "Моя музыка"));
+        shot(80, "music_local_playing");
+        step(1, mc -> music(MusicApp::openPlayer));
+        shot(60, "music_player");
+        step(1, mc -> MusicPlayer.seek(60_000));
+        step(60, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] music state {} at {} ms of {} ms", MusicPlayer.state(),
+                MusicPlayer.positionMs(), MusicPlayer.durationMs()));
+        shot(1, "music_player_seek");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.YANDEX)));
+        shot(40, "music_yandex_login");
+        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.SPOTIFY)));
+        shot(40, "music_spotify_connect");
+        step(1, mc -> {
+            settings.darkTheme = true;
+            music(app -> app.switchTab(MusicApp.Tab.LOCAL));
+        });
+        shot(40, "music_local_dark");
+        step(1, mc -> mc.setScreen(null));
+        shot(60, "music_hud");
+        step(1, mc -> {
+            BlockPhoneFabric.LOGGER.info("[DevShots] music state {} at {} ms", MusicPlayer.state(), MusicPlayer.positionMs());
+            MusicPlayer.stop();
+            settings.musicVolume = originalVolume;
+        });
+    }
+
+    private static void copyMinecraftMusic(Minecraft mc) {
+        String[] names = {"clark", "a_familiar_room", "below_and_above"};
+        try {
+            Files.createDirectories(LocalLibrary.dir());
+            for (String name : names) {
+                Path target = LocalLibrary.dir().resolve("Minecraft - " + name.replace('_', ' ') + ".ogg");
+                if (Files.exists(target)) {
+                    continue;
+                }
+                var resource = mc.getResourceManager().getResource(
+                        net.minecraft.resources.Identifier.withDefaultNamespace("sounds/music/game/" + name + ".ogg"));
+                if (resource.isPresent()) {
+                    try (var in = resource.get().open()) {
+                        Files.copy(in, target);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("[DevShots] failed to copy music", e);
+        }
+    }
+
+    private static void music(Consumer<MusicApp> action) {
+        if (PhoneState.app("music") instanceof MusicApp app) {
+            action.accept(app);
+        }
     }
 
     private static PhotoStore.Photo newestPhoto() {

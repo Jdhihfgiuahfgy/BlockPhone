@@ -156,6 +156,13 @@ public final class SettingsApp extends PhoneApp {
                 new Row(() -> PhoneLang.tr("settings.animations"),
                         () -> PhoneLang.tr(s.animations ? "settings.on" : "settings.off"),
                         dir -> s.animations = !s.animations, null, false))));
+        result.add(new Section("settings.section.music", List.of(
+                new Row(() -> PhoneLang.tr("settings.music_hud"),
+                        () -> PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off"),
+                        dir -> s.musicHud = !s.musicHud, null, false),
+                new Row(() -> PhoneLang.tr("settings.music_volume"),
+                        () -> Math.round(s.musicVolume * 100) + "%",
+                        dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false))));
 
         ServerHelloPacket hello = ClientNetwork.serverHello();
         String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());

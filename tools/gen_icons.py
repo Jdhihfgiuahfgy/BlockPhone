@@ -313,6 +313,81 @@ def social_photo():
     return img
 
 
+# ---------------- Плеер (белые маски 32x32, textures/gui/music/) ----------------
+
+def music_play():
+    img, d = glyph_canvas()
+    d.polygon([(76, 44), (76, 212), (212, 128)], fill=WHITE)
+    return img
+
+
+def music_pause():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([60, 44, 108, 212], radius=10, fill=WHITE)
+    d.rounded_rectangle([148, 44, 196, 212], radius=10, fill=WHITE)
+    return img
+
+
+def music_next():
+    img, d = glyph_canvas()
+    d.polygon([(48, 56), (48, 200), (150, 128)], fill=WHITE)
+    d.rounded_rectangle([166, 56, 200, 200], radius=8, fill=WHITE)
+    return img
+
+
+def music_prev():
+    return music_next().transpose(Image.FLIP_LEFT_RIGHT)
+
+
+def arrow_head(d, x, y, direction, size=34):
+    if direction > 0:
+        d.polygon([(x, y - size), (x + size * 1.2, y), (x, y + size)], fill=WHITE)
+    else:
+        d.polygon([(x, y - size), (x - size * 1.2, y), (x, y + size)], fill=WHITE)
+
+
+def music_shuffle():
+    img, d = glyph_canvas()
+    d.line([(36, 80), (90, 80), (166, 176), (190, 176)], fill=WHITE, width=20, joint="curve")
+    d.line([(36, 176), (90, 176), (166, 80), (190, 80)], fill=WHITE, width=20, joint="curve")
+    arrow_head(d, 186, 80, 1)
+    arrow_head(d, 186, 176, 1)
+    return img
+
+
+def music_repeat():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([40, 70, 216, 186], radius=36, outline=WHITE, width=20)
+    d.rectangle([110, 50, 150, 92], fill=CLEAR)
+    arrow_head(d, 120, 80, 1, 30)
+    d.rectangle([106, 164, 146, 206], fill=CLEAR)
+    arrow_head(d, 136, 176, -1, 30)
+    return img
+
+
+def music_repeat_one():
+    img = music_repeat()
+    d = ImageDraw.Draw(img)
+    d.rectangle([118, 104, 140, 154], fill=WHITE)
+    d.polygon([(118, 104), (140, 104), (104, 122)], fill=WHITE)
+    return img
+
+
+def music_note():
+    img, d = glyph_canvas()
+    d.ellipse([52, 156, 120, 212], fill=WHITE)
+    d.rectangle([102, 44, 122, 186], fill=WHITE)
+    d.polygon([(102, 44), (196, 70), (196, 116), (122, 94)], fill=WHITE)
+    return img
+
+
+def music_volume():
+    img, d = glyph_canvas()
+    d.polygon([(40, 100), (84, 100), (140, 52), (140, 204), (84, 156), (40, 156)], fill=WHITE)
+    d.arc([120, 76, 200, 180], start=-55, end=55, fill=WHITE, width=16)
+    return img
+
+
 # ---------------- Погода (прозрачный фон) ----------------
 
 def blank():
@@ -415,6 +490,11 @@ if __name__ == "__main__":
               "photo": social_photo}
     for name, fn in social.items():
         save(fn(), os.path.join(ASSETS, "textures", "gui", "social"), name, 32)
+    music = {"play": music_play, "pause": music_pause, "next": music_next, "prev": music_prev,
+             "shuffle": music_shuffle, "repeat": music_repeat, "repeat_one": music_repeat_one, "note": music_note,
+             "volume": music_volume}
+    for name, fn in music.items():
+        save(fn(), os.path.join(ASSETS, "textures", "gui", "music"), name, 32)
     save(mod_icon(), ASSETS, "icon", 128)
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))

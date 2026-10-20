@@ -6,6 +6,7 @@ import dev.blockphone.fabric.client.apps.calculator.CalculatorApp;
 import dev.blockphone.fabric.client.apps.camera.CameraApp;
 import dev.blockphone.fabric.client.apps.gallery.GalleryApp;
 import dev.blockphone.fabric.client.apps.messenger.MessengerApp;
+import dev.blockphone.fabric.client.apps.music.MusicApp;
 import dev.blockphone.fabric.client.apps.notes.NotesApp;
 import dev.blockphone.fabric.client.apps.settings.SettingsApp;
 import dev.blockphone.fabric.client.apps.social.SocialApp;
@@ -68,7 +69,7 @@ public final class AppRegistry {
         add("telegram", () -> new PlaceholderApp("telegram"), 0xFF2AABEE);
         add("camera", CameraApp::new, 0xFF9AA5B8);
         add("gallery", GalleryApp::new, 0xFFE0559B);
-        add("music", () -> new PlaceholderApp("music"), 0xFFE5534B);
+        add("music", MusicApp::new, 0xFFE5534B);
         add("notes", NotesApp::new, 0xFFF2C14E);
         add("calculator", CalculatorApp::new, 0xFFF29544);
         add("weather", WeatherApp::new, 0xFF4C8DF6);

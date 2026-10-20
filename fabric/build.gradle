@@ -26,6 +26,12 @@ dependencies {
     // Базы данных мессенджера (на клиенте не используются, но мод один на клиент и сервер).
     include(implementation("com.h2database:h2:${rootProject.h2_version}") { transitive = false })
     include(implementation("org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadb_version}") { transitive = false })
+
+    // Музыка: декодер MP3 (LGPL). OGG декодирует stb_vorbis из LWJGL (уже есть в Minecraft).
+    include(implementation("javazoom:jlayer:${rootProject.jlayer_version}") { transitive = false })
+
+    testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 processResources {
@@ -39,6 +45,18 @@ processResources {
     filesMatching('fabric.mod.json') {
         expand props
     }
+}
+
+// Тесты видят клиентский код (музыка: теги, разбор ответов сервисов, декодеры).
+sourceSets {
+    test {
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+        runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
+    }
+}
+
+test {
+    useJUnitPlatform()
 }
 
 // Классы модуля common кладём прямо в jar мода.
