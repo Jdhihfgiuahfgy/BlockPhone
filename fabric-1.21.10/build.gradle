@@ -97,6 +97,11 @@ dependencies {
     include(implementation("org.reactivestreams:reactive-streams:1.0.4"))
     include(implementation("io.atlassian.util.concurrent:atlassian-util-concurrent:4.0.1") { transitive = false })
     include(implementation("org.jcodec:jcodec:${rootProject.jcodec_version}") { transitive = false })
+    for (String m : ["imageio-webp", "imageio-core", "imageio-metadata", "common-lang", "common-io", "common-image"]) {
+        String group = m.startsWith("common") ? "com.twelvemonkeys.common" : "com.twelvemonkeys.imageio"
+        include(implementation("${group}:${m}:${rootProject.twelvemonkeys_version}") { transitive = false })
+    }
+    include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
 }
 
 processResources {

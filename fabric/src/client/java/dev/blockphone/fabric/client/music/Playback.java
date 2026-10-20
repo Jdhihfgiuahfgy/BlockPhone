@@ -129,9 +129,11 @@ final class Playback implements Runnable {
                 float gain = MusicPlayer.gain();
                 for (int i = 0; i < n; i++) {
                     int v = Math.round(samples[i] * gain);
+                    samples[i] = (short) v;
                     bytes[i * 2] = (byte) v;
                     bytes[i * 2 + 1] = (byte) (v >> 8);
                 }
+                AudioTap.feed(samples, n, channels, rate); // звук в «кружочек», если он сейчас записывается
                 line.write(bytes, 0, n * 2);
                 // Сколько звучало = записанное минус то, что ещё лежит в буфере звуковой карты. getLongFramePosition на части
                 // драйверов Windows обновляется рывками (до размера буфера) и «замирает» — текст песни тогда то спешит, то стоит.

@@ -4,9 +4,13 @@ import com.mojang.blaze3d.platform.NativeImage;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.BlockPhoneClient;
+import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
+import dev.blockphone.fabric.client.music.AudioTap;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.storage.ClientFiles;
+import dev.blockphone.fabric.client.voice.Adpcm;
+import dev.blockphone.fabric.client.voice.VoiceRecorder;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.DeltaTracker;
@@ -44,6 +48,9 @@ public final class VideoNoteRecorder {
     private static long nextCapture;
     private static BlockingQueue<int[]> queue;
     private static Path file;
+    /** Звук: микрофон (16 кГц) и копия играющей музыки (48 кГц) — по настройкам videoNoteMic/videoNoteMusic. */
+    private static volatile VoiceRecorder mic;
+    private static volatile short[] musicPcm;
 
     public static void init() {
         // Самый первый элемент HUD: мир уже нарисован, интерфейс ещё нет — снимаем кадр.
@@ -78,6 +85,12 @@ public final class VideoNoteRecorder {
         encoder.setDaemon(true);
         encoder.start();
         mc.setScreen(null);
+        PhoneSettings settings = PhoneSettings.get();
+        musicPcm = null;
+        mic = settings.videoNoteMic ? VoiceRecorder.start((int) (MAX_MS / 1000) + 2) : null;
+        if (settings.videoNoteMusic) {
+            AudioTap.begin();
+        }
         startedAt = System.currentTimeMillis();
         nextCapture = startedAt;
         active = true;
@@ -86,6 +99,11 @@ public final class VideoNoteRecorder {
     /** Закончить и отправить. */
     public static void stop() {
         if (active) {
+            VoiceRecorder m = mic;
+            if (m != null) {
+                m.stop();
+            }
+            musicPcm = AudioTap.end();
             active = false;
             finishing = true;
         }
@@ -153,6 +171,9 @@ public final class VideoNoteRecorder {
                     }
                 }
             }
+            if (!cancelled && count > 0) {
+                addSound(out, count);
+            }
         } catch (IOException | RuntimeException e) {
             BlockPhoneFabric.LOGGER.warn("Video note encoding failed", e);
             error = "telegram.video_note_failed";
@@ -162,6 +183,51 @@ public final class VideoNoteRecorder {
         int frameCount = count;
         String failure = error;
         Minecraft.getInstance().execute(() -> finished(out, frameCount, failure));
+    }
+
+    /** Свести микрофон и музыку и дописать дорожку Opus; не вышло — «кружочек» уйдёт без звука. */
+    private static void addSound(Path out, int frames) {
+        try {
+            VoiceRecorder m = mic;
+            short[] voice = new short[0];
+            if (m != null) {
+                for (int i = 0; i < 200 && !m.finished(); i++) {
+                    Thread.sleep(10);
+                }
+                if (m.finished() && m.error() == null) {
+                    voice = m.samples();
+                }
+            }
+            short[] music = musicPcm != null ? musicPcm : new short[0];
+            short[] track = soundtrack(voice, music, (int) ((long) frames * AudioTap.RATE / FPS));
+            if (track == null) {
+                return;
+            }
+            OggOpus.Encoded encoded = OggOpus.encodePackets(track, AudioTap.RATE, 64_000, false);
+            Mp4Audio.addOpusTrack(out, encoded.packets(), encoded.preSkip());
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("Video note sound failed (sending without sound)", e);
+        }
+    }
+
+    /**
+     * Звуковая дорожка «кружочка»: микрофон (моно 16 кГц) + музыка (моно 48 кГц, уже с громкостью игрока), длина — как
+     * у видео. null — звука нет совсем (всё выключено или тишина).
+     */
+    static short[] soundtrack(short[] voice16k, short[] music48k, int length) {
+        if (length <= 0 || (voice16k.length == 0 && music48k.length == 0)) {
+            return null;
+        }
+        short[] voice = voice16k.length > 0 ? Adpcm.resample(voice16k, 16_000, AudioTap.RATE) : new short[0];
+        short[] out = new short[length];
+        boolean any = false;
+        for (int i = 0; i < length; i++) {
+            float v = (i < voice.length ? voice[i] * 1.2f : 0) + (i < music48k.length ? music48k[i] * 0.8f : 0);
+            int s = Math.max(-32768, Math.min(32767, Math.round(v)));
+            out[i] = (short) s;
+            any |= s != 0;
+        }
+        return any ? out : null;
     }
 
     private static void finished(Path out, int frames, String error) {

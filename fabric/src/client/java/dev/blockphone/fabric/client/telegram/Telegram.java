@@ -615,6 +615,11 @@ public final class Telegram {
      * Запросы при этом никуда не уходят (клиента нет).
      */
     public static long debugInject(List<Path> pictures) {
+        return debugInject(pictures, null);
+    }
+
+    /** То же + стикер, голосовое, GIF (video — любой MP4, например записанный «кружочек») и данные панели стикеров. */
+    public static long debugInject(List<Path> pictures, @Nullable Path video) {
         status = Status.READY;
         myId = 1;
         USERS.put(1L, debugUser(1, "Я"));
@@ -669,7 +674,57 @@ public final class Telegram {
         edited.isOutgoing = true;
         edited.editDate = t + 250;
         m.list.add(edited);
+        List<TdApi.Sticker> stickers = new ArrayList<>();
+        for (int i = 0; i < Math.min(6, pictures.size()); i++) {
+            stickers.add(new TdApi.Sticker(500 + i, 9, 512, 512, "😀", new TdApi.StickerFormatWebp(),
+                    new TdApi.StickerFullTypeRegular(), null, debugFile(-100 - i, pictures.get(i))));
+        }
+        if (!stickers.isEmpty()) {
+            TdApi.MessageSticker sticker = new TdApi.MessageSticker();
+            sticker.sticker = stickers.get(0);
+            m.list.add(debugMessage(13, 2, t + 260, sticker));
+        }
+        short[] tone = new short[16_000 * 3];
+        for (int i = 0; i < tone.length; i++) {
+            tone[i] = (short) (Math.sin(i / 7.0) * 9000 * Math.abs(Math.sin(i / 4000.0)));
+        }
+        TdApi.MessageVoiceNote voice = new TdApi.MessageVoiceNote();
+        voice.voiceNote = new TdApi.VoiceNote(7, OggOpus.waveform(tone), "audio/ogg", null, new TdApi.File());
+        voice.voiceNote.voice.id = -200;
+        voice.caption = debugFormatted("");
+        TdApi.Message voiceMessage = debugMessage(14, 1, t + 270, voice);
+        voiceMessage.isOutgoing = true;
+        m.list.add(voiceMessage);
+        TdApi.Animation gif = null;
+        if (video != null) {
+            gif = new TdApi.Animation(3, 320, 320, "gif.mp4", "video/mp4", false, null, null, debugFile(-300, video));
+            TdApi.MessageAnimation animation = new TdApi.MessageAnimation();
+            animation.animation = gif;
+            animation.caption = debugFormatted("");
+            m.list.add(debugMessage(15, 3, t + 280, animation));
+        }
+        recentStickers = List.copyOf(stickers);
+        savedAnimations = gif != null ? List.of(gif, gif, gif) : List.of();
+        if (!stickers.isEmpty()) {
+            TdApi.StickerSetInfo set = new TdApi.StickerSetInfo();
+            set.id = 9;
+            set.title = "Minecraft";
+            set.covers = new TdApi.Sticker[] {stickers.get(0)};
+            stickerSets = List.of(set);
+            SET_STICKERS.put(9L, List.copyOf(stickers));
+        }
+        panelLoadedAt = Long.MAX_VALUE / 2;
         return chat.id;
+    }
+
+    private static TdApi.File debugFile(int id, Path path) {
+        TdApi.LocalFile local = new TdApi.LocalFile();
+        local.path = path.toAbsolutePath().toString();
+        local.isDownloadingCompleted = true;
+        TdApi.File file = new TdApi.File();
+        file.id = id;
+        file.local = local;
+        return file;
     }
 
     private static boolean bodyEmpty(TdApi.Message m) {
@@ -702,6 +757,95 @@ public final class Telegram {
         msg.date = date;
         msg.content = content;
         return msg;
+    }
+
+    // --- Стикеры и GIF ---
+
+    private static List<TdApi.StickerSetInfo> stickerSets = List.of();
+    private static List<TdApi.Sticker> recentStickers = List.of();
+    private static List<TdApi.Animation> savedAnimations = List.of();
+    private static final Map<Long, List<TdApi.Sticker>> SET_STICKERS = new HashMap<>();
+    private static final Set<Long> SET_LOADING = new HashSet<>();
+    private static long panelLoadedAt;
+
+    /** Загрузить (не чаще раза в минуту) наборы стикеров, недавние стикеры и сохранённые GIF — для панели в чате. */
+    public static void loadStickerPanel() {
+        if (System.currentTimeMillis() - panelLoadedAt < 60_000) {
+            return;
+        }
+        panelLoadedAt = System.currentTimeMillis();
+        send(new TdApi.GetInstalledStickerSets(new TdApi.StickerTypeRegular()), r -> {
+            if (r instanceof TdApi.StickerSets sets) {
+                stickerSets = List.of(sets.sets);
+            }
+        });
+        send(new TdApi.GetRecentStickers(false), r -> {
+            if (r instanceof TdApi.Stickers stickers) {
+                recentStickers = List.of(stickers.stickers);
+            }
+        });
+        send(new TdApi.GetSavedAnimations(), r -> {
+            if (r instanceof TdApi.Animations animations) {
+                savedAnimations = List.of(animations.animations);
+            }
+        });
+    }
+
+    public static List<TdApi.StickerSetInfo> stickerSets() {
+        return stickerSets;
+    }
+
+    public static List<TdApi.Sticker> recentStickers() {
+        return recentStickers;
+    }
+
+    public static List<TdApi.Animation> savedAnimations() {
+        return savedAnimations;
+    }
+
+    /** Стикеры набора (пустой список, пока загружается). */
+    public static List<TdApi.Sticker> stickerSet(long setId) {
+        List<TdApi.Sticker> list = SET_STICKERS.get(setId);
+        if (list == null && SET_LOADING.add(setId)) {
+            send(new TdApi.GetStickerSet(setId), r -> {
+                SET_LOADING.remove(setId);
+                if (r instanceof TdApi.StickerSet set) {
+                    SET_STICKERS.put(setId, List.of(set.stickers));
+                }
+            });
+        }
+        return list != null ? list : List.of();
+    }
+
+    /**
+     * Картинка стикера, которую можно показать: сам файл, если он WEBP (обычный стикер), иначе обложка WEBP/JPEG/PNG
+     * (анимированные TGS и видео-стикеры WEBM показываются обложкой).
+     */
+    public static @Nullable TdApi.File stickerImage(TdApi.Sticker sticker) {
+        if (sticker.format instanceof TdApi.StickerFormatWebp) {
+            return sticker.sticker;
+        }
+        TdApi.Thumbnail t = sticker.thumbnail;
+        return t != null && (t.format instanceof TdApi.ThumbnailFormatWebp || t.format instanceof TdApi.ThumbnailFormatJpeg
+                || t.format instanceof TdApi.ThumbnailFormatPng) ? t.file : null;
+    }
+
+    public static void sendSticker(long chatId, TdApi.Sticker sticker, long replyTo) {
+        TdApi.InputSticker input = new TdApi.InputSticker(new TdApi.InputFileId(sticker.sticker.id), null, sticker.width, sticker.height);
+        sendContent(chatId, new TdApi.InputMessageSticker(input, sticker.emoji), replyTo);
+    }
+
+    public static void sendAnimation(long chatId, TdApi.Animation animation, long replyTo) {
+        TdApi.InputAnimation input = new TdApi.InputAnimation(new TdApi.InputFileId(animation.animation.id), null, new int[0],
+                animation.duration, animation.width, animation.height);
+        sendContent(chatId, new TdApi.InputMessageAnimation(input, new TdApi.FormattedText("", new TdApi.TextEntity[0]), false, false), replyTo);
+    }
+
+    /** Голосовое (OGG Opus): длительность в секундах и «волна» по 5 бит. */
+    public static void sendVoice(long chatId, Path file, int durationSec, byte[] waveform, long replyTo) {
+        TdApi.InputVoiceNote voice = new TdApi.InputVoiceNote(new TdApi.InputFileLocal(file.toAbsolutePath().toString()),
+                durationSec, waveform);
+        sendContent(chatId, new TdApi.InputMessageVoiceNote(voice, new TdApi.FormattedText("", new TdApi.TextEntity[0]), null), replyTo);
     }
 
     /** Кто автор пересланного сообщения. */

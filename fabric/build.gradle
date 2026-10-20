@@ -49,6 +49,13 @@ dependencies {
     include(implementation("io.atlassian.util.concurrent:atlassian-util-concurrent:4.0.1") { transitive = false })
     // «Кружочки»: кодировщик H.264/MP4 на чистой Java (BSD).
     include(implementation("org.jcodec:jcodec:${rootProject.jcodec_version}") { transitive = false })
+    // Стикеры Telegram (WEBP): TwelveMonkeys ImageIO (BSD), подключается к ImageIO вручную (ImageOps).
+    for (String m : ["imageio-webp", "imageio-core", "imageio-metadata", "common-lang", "common-io", "common-image"]) {
+        String group = m.startsWith("common") ? "com.twelvemonkeys.common" : "com.twelvemonkeys.imageio"
+        include(implementation("${group}:${m}:${rootProject.twelvemonkeys_version}") { transitive = false })
+    }
+    // Голосовые Telegram (Opus): Concentus — Opus на чистой Java (BSD).
+    include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
 
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"

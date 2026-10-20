@@ -696,5 +696,11 @@
   "telegram.delete_all": "Удалить сообщение у всех?",
   "telegram.delete_me": "Удалить сообщение у себя?",
   "telegram.caption_placeholder": "Подпись…",
-  "photo.pick_many": "Отметьте фото (до 10) и нажмите ✔"
+  "photo.pick_many": "Отметьте фото (до 10) и нажмите ✔",
+  "telegram.no_gifs": "Сохранённых GIF пока нет",
+  "telegram.no_recent_stickers": "Недавних стикеров пока нет",
+  "telegram.attach_photo": "Фото из галереи",
+  "telegram.attach_video_note": "Записать «кружочек»",
+  "telegram.note_mic": "🎤 Микрофон в «кружочке»: %s",
+  "telegram.note_music": "♪ Музыка в «кружочке»: %s"
 }

@@ -22,7 +22,7 @@
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
 | `./gradlew :bungee:build` | Плагин BungeeCord/Waterfall: `bungee/build/libs/BlockPhone-bungee-*.jar` |
 | `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
-| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка» |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -56,7 +56,9 @@
   настоящий звонок в группу через SVC (в dev голосовой чат SVC выключен до первоначальной настройки — сервер отвечает ошибкой).
   В среде разработки подключён сам мод Simple Voice Chat (`modLocalRuntime`, версия `voicechat_mod_version`).
   Сценарий Telegram: `BLOCKPHONE_DEV_SCENARIO=telegram` — экран ключей, запуск TDLib с ненастоящими ключами до шага «номер
-  телефона», запись «кружочка» из мира (3 с) и проверка файла MP4 (в логе); настоящие ключи из accounts.json восстанавливаются.
+  телефона», запись «кружочка» из мира (3 с, микрофон выключен) и проверка файла MP4 (в логе); настоящие ключи из accounts.json
+  восстанавливаются. Затем поддельный чат (`Telegram.debugInject`): `telegram_chat`, `_menu`, `_reply`, `_stickers`, `_gifs`;
+  `fabric/run/blockphone/dev_sticker.webp` (если есть) — WEBP-стикер; в лог — проход Opus внутри игры.
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
@@ -88,7 +90,10 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
 Telegram: TDLight (`it.tdlight:tdlight-java` + `tdlight-api` + `tdlight-natives:windows_amd64`, репозиторий mvn.mchv.eu, LGPL-3.0;
 TDLib — Boost) и JCodec (`org.jcodec:jcodec`, BSD) — jar-in-jar; мод из-за нативной библиотеки весит ~25 МБ.
-Версии — `tdlight_*_version`, `jcodec_version` в gradle.properties. Обновлять TDLight целиком (java, api и natives из одного BOM).
+Стикеры WEBP — TwelveMonkeys ImageIO (`imageio-webp` + core/metadata/common-*, BSD; плагин регистрируется вручную в `ImageOps`),
+голосовые и звук «кружочков» — Concentus (`io.github.jaredmdobson:concentus`, Opus на чистой Java, BSD); jar-in-jar в обоих
+модулях fabric (список зависимостей у `fabric-1.21.10/build.gradle` свой — новые библиотеки добавлять в оба).
+Версии — `tdlight_*_version`, `jcodec_version`, `twelvemonkeys_version`, `concentus_version` в gradle.properties. Обновлять TDLight целиком (java, api и natives из одного BOM).
 API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозиторий maven.maxhenkel.de) — `compileOnly` в common, fabric и paper;
 сам SVC ставит игрок/админ. Классы с типами SVC (`SvcPlugin`, `SvcBridge`, `PaperVoicechat`) загружаются только при наличии SVC.
 **При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity); bungee.yml берёт версию сам.
@@ -322,13 +327,23 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   пользователи, файлы с докачкой (`localFile`), история по 40, отправка текста и «кружочков», «прочитано», выход, `shutdown` при
   закрытии игры; подписи вложений), `TelegramAvatars`, `TelegramNotifications` (тосты), `VideoNoteEncoder` (JCodec: квадрат ARGB →
   MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 15 к/с, до 15 с; кольцо и таймер
-  на экране; клавиша телефона — отправить, меню — отмена).
+  на экране; клавиша телефона — отправить, меню — отмена; звук — микрофон (`VoiceRecorder`) + копия играющей музыки
+  (`music/AudioTap`: `Playback` отдаёт записанные куски, моно 48 кГц по часам) по настройкам `videoNoteMic`/`videoNoteMusic`,
+  `soundtrack()` сводит, Opus 64 кбит/с), `Mp4Audio` (дописывает в MP4 от JCodec дорожку Opus: sample entry «Opus» + dOps,
+  edts; новый moov + mdat звука после старого moov — смещения видео не меняются), `OggOpus` (голосовые: OGG Opus ↔ PCM 16 кГц,
+  свой разбор/запись страниц с CRC, `encodePackets` для MP4, «волна» Telegram 100×5 бит), `TelegramVoice` (проигрывание —
+  скачать, распаковать, общий проигрыватель `VoiceMessages.togglePcm`; отправка записи), `MediaFrames` (GIF/«кружочки»:
+  JCodec FrameGrab → до 8 с по 15 к/с, уменьшенные кадры-текстуры, своя очередь «BlockPhone Animation decoder»; `poster` —
+  первый кадр для панели; не декодируется — обложка). Стикеры: `stickerImage` (WEBP — сам файл, TGS/WEBM — обложка),
+  `loadStickerPanel` (наборы, недавние, сохранённые GIF), `stickerSet`, `sendSticker/sendAnimation/sendVoice`.
 - `apps/telegram/` — приложение: `TelegramApp` (корень — вход или список чатов по состоянию), `TgView`, `TgLoginView` (ключи api_id/api_hash
   с my.telegram.org, номер, код, пароль — поле с маской `TextArea.setMasked`), `TgChatListView`, `TgChatView` (пузыри; альбомы — сообщения
   подряд с одним `mediaAlbumId` одним пузырём с сеткой; ответ (цитата) и «Переслано от»; реакции-«таблетки» (клик — поставить/
   снять); ПКМ — полоса быстрых реакций + меню Ответить/Копировать/Изменить/Удалить; полосы над полем — ответ/правка и выбранные фото;
-  «+» — `PhotoPicker` с выбором нескольких (до 10 → `Telegram.sendPhotos`, альбом через `SendMessageAlbum`); Enter — отправить,
-  «◯» — записать «кружочек»). Значки 8 быстрых реакций — свои цветные `textures/gui/reaction/*.png` (gen_icons.py), прочие эмодзи —
+  поле: «+» (меню: фото — `PhotoPicker` с выбором нескольких, до 10 → `Telegram.sendPhotos`, альбом через `SendMessageAlbum`;
+  «кружочек»; микрофон/музыка в «кружочке»), «☺» — панель стикеров и GIF (вкладки: недавние, GIF, наборы; колесо по вкладкам —
+  листать), пустое поле — микрофон (запись голосового до 5 мин: «×»/«➤», Enter — отправить); стикер — без пузыря (80 px),
+  голосовое — ▶ + «волна», GIF и «кружочки» — анимацией). Значки 8 быстрых реакций — свои цветные `textures/gui/reaction/*.png` (gen_icons.py), прочие эмодзи —
   шрифтом игры. `Telegram.debugInject` — поддельный чат для DevShots (сценарий telegram: `telegram_chat`, `_menu`, `_reply`). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
 - `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
@@ -511,8 +526,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
    Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
 6. ✅ Голос: голосовые сообщения (свой захват микрофона и ADPCM — работают без других модов) и звонки в личных и групповых чатах
    через скрытые группы Simple Voice Chat (Fabric/Paper с SVC). Не сделано: звонки через Velocity, выбор микрофона (берётся по умолчанию).
-7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, отправка текста; «кружочки» из кадров игры
-   (JCodec). Не сделано: проигрывание голосовых и видео из Telegram (нужны декодеры Opus/H.264 с CABAC), стикеры WEBP, звук в «кружочках».
+7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, альбомы, ответы, реакции, правка/удаление,
+   стикеры и GIF (показ и отправка), голосовые (проигрывание и запись, Opus), «кружочки» из кадров игры со звуком (микрофон + музыка).
+   Не сделано: звук у присланных видео и «кружочков» (там AAC), анимация TGS/WEBM-стикеров (показывается обложка), видео целиком.
 
 Принятые доп. функции (✅ все сделаны, 0.7.1–0.7.4): BungeeCord, экран блокировки и уведомления, режим «на ходу», телефон в руке
 виден другим (выключатель `phoneInHandVisible`/`phone-in-hand.visible`, предмет в руке не меняется, работает и на Paper/прокси).

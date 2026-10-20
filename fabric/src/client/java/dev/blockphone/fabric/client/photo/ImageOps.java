@@ -11,6 +11,16 @@ import java.util.Random;
 
 /** Обработка изображений на CPU (фильтры, экспозиция, шум, поворот, кадрирование, масштаб, файлы). */
 public final class ImageOps {
+    static {
+        // WEBP (стикеры Telegram) — плагин TwelveMonkeys; регистрируем сами: ImageIO может не найти службы из jar-ов мода.
+        try {
+            javax.imageio.spi.IIORegistry.getDefaultInstance()
+                    .registerServiceProvider(new com.twelvemonkeys.imageio.plugins.webp.WebPImageReaderSpi());
+        } catch (Throwable e) {
+            dev.blockphone.fabric.BlockPhoneFabric.LOGGER.warn("WEBP support is unavailable", e);
+        }
+    }
+
 
     // --- Цвет ---
 

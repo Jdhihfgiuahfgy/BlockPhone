@@ -808,7 +808,11 @@ public final class DevShots {
                 dev.blockphone.fabric.client.telegram.Telegram.fatal()));
         shot(20, "telegram_phone");
         // «Кружочек» из кадров мира: 3 секунды записи, затем кодирование в MP4.
-        step(1, mc -> dev.blockphone.fabric.client.telegram.VideoNoteRecorder.start(0));
+        // Микрофон в автоснимках не трогаем; музыка (если играет) попадёт в звук «кружочка».
+        step(1, mc -> {
+            dev.blockphone.fabric.client.config.PhoneSettings.get().videoNoteMic = false;
+            dev.blockphone.fabric.client.telegram.VideoNoteRecorder.start(0);
+        });
         shot(30, "telegram_video_note_recording");
         step(40, mc -> dev.blockphone.fabric.client.telegram.VideoNoteRecorder.stop());
         step(80, mc -> {
@@ -830,9 +834,29 @@ public final class DevShots {
         });
         // Переписка на поддельных данных: альбом, ответ, пересланное, реакции, меню сообщения, полосы над полем.
         step(5, mc -> {
-            List<Path> pictures = dev.blockphone.fabric.client.photo.PhotoStore.list().stream()
-                    .map(dev.blockphone.fabric.client.photo.PhotoStore.Photo::file).toList();
-            long chatId = dev.blockphone.fabric.client.telegram.Telegram.debugInject(pictures);
+            List<Path> pictures = new ArrayList<>(dev.blockphone.fabric.client.photo.PhotoStore.list().stream()
+                    .map(dev.blockphone.fabric.client.photo.PhotoStore.Photo::file).toList());
+            // WEBP-стикер (если подложен в папку данных) — проверка плагина WEBP внутри игры.
+            Path webp = dev.blockphone.fabric.client.storage.ClientFiles.root().resolve("dev_sticker.webp");
+            if (Files.exists(webp)) {
+                pictures.add(0, webp);
+            }
+            try {
+                short[] tone = new short[16_000];
+                for (int i = 0; i < tone.length; i++) {
+                    tone[i] = (short) (Math.sin(i / 5.0) * 5000);
+                }
+                short[] back = dev.blockphone.fabric.client.telegram.OggOpus.decode(dev.blockphone.fabric.client.telegram.OggOpus.encode(tone));
+                BlockPhoneFabric.LOGGER.info("[DevShots] opus round trip {} -> {} samples", tone.length, back.length);
+            } catch (Throwable e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] opus failed", e);
+            }
+            Path video = null;
+            try (var notes = Files.list(dev.blockphone.fabric.client.storage.ClientFiles.root().resolve("telegram").resolve("videonotes"))) {
+                video = notes.filter(f -> f.toString().endsWith(".mp4")).findFirst().orElse(null);
+            } catch (Exception ignored) {
+            }
+            long chatId = dev.blockphone.fabric.client.telegram.Telegram.debugInject(pictures, video);
             if (!(mc.screen instanceof PhoneScreen)) {
                 mc.setScreen(new PhoneScreen());
             }
@@ -846,6 +870,10 @@ public final class DevShots {
         shot(20, "telegram_menu");
         step(1, mc -> telegramDebug("reply"));
         shot(30, "telegram_reply");
+        step(1, mc -> telegramDebug("panel"));
+        shot(30, "telegram_stickers");
+        step(1, mc -> telegramDebug("gifs"));
+        shot(40, "telegram_gifs");
     }
 
     private static void copyMinecraftMusic(Minecraft mc) {

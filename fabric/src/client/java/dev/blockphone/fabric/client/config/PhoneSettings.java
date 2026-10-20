@@ -67,6 +67,9 @@ public final class PhoneSettings {
     public boolean compactPhone = false;
     /** Уведомления: все вкл/выкл, всплывающие окошки, центр уведомлений и экран блокировки, звук звонка. */
     public boolean notifyAll = true;
+    /** Звук в «кружочках» Telegram: микрофон и играющая музыка. */
+    public boolean videoNoteMic = true;
+    public boolean videoNoteMusic = true;
     public boolean notifyToasts = true;
     public boolean notifyCenter = true;
     public boolean notifySound = true;

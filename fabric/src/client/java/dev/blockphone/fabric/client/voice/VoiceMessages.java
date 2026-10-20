@@ -106,6 +106,16 @@ public final class VoiceMessages {
         }
     }
 
+    /** Проиграть готовый звук (моно 16 кГц) под своим ключом (голосовые Telegram); тот же ключ — пауза/продолжить. */
+    public static void togglePcm(long key, short[] audio) {
+        if (playingId == key && player != null) {
+            player.paused = !player.paused;
+            return;
+        }
+        stop();
+        play(key, audio);
+    }
+
     public static void onChunk(VoicePackets.VoiceChunk chunk) {
         long id = chunk.voiceId();
         if (chunk.total() <= 0) {

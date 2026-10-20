@@ -696,5 +696,11 @@
   "telegram.delete_all": "Delete the message for everyone?",
   "telegram.delete_me": "Delete the message for you?",
   "telegram.caption_placeholder": "Caption…",
-  "photo.pick_many": "Tick photos (up to 10) and press ✔"
+  "photo.pick_many": "Tick photos (up to 10) and press ✔",
+  "telegram.no_gifs": "No saved GIFs yet",
+  "telegram.no_recent_stickers": "No recent stickers yet",
+  "telegram.attach_photo": "Photo from gallery",
+  "telegram.attach_video_note": "Record a video message",
+  "telegram.note_mic": "🎤 Mic in video messages: %s",
+  "telegram.note_music": "♪ Music in video messages: %s"
 }
