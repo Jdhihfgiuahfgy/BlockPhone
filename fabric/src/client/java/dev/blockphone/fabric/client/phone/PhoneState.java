@@ -11,6 +11,11 @@ import java.util.Map;
  */
 public final class PhoneState {
     public static final String HOME = "home";
+    /** Экран блокировки (не приложение рабочего стола). */
+    public static final String LOCK = "lock";
+    /** Через сколько после закрытия телефон при открытии покажет экран блокировки. */
+    private static final long LOCK_AFTER_MS = 15_000;
+    private static long closedAt;
 
     private static final Map<String, PhoneApp> APPS = new HashMap<>();
     private static String currentId = HOME;
@@ -33,6 +38,9 @@ public final class PhoneState {
         if (HOME.equals(id)) {
             return APPS.computeIfAbsent(HOME, k -> new HomeApp());
         }
+        if (LOCK.equals(id)) {
+            return APPS.computeIfAbsent(LOCK, k -> new dev.blockphone.fabric.client.apps.lock.LockApp());
+        }
         PhoneApp existing = APPS.get(id);
         if (existing != null) {
             return existing;
@@ -44,6 +52,17 @@ public final class PhoneState {
         PhoneApp created = entry.factory().get();
         APPS.put(id, created);
         return created;
+    }
+
+    /** Телефон закрыли (для экрана блокировки). */
+    public static void markClosed() {
+        closedAt = System.currentTimeMillis();
+    }
+
+    /** Показать экран блокировки: он включён и телефон был закрыт достаточно долго (или открывается впервые). */
+    public static boolean shouldLock() {
+        return dev.blockphone.fabric.client.config.PhoneSettings.get().lockScreen
+                && (closedAt == 0 || System.currentTimeMillis() - closedAt > LOCK_AFTER_MS);
     }
 
     public static void reset() {

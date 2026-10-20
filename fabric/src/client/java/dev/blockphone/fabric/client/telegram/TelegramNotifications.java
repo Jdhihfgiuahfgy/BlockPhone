@@ -26,6 +26,13 @@ final class TelegramNotifications {
             text = Telegram.senderName(message) + ": " + text;
         }
         mc.getToastManager().addToast(new TelegramToast(chat, title, text));
+        long chatId = chat.id;
+        dev.blockphone.fabric.client.phone.PhoneNotifications.add("telegram:" + chatId, "telegram", title, text, null, phone -> {
+            phone.openApp("telegram");
+            if (PhoneState.app("telegram") instanceof dev.blockphone.fabric.client.apps.telegram.TelegramApp app) {
+                app.openChat(chatId);
+            }
+        });
     }
 
     private static final class TelegramToast implements Toast {

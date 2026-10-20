@@ -472,5 +472,11 @@
   "telegram.error.password_hash_invalid": "Неверный пароль.",
   "telegram.error.phone_number_banned": "Этот номер заблокирован в Telegram.",
   "telegram.error.api_id_invalid": "Неверные ключи API — проверьте api_id и api_hash.",
-  "telegram.error.phone_number_flood": "Слишком много попыток. Попробуйте позже."
+  "telegram.error.phone_number_flood": "Слишком много попыток. Попробуйте позже.",
+  "lock.notifications": "Уведомления",
+  "lock.no_notifications": "Новых уведомлений нет",
+  "lock.clear": "Очистить",
+  "lock.unlock_hint": "Нажмите, чтобы разблокировать",
+  "settings.lock_screen": "Экран блокировки",
+  "call.missed": "Пропущенный звонок"
 }

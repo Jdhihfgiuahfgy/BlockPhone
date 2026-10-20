@@ -40,6 +40,24 @@ public final class SocialNotifications {
             default -> notice.text();
         };
         Minecraft.getInstance().getToastManager().addToast(new NoticeToast(notice, title, text));
+        long postId = notice.postId();
+        java.util.UUID actor = notice.actor().uuid();
+        dev.blockphone.common.protocol.data.SocialData.NoticeType type = notice.type();
+        dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:" + type + ":" + postId + ":" + actor, "feed", title, text,
+                actor, phone -> {
+                    phone.openApp("feed");
+                    if (PhoneState.app("feed") instanceof dev.blockphone.fabric.client.apps.social.SocialApp app) {
+                        switch (type) {
+                            case FOLLOW -> app.openProfile(actor);
+                            case REPORT -> app.switchTab(dev.blockphone.fabric.client.apps.social.SocialApp.Tab.MODERATION);
+                            default -> {
+                                if (postId > 0) {
+                                    app.openPost(postId);
+                                }
+                            }
+                        }
+                    }
+                });
     }
 
     private static final class NoticeToast implements Toast {

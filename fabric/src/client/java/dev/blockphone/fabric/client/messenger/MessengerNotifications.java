@@ -27,6 +27,14 @@ public final class MessengerNotifications {
                 ? message.sender().name() + " → " + MessengerClient.title(chat)
                 : message.sender().name();
         mc.getToastManager().addToast(new MessageToast(message, title));
+        long chatId = chat.id();
+        dev.blockphone.fabric.client.phone.PhoneNotifications.add("messenger:" + chatId, "messenger", title,
+                MessengerClient.previewText(message), message.sender().uuid(), phone -> {
+                    phone.openApp("messenger");
+                    if (PhoneState.app("messenger") instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
+                        app.openChat(chatId);
+                    }
+                });
     }
 
     /** Карточка уведомления в стиле телефона: аватар, кто написал, начало текста. */

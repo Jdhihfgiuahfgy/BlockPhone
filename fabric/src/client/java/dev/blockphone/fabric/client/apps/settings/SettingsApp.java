@@ -155,7 +155,10 @@ public final class SettingsApp extends PhoneApp {
                         dir -> open(Page.WALLPAPER), null, true),
                 new Row(() -> PhoneLang.tr("settings.animations"),
                         () -> PhoneLang.tr(s.animations ? "settings.on" : "settings.off"),
-                        dir -> s.animations = !s.animations, null, false))));
+                        dir -> s.animations = !s.animations, null, false),
+                new Row(() -> PhoneLang.tr("settings.lock_screen"),
+                        () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
+                        dir -> s.lockScreen = !s.lockScreen, null, false))));
         result.add(new Section("settings.section.music", List.of(
                 new Row(() -> PhoneLang.tr("settings.music_hud"),
                         () -> PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off"),

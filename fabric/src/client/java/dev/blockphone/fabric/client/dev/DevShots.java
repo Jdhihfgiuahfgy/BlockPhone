@@ -113,7 +113,11 @@ public final class DevShots {
         boolean originalDark = settings.darkTheme;
         int originalAccent = settings.accentColor;
         String originalLanguage = settings.language;
-        step(1, mc -> mc.options.pauseOnLostFocus = false);
+        boolean originalLock = settings.lockScreen;
+        step(1, mc -> {
+            mc.options.pauseOnLostFocus = false;
+            settings.lockScreen = false;
+        });
 
         // 1. Все приложения в главном меню.
         boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music")
@@ -152,10 +156,45 @@ public final class DevShots {
             shot(20, "accent_page");
             step(1, mc -> settingsPage("wallpaper"));
             shot(30, "wallpaper_page");
+            // Экран блокировки с уведомлениями.
+            step(1, mc -> {
+                UUID steve = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7");
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:1", "messenger", "Пропущенный звонок", "Строители",
+                        steve, p -> {
+                        });
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:1", "feed", "Steve оценил ваш пост",
+                        "Закат над морем с нового маяка", steve, p -> {
+                        });
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("telegram:1", "telegram", "Мама", "Ужин в семь, не опаздывай",
+                        null, p -> {
+                        });
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("messenger:1", "messenger", "Steve",
+                        "Ты где? Я жду у портала в Незер", steve, p -> {
+                        });
+                settings.lockScreen = true;
+                dev.blockphone.fabric.client.phone.PhoneState.markClosed();
+                mc.setScreen(null);
+            });
+            step(1, mc -> {
+                // Как будто телефон был закрыт давно.
+                try {
+                    var field = dev.blockphone.fabric.client.phone.PhoneState.class.getDeclaredField("closedAt");
+                    field.setAccessible(true);
+                    field.setLong(null, 1);
+                } catch (ReflectiveOperationException ignored) {
+                }
+                mc.setScreen(new PhoneScreen());
+            });
+            shot(30, "lock_screen");
+            step(1, mc -> {
+                settings.lockScreen = false;
+                dev.blockphone.fabric.client.phone.PhoneNotifications.clear();
+            });
             step(1, mc -> settings.accentColor = originalAccent);
         }
         if (scenario.equals("design")) {
             step(5, mc -> {
+                settings.lockScreen = originalLock;
                 settings.darkTheme = originalDark;
                 settings.language = originalLanguage;
                 settings.accentColor = originalAccent;
@@ -206,6 +245,7 @@ public final class DevShots {
             settings.language = originalLanguage;
             settings.accentColor = originalAccent;
             CameraMode.SETTINGS.reset();
+            settings.lockScreen = originalLock;
             BlockPhoneFabric.LOGGER.info("[DevShots] done");
             mc.stop();
         });

@@ -433,6 +433,7 @@ public final class Telegram {
     /** Открыть чат: история, отметка «прочитано». */
     public static void openChat(long chatId) {
         openChatId = chatId;
+        dev.blockphone.fabric.client.phone.PhoneNotifications.remove("telegram:" + chatId);
         TdApi.OpenChat open = new TdApi.OpenChat();
         open.chatId = chatId;
         send(open, null);

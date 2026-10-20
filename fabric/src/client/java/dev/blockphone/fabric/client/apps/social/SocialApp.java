@@ -171,6 +171,7 @@ public final class SocialApp extends PhoneApp {
 
     @Override
     public void onShown() {
+        dev.blockphone.fabric.client.phone.PhoneNotifications.remove("feed:");
         // Права могли измениться (например, выдали модератора) — перезапросить.
         ClientNetwork.send(new SessionPacket.Refresh());
         view().onShown();

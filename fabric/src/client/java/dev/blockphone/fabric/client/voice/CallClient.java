@@ -101,6 +101,9 @@ public final class CallClient {
     public static void handle(VoicePackets.CallState state) {
         CallInfo call = state.call();
         boolean wasMine = inCall(call.chatId());
+        CallInfo before = CALLS.get(call.chatId());
+        UUID self = MessengerClient.self();
+        boolean wasRinging = before != null && before.invited().stream().anyMatch(u -> u.uuid().equals(self));
         if (call.active()) {
             CALLS.put(call.chatId(), call);
         } else {
@@ -112,6 +115,21 @@ public final class CallClient {
         } else if (!mine && wasMine) {
             joinedAt = 0;
             toast(PhoneLang.tr("call.ended"), title(call), null);
+        }
+        boolean nowRinging = call.active() && call.invited().stream().anyMatch(u -> u.uuid().equals(self));
+        boolean joined = call.active() && call.participants().stream().anyMatch(u -> u.uuid().equals(self));
+        if (wasRinging && !nowRinging && !joined) {
+            // Не ответили (или отклонили) — пропущенный звонок в центре уведомлений.
+            UserInfo caller = before.participants().isEmpty() ? null : before.participants().get(0);
+            long chatId = call.chatId();
+            dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:" + chatId, "messenger", PhoneLang.tr("call.missed"),
+                    title(before), caller != null ? caller.uuid() : null, phone -> {
+                        phone.openApp("messenger");
+                        if (dev.blockphone.fabric.client.phone.PhoneState.app("messenger")
+                                instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
+                            app.openChat(chatId);
+                        }
+                    });
         }
         CallInfo ringing = incoming();
         if (ringing == null) {

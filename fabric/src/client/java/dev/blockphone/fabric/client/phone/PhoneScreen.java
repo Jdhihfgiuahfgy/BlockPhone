@@ -29,6 +29,8 @@ public class PhoneScreen extends Screen {
 
     private PhoneApp app;
     private PhoneDialog dialog;
+    /** Показан экран блокировки (текущее приложение откроется после разблокировки). */
+    private boolean locked;
 
     public PhoneScreen() {
         super(Component.translatable("key.blockphone.open"));
@@ -42,13 +44,31 @@ public class PhoneScreen extends Screen {
         originX = (width - PHONE_W * scale) / 2f;
         originY = (height - PHONE_H * scale) / 2f;
         if (app == null) {
+            if (PhoneState.shouldLock()) {
+                locked = true;
+                show(PhoneState.app(PhoneState.LOCK));
+            } else {
+                show(PhoneState.current());
+            }
+        }
+    }
+
+    /** Снять блокировку: открыть приложение, которое было открыто до блокировки. */
+    public void unlock() {
+        if (locked) {
+            locked = false;
             show(PhoneState.current());
         }
+    }
+
+    public boolean locked() {
+        return locked;
     }
 
     // --- Навигация ---
 
     public void openApp(String id) {
+        locked = false;
         PhoneApp target = PhoneState.app(id);
         if (target != null) {
             PhoneState.setCurrent(id);
@@ -62,6 +82,10 @@ public class PhoneScreen extends Screen {
 
     /** «Назад»: сначала внутри приложения, потом на рабочий стол, потом закрыть телефон. */
     public void back() {
+        if (locked) {
+            closePhone();
+            return;
+        }
         if (app.onBack()) {
             return;
         }
@@ -116,6 +140,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public void removed() {
+        PhoneState.markClosed();
         if (app != null) {
             app.onHidden();
             app.attach(null);
@@ -129,7 +154,7 @@ public class PhoneScreen extends Screen {
             return;
         }
         // Приложение могло стать недоступным (например, мессенджер после выхода с сервера).
-        if (PhoneState.current() != app) {
+        if (!locked && PhoneState.current() != app) {
             show(PhoneState.current());
         }
         app.tick();

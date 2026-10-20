@@ -40,6 +40,8 @@ public final class PhoneSettings {
     public float musicVolume = 0.7f;
     /** Показывать виджет «сейчас играет» на экране игры. */
     public boolean musicHud = true;
+    /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */
+    public boolean lockScreen = true;
 
     public static PhoneSettings get() {
         if (instance == null) {

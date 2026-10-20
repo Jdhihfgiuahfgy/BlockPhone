@@ -158,6 +158,7 @@ public final class MessengerClient {
     public static void setOpenChat(long chatId) {
         openChatId = chatId;
         if (chatId >= 0) {
+            dev.blockphone.fabric.client.phone.PhoneNotifications.remove("messenger:" + chatId);
             markRead(chatId);
         }
     }

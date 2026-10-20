@@ -472,5 +472,11 @@
   "telegram.error.password_hash_invalid": "Wrong password.",
   "telegram.error.phone_number_banned": "This number is banned in Telegram.",
   "telegram.error.api_id_invalid": "Invalid API keys — check api_id and api_hash.",
-  "telegram.error.phone_number_flood": "Too many attempts. Try again later."
+  "telegram.error.phone_number_flood": "Too many attempts. Try again later.",
+  "lock.notifications": "Notifications",
+  "lock.no_notifications": "No new notifications",
+  "lock.clear": "Clear",
+  "lock.unlock_hint": "Click to unlock",
+  "settings.lock_screen": "Lock screen",
+  "call.missed": "Missed call"
 }
