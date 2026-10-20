@@ -78,6 +78,8 @@ public final class ClientNetwork {
             VoiceMessages.onUploadResult(result);
         } else if (packet instanceof VoicePackets.VoiceChunk chunk) {
             VoiceMessages.onChunk(chunk);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.PrivacyPackets.State state) {
+            dev.blockphone.fabric.client.social.PrivacyClient.onState(state);
         } else if (packet instanceof PhoneUsePackets.State state) {
             PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {
@@ -97,6 +99,7 @@ public final class ClientNetwork {
         CallClient.reset();
         ClientSession.reset();
         PhoneHolders.reset();
+        dev.blockphone.fabric.client.social.PrivacyClient.reset();
     }
 
     /**

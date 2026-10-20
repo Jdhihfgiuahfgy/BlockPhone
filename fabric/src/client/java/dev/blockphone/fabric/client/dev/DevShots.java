@@ -385,6 +385,16 @@ public final class DevShots {
         shot(40, "social_profile_self");
         step(1, mc -> social(app -> app.openProfile(STEVE)));
         shot(40, "social_profile_steve");
+        step(1, mc -> social(app -> {
+            app.switchTab(SocialApp.Tab.PROFILE);
+            app.debugLook(mc.player.getUUID(), 1, 3, 5, 2);
+        }));
+        shot(40, "profile_look");
+        step(1, mc -> social(SocialApp::debugSaveLook));
+        shot(40, "profile_self_look");
+        step(1, mc -> social(SocialApp::debugPrivacy));
+        shot(40, "privacy");
+        step(1, mc -> social(app -> app.switchTab(SocialApp.Tab.FEED)));
         step(1, mc -> social(app -> app.switchTab(SocialApp.Tab.PUBLICS)));
         shot(40, "social_publics");
         step(1, mc -> social(app -> app.openPublic(publicId.get())));
@@ -688,6 +698,8 @@ public final class DevShots {
         }
         UUID self = mc.player.getUUID();
         core.social().runInThread(repo -> {
+            // Страница Стива: фигура, машет рукой, оранжевый фон, фиолетовый баннер.
+            repo.setLook(STEVE, new dev.blockphone.common.server.SocialRepository.LookRow(1, 1, 2, 4, 0), System.currentTimeMillis());
             List<dev.blockphone.common.server.SocialRepository.PublicRow> existing = repo.searchPublics("Новости сервера", 1);
             if (!existing.isEmpty()) {
                 publicId.set(existing.get(0).id());

@@ -14,6 +14,7 @@ import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.network.ClientSession;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
+import dev.blockphone.fabric.client.social.ProfileLooks;
 import dev.blockphone.fabric.client.social.SocialClient;
 import dev.blockphone.fabric.client.social.SocialFormat;
 import dev.blockphone.fabric.client.ui.PopupMenu;
@@ -30,7 +31,8 @@ import java.util.UUID;
  * (жалоба; модератору — заглушить). Свой профиль — вкладка «Профиль»: «Изменить», «Новый пост».
  */
 final class ProfileView extends SocialView {
-    private static final int AVATAR = 32;
+    private static final int AVATAR = 44;
+    private static final int BANNER = 52;
     private static final int GAP = 4;
 
     private final UUID uuid;
@@ -139,7 +141,7 @@ final class ProfileView extends SocialView {
     }
 
     private int headerHeight(ProfileInfo profile, int w) {
-        int h = 6 + AVATAR + 6 + bioHeight(profile, w) + 6 + 24 + 6 + 20;
+        int h = BANNER + 34 + bioHeight(profile, w) + 6 + 24 + 6 + 20 + (self() ? 20 : 0);
         if (profile.mutedUntil() > 0) {
             h += 12;
         }
@@ -148,27 +150,34 @@ final class ProfileView extends SocialView {
 
     private void renderHeader(GuiGraphics g, ProfileInfo profile, int top, int w, int mx, int my) {
         UserInfo user = profile.user();
-        int y = top + 6;
-        Avatars.drawUser(g, user, 8, y, AVATAR);
+        // Баннер и аватар из оформления страницы.
+        ProfileLooks.drawBanner(g, profile.look(), 0, top, w, BANNER);
+        int ay = top + BANNER - AVATAR / 2 - 4;
+        PhoneDraw.rawRoundedRect(g, 6, ay - 2, 6 + AVATAR + 4, ay + AVATAR + 2, 9, PhoneTheme.background());
+        ProfileLooks.drawAvatar(g, user, profile.look(), 8, ay, AVATAR);
         boolean online = MessengerClient.isOnline(user);
         if (online) {
-            Avatars.drawOnlineDot(g, 8, y, AVATAR, PhoneTheme.background());
+            Avatars.drawOnlineDot(g, 8, ay, AVATAR, PhoneTheme.background());
         }
-        PhoneDraw.text(g, PhoneDraw.ellipsize(user.name(), w - 70, 1f), 46, y + 4, PhoneTheme.text(), 1f, false);
+        int tx = 8 + AVATAR + 8;
+        int y = top + BANNER + 3;
+        PhoneDraw.text(g, PhoneDraw.ellipsize(user.name(), w - tx - 6, 1f), tx, y, PhoneTheme.text(), 1f, false);
         String status = online ? tr("messenger.online")
                 : profile.lastSeen() > 0 ? tr("social.last_seen", SocialFormat.ago(profile.lastSeen())) : tr("messenger.offline");
-        PhoneDraw.text(g, status, 46, y + 16, online ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.65f, false);
+        PhoneDraw.text(g, status, tx, y + 11, online ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.65f, false);
         if (profile.followsYou() && !self()) {
-            PhoneDraw.text(g, tr("social.follows_you"), 46, y + 24, PhoneTheme.secondaryText(), 0.55f, false);
+            PhoneDraw.text(g, tr("social.follows_you"), tx, y + 19, PhoneTheme.secondaryText(), 0.55f, false);
         }
         if (!self()) {
             int mx0 = w - 18;
-            boolean hover = PhoneDraw.inside(mx, my, mx0 - 2, y, 16, 14);
-            PhoneDraw.tinted(g, PostCard.MORE, mx0, y + 2, 12, 12, 32, 32, hover ? PhoneTheme.text() : PhoneTheme.secondaryText());
-            int menuY = y + 14;
-            hit(mx0 - 2, y, 16, 14, () -> showMenu(profileMenu(profile), mx0, menuY));
+            int my0 = top + 4;
+            boolean hover = PhoneDraw.inside(mx, my, mx0 - 2, my0, 16, 14);
+            PhoneDraw.rawRoundedRect(g, mx0 - 2, my0, mx0 + 14, my0 + 14, 4, hover ? 0xA0000000 : 0x60000000);
+            PhoneDraw.tinted(g, PostCard.MORE, mx0, my0 + 1, 12, 12, 32, 32, 0xFFFFFFFF);
+            int menuY = my0 + 14;
+            hit(mx0 - 2, my0, 16, 14, () -> showMenu(profileMenu(profile), mx0, menuY));
         }
-        y += AVATAR + 6;
+        y = top + BANNER + 34;
 
         // О себе.
         if (editing) {
@@ -198,11 +207,17 @@ final class ProfileView extends SocialView {
 
         // Кнопки.
         if (self()) {
-            button(g, 8, y, w - 16, 16, tr("social.edit_bio"), mx, my, PhoneDraw.ButtonStyle.NORMAL, () -> {
+            int half = (w - 20) / 2;
+            button(g, 8, y, half, 16, tr("social.edit_bio"), mx, my, PhoneDraw.ButtonStyle.NORMAL, () -> {
                 editing = true;
                 bioInput.setText(profile.bio());
                 bioInput.setFocused(true);
             });
+            button(g, 12 + half, y, half, 16, tr("profile.look"), mx, my, PhoneDraw.ButtonStyle.PRIMARY,
+                    () -> app.push(new ProfileLookView(app, uuid)));
+            y += 20;
+            button(g, 8, y, w - 16, 16, tr("privacy.title"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                    () -> app.push(new PrivacyView(app)));
         } else {
             boolean messenger = ClientNetwork.messengerAvailable();
             int bw = messenger ? (w - 20) / 2 : w - 16;
@@ -210,8 +225,14 @@ final class ProfileView extends SocialView {
                     profile.followed() ? PhoneDraw.ButtonStyle.NORMAL : PhoneDraw.ButtonStyle.PRIMARY,
                     () -> SocialClient.send(new SocialPackets.Follow(uuid, !profile.followed())));
             if (messenger) {
-                button(g, 12 + bw, y, bw, 16, tr("social.message"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
-                        () -> app.openMessenger(uuid));
+                if (profile.canMessage()) {
+                    button(g, 12 + bw, y, bw, 16, tr("social.message"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                            () -> app.openMessenger(uuid));
+                } else {
+                    PhoneDraw.card(g, 12 + bw, y, 12 + 2 * bw, y + 16, false);
+                    PhoneDraw.centeredText(g, PhoneDraw.ellipsize(tr("privacy.closed"), bw - 4, 0.65f), 12 + bw + bw / 2f, y + 5,
+                            PhoneTheme.secondaryText(), 0.65f, false);
+                }
             }
         }
         y += 20;
@@ -239,6 +260,13 @@ final class ProfileView extends SocialView {
 
     private PopupMenu profileMenu(ProfileInfo profile) {
         PopupMenu m = new PopupMenu();
+        if (ClientNetwork.messengerAvailable()) {
+            if (profile.blocked()) {
+                m.add(tr("privacy.unblock"), () -> dev.blockphone.fabric.client.social.PrivacyClient.list(uuid, true, false));
+            } else {
+                m.addDanger(tr("privacy.block"), () -> dev.blockphone.fabric.client.social.PrivacyClient.list(uuid, true, true));
+            }
+        }
         m.add(tr("social.report"), () -> showMenu(PostCard.reportMenu(ReportTarget.USER, 0, uuid), width() - 10, 40));
         if (ClientSession.has(Rights.MOD_MUTE)) {
             if (profile.mutedUntil() > 0) {

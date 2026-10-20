@@ -434,7 +434,8 @@ public final class SocialClient {
         ProfileInfo profile = PROFILES.get(post.author().uuid());
         if (profile != null && post.pub() == null) {
             PROFILES.put(profile.user().uuid(), new ProfileInfo(profile.user(), profile.bio(), profile.posts() + 1, profile.followers(),
-                    profile.following(), profile.followed(), profile.followsYou(), profile.lastSeen(), profile.mutedUntil()));
+                    profile.following(), profile.followed(), profile.followsYou(), profile.lastSeen(), profile.mutedUntil(), profile.look(),
+                    profile.canMessage(), profile.blocked()));
         }
     }
 

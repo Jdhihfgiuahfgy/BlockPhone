@@ -107,6 +107,7 @@ public final class SocialService {
             case SocialPackets.RequestReports p -> sendReports(player);
             case SocialPackets.ResolveReport p -> resolve(player, p);
             case SocialPackets.Mute p -> mute(player, p);
+            case SocialPackets.UpdateLook p -> updateLook(player, p);
             default -> {
             }
         }
@@ -365,9 +366,12 @@ public final class SocialService {
             return;
         }
         boolean seeMute = player.equals(target) || backend.has(player, Permission.MOD_MUTE);
+        PrivacyService privacy = backend.privacy();
         ProfileInfo info = new ProfileInfo(backend.user(target, names.get(target)), repo.bio(target), repo.userPostCount(target),
                 repo.followerCount(target), repo.followingCount(target), repo.isFollowing(player, target), repo.isFollowing(target, player),
-                backend.users().lastSeen(target), seeMute ? mutedUntil(target) : 0);
+                backend.users().lastSeen(target), seeMute ? mutedUntil(target) : 0, look(target),
+                privacy.allows(target, player, dev.blockphone.common.protocol.data.PrivacyData.Kind.MESSAGES),
+                privacy.blocked(player, target));
         send(player, new SocialPackets.Profile(info));
     }
 
@@ -781,6 +785,52 @@ public final class SocialService {
             return null;
         }
         return new String[]{t.text(), d.text()};
+    }
+
+    /** Оформление страницы для пакета (фото баннера — с размерами). */
+    private SocialData.ProfileLook look(UUID uuid) throws SQLException {
+        SocialRepository.LookRow row = repo.look(uuid);
+        ImageRef banner = null;
+        if (row.bannerImage() > 0) {
+            ImageRepository.ImageMeta meta = backend.imageRepo().meta(row.bannerImage());
+            if (meta != null && meta.kind() == ImageRepository.KIND_BANNER) {
+                banner = new ImageRef(meta.id(), meta.width(), meta.height());
+            }
+        }
+        return new SocialData.ProfileLook(row.avatarType(), row.pose(), row.background(), row.bannerStyle(), banner);
+    }
+
+    private void updateLook(UUID player, SocialPackets.UpdateLook p) throws SQLException {
+        SocialRepository.LookRow old = repo.look(player);
+        long banner = old.bannerImage();
+        if (p.bannerImageId() >= 0 && p.bannerImageId() != banner) {
+            if (p.bannerImageId() > 0) {
+                String error = backend.images().checkAllowed(player, ImageRef.Purpose.POST);
+                ImageRef image = error == null
+                        ? backend.images().claim(player, p.bannerImageId(), ImageRepository.KIND_BANNER, 0) : null;
+                if (image == null) {
+                    send(player, new SocialPackets.Failure(error != null ? error : "photo.error.not_found", ""));
+                    return;
+                }
+            }
+            if (banner > 0) {
+                backend.imageRepo().attach(banner, ImageRepository.KIND_UNUSED, 0); // старое фото удалится через сутки
+            }
+            banner = p.bannerImageId();
+        }
+        SocialData.ProfileLook look = new SocialData.ProfileLook(p.avatarType(), p.pose(), p.background(), p.bannerStyle(), null);
+        repo.setLook(player, new SocialRepository.LookRow(look.avatarType(), look.pose(), look.background(), look.bannerStyle(), banner),
+                System.currentTimeMillis());
+        sendProfile(player, player);
+    }
+
+    /** Профиль изменился с точки зрения игрока (например, заблокировал) — прислать заново. */
+    public void refreshProfile(UUID viewer, UUID target) {
+        try {
+            sendProfile(viewer, target);
+        } catch (SQLException e) {
+            backend.platform().warn("BlockPhone profile refresh failed", e);
+        }
     }
 
     /** Автомьют от фильтра: заглушить до {@code until}, если игрок не заглушён дольше. */

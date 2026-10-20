@@ -122,17 +122,53 @@ public final class SocialData {
      * @param followsYou этот игрок подписан на получателя
      * @param mutedUntil до какого времени игрок заглушён в ленте (видят только модераторы и он сам; 0 — не заглушён)
      */
+    /**
+     * Профиль. look — оформление; canMessage — получатель пакета может написать этому игроку в личку (по его приватности);
+     * blocked — получатель заблокировал этого игрока.
+     */
     public record ProfileInfo(UserInfo user, String bio, int posts, int followers, int following, boolean followed,
-                              boolean followsYou, long lastSeen, long mutedUntil) {
+                              boolean followsYou, long lastSeen, long mutedUntil, ProfileLook look, boolean canMessage, boolean blocked) {
         public static ProfileInfo read(PacketReader r) {
             return new ProfileInfo(UserInfo.read(r), r.readString(MAX_BIO_LENGTH * 2), r.readVarInt(), r.readVarInt(), r.readVarInt(),
-                    r.readBoolean(), r.readBoolean(), r.readLong(), r.readLong());
+                    r.readBoolean(), r.readBoolean(), r.readLong(), r.readLong(), ProfileLook.read(r), r.readBoolean(), r.readBoolean());
         }
 
         public static void write(PacketWriter w, ProfileInfo p) {
             UserInfo.write(w, p.user);
             w.writeString(p.bio).writeVarInt(p.posts).writeVarInt(p.followers).writeVarInt(p.following)
                     .writeBoolean(p.followed).writeBoolean(p.followsYou).writeLong(p.lastSeen).writeLong(p.mutedUntil);
+            ProfileLook.write(w, p.look);
+            w.writeBoolean(p.canMessage).writeBoolean(p.blocked);
+        }
+    }
+
+    /**
+     * Оформление личной страницы. avatarType: {@link #AVATAR_HEAD} — голова, {@link #AVATAR_BODY} — фигура из скина в позе
+     * {@code pose} (0..{@link #POSES}-1); background — фон аватара (0..{@link #BACKGROUNDS}-1); bannerStyle — градиент баннера
+     * (0..{@link #BANNERS}-1); bannerImage — фото баннера (важнее градиента) или null.
+     */
+    public record ProfileLook(int avatarType, int pose, int background, int bannerStyle, ImageRef bannerImage) {
+        public static final int AVATAR_HEAD = 0;
+        public static final int AVATAR_BODY = 1;
+        public static final int POSES = 8;
+        public static final int BACKGROUNDS = 12;
+        public static final int BANNERS = 10;
+        public static final ProfileLook DEFAULT = new ProfileLook(AVATAR_HEAD, 0, 0, 0, null);
+
+        public ProfileLook {
+            avatarType = Math.floorMod(avatarType, 2);
+            pose = Math.floorMod(pose, POSES);
+            background = Math.floorMod(background, BACKGROUNDS);
+            bannerStyle = Math.floorMod(bannerStyle, BANNERS);
+        }
+
+        public static ProfileLook read(PacketReader r) {
+            return new ProfileLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readNullable(ImageRef::read));
+        }
+
+        public static void write(PacketWriter w, ProfileLook l) {
+            w.writeVarInt(l.avatarType).writeVarInt(l.pose).writeVarInt(l.background).writeVarInt(l.bannerStyle)
+                    .writeNullable(l.bannerImage, ImageRef::write);
         }
     }
 

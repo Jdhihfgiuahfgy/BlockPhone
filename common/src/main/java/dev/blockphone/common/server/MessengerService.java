@@ -1,5 +1,7 @@
 package dev.blockphone.common.server;
 
+import dev.blockphone.common.protocol.data.PrivacyData.Kind;
+
 import dev.blockphone.common.server.filter.ContentFilter;
 
 import dev.blockphone.common.protocol.Packet;
@@ -137,6 +139,11 @@ public final class MessengerService {
             fail(player, "rate_limit");
             return;
         }
+        if (!directAllowed(player, p.chatId(), Kind.MESSAGES, "privacy_messages")
+                || (p.imageId() > 0 && !directAllowed(player, p.chatId(), Kind.PHOTOS, "privacy_photos"))
+                || (p.voiceId() > 0 && !directAllowed(player, p.chatId(), Kind.VOICE, "privacy_voice"))) {
+            return;
+        }
         ImageRef image = null;
         if (p.imageId() > 0) {
             String error = backend.images().checkAllowed(player, ImageRef.Purpose.CHAT);
@@ -239,6 +246,10 @@ public final class MessengerService {
         }
         String key = directKey(player, target);
         Long chatId = repo.findDirectChat(key);
+        if (chatId == null && !backend.privacy().allows(target, player, Kind.MESSAGES)) {
+            backend.privacy().deny(player, "privacy_messages", "");
+            return;
+        }
         if (chatId == null) {
             long now = System.currentTimeMillis();
             chatId = repo.createChat(ChatType.DIRECT, "", player, key, now);
@@ -271,7 +282,8 @@ public final class MessengerService {
         title = verdict.text();
         Set<UUID> invited = new LinkedHashSet<>(p.members());
         invited.remove(player);
-        Set<UUID> known = repo.userNames(invited).keySet();
+        Set<UUID> known = new LinkedHashSet<>(repo.userNames(invited).keySet());
+        int refused = removeRefusingInvites(player, known);
         if (known.size() + 1 > MessengerData.MAX_GROUP_MEMBERS) {
             fail(player, "group_full");
             return;
@@ -284,6 +296,36 @@ public final class MessengerService {
         }
         pushChat(repo.chat(chatId), repo.members(chatId));
         send(player, new MessengerPackets.ChatOpened(chatId));
+        if (refused > 0) {
+            backend.privacy().deny(player, "privacy_invites", String.valueOf(refused));
+        }
+    }
+
+    /** Убрать из приглашённых тех, кто не разрешает приглашать себя этому игроку; вернуть их число. */
+    private int removeRefusingInvites(UUID player, Set<UUID> invited) throws SQLException {
+        int refused = 0;
+        for (java.util.Iterator<UUID> it = invited.iterator(); it.hasNext(); ) {
+            if (!backend.privacy().allows(it.next(), player, Kind.INVITES)) {
+                it.remove();
+                refused++;
+            }
+        }
+        return refused;
+    }
+
+    /** В личном чате — проверить приватность собеседника; в группе — всегда можно. */
+    private boolean directAllowed(UUID player, long chatId, Kind kind, String errorKey) throws SQLException {
+        ChatRow chat = repo.chat(chatId);
+        if (chat == null || chat.type() != ChatType.DIRECT) {
+            return true;
+        }
+        for (UUID member : repo.members(chatId)) {
+            if (!member.equals(player) && !backend.privacy().allows(member, player, kind)) {
+                backend.privacy().deny(player, errorKey, "");
+                return false;
+            }
+        }
+        return true;
     }
 
     private void groupAction(UUID player, MessengerPackets.GroupAction p) throws SQLException {
@@ -315,7 +357,12 @@ public final class MessengerService {
             }
             case ADD -> {
                 List<UUID> current = repo.members(chat.id());
-                Set<UUID> known = repo.userNames(p.users()).keySet();
+                Set<UUID> known = new LinkedHashSet<>(repo.userNames(p.users()).keySet());
+                known.removeAll(current);
+                int refused = removeRefusingInvites(player, known);
+                if (refused > 0) {
+                    backend.privacy().deny(player, "privacy_invites", String.valueOf(refused));
+                }
                 long now = System.currentTimeMillis();
                 int count = current.size();
                 for (UUID uuid : known) {

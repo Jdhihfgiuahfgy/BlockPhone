@@ -20,6 +20,8 @@ public final class ImageRepository {
     public static final int KIND_POST = 1;
     /** В сообщении: ref_id — id чата. */
     public static final int KIND_MESSAGE = 2;
+    /** Баннер личной страницы (виден всем). */
+    public static final int KIND_BANNER = 3;
 
     /** Сведения о фото без байтов. */
     public record ImageMeta(long id, UUID owner, int kind, long refId, int width, int height, int size) {

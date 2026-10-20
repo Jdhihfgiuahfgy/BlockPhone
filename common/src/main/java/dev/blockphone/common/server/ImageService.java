@@ -160,6 +160,7 @@ final class ImageService {
         return switch (meta.kind()) {
             case ImageRepository.KIND_POST -> backend.social() != null && backend.social().postVisible(meta.refId());
             case ImageRepository.KIND_MESSAGE -> backend.imageRepo().isChatMember(meta.refId(), player);
+            case ImageRepository.KIND_BANNER -> true;
             default -> false;
         };
     }

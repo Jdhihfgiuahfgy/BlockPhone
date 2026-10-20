@@ -58,6 +58,7 @@ abstract class SocialView {
 
     final void renderView(GuiGraphics g, int mouseX, int mouseY) {
         hits.clear();
+        dirHits.clear();
         boolean blocked = menu != null && menu.isOpen();
         render(g, blocked ? -1000 : mouseX, blocked ? -1000 : mouseY);
         if (menu != null) {
@@ -75,6 +76,20 @@ abstract class SocialView {
             hits.add(new Hit(x, top, w, bottom - top, action));
         }
     }
+
+    /** Кликабельная область с направлением: ЛКМ — +1, ПКМ — −1 (переключатели значений). */
+    protected void hitDir(int x, int y, int w, int h, java.util.function.IntConsumer action) {
+        int top = Math.max(y, clipTop);
+        int bottom = Math.min(y + h, clipBottom);
+        if (bottom > top) {
+            dirHits.add(new DirHit(x, top, w, bottom - top, action));
+        }
+    }
+
+    private record DirHit(int x, int y, int w, int h, java.util.function.IntConsumer action) {
+    }
+
+    private final List<DirHit> dirHits = new java.util.ArrayList<>();
 
     /** Начать прокручиваемую область: клики только между top и bottom (и scissor для отрисовки). */
     protected void beginList(GuiGraphics g, int top, int bottom) {
@@ -98,6 +113,15 @@ abstract class SocialView {
     boolean mouseClicked(double x, double y, int button) {
         if (menu != null && menu.mouseClicked(x, y)) {
             return true;
+        }
+        if (button == 0 || button == 1) {
+            for (int i = dirHits.size() - 1; i >= 0; i--) {
+                DirHit hit = dirHits.get(i);
+                if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    hit.action().accept(button == 0 ? 1 : -1);
+                    return true;
+                }
+            }
         }
         if (button != 0) {
             return false;

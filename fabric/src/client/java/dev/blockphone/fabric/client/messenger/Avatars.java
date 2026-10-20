@@ -54,6 +54,11 @@ public final class Avatars {
         PhoneDraw.roundedRect(g, cx, cy, cx + d, cy + d, d / 2, PhoneTheme.online());
     }
 
+    /** Скин игрока (с сервера или стандартный по UUID). */
+    public static PlayerSkin skinOf(UserInfo user) {
+        return skin(user);
+    }
+
     private static PlayerSkin skin(UserInfo user) {
         ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection != null) {

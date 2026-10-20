@@ -118,6 +118,25 @@ public final class SocialApp extends PhoneApp {
         }
     }
 
+    /** Открыть «Оформление» своей страницы с выбранными настройками. */
+    public void debugLook(UUID self, int type, int pose, int background, int banner) {
+        ProfileLookView view = new ProfileLookView(this, self);
+        view.preset(type, pose, background, banner);
+        push(view);
+    }
+
+    /** Нажать «Сохранить» в «Оформлении». */
+    public void debugSaveLook() {
+        if (view() instanceof ProfileLookView look) {
+            look.onHeaderAction();
+        }
+    }
+
+    /** Открыть «Приватность». */
+    public void debugPrivacy() {
+        push(new PrivacyView(this));
+    }
+
     /** Нажать «Опубликовать» в открытом «Новом посте». */
     public void debugPublish() {
         if (view() instanceof ComposeView compose) {

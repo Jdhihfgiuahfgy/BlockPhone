@@ -51,6 +51,7 @@ public final class Backend {
     /** Игроки с модом, которые сейчас онлайн (в сети серверов — во всей сети): UUID → ник. */
     private final Map<UUID, String> online = new ConcurrentHashMap<>();
     private final ContentFilter filter;
+    private final PrivacyService privacy;
     private volatile boolean available;
     private volatile String serverId = "";
 
@@ -71,6 +72,7 @@ public final class Backend {
         this.voices = new VoiceService(this);
         this.calls = new CallService(this, bridges);
         this.filter = new ContentFilter(settings.filter());
+        this.privacy = new PrivacyService(this);
         for (String bad : filter.badEntries()) {
             platform.warn("BlockPhone filter: bad entry ignored: " + bad, null);
         }
@@ -151,6 +153,10 @@ public final class Backend {
 
     public MessengerService messenger() {
         return messenger;
+    }
+
+    public PrivacyService privacy() {
+        return privacy;
     }
 
     public SocialService social() {
@@ -300,6 +306,8 @@ public final class Backend {
             if (messenger != null) {
                 run(player, true, "messenger.error.internal", () -> messenger.handle(player, packet));
             }
+        } else if (group == dev.blockphone.common.protocol.packet.PrivacyPackets.class) {
+            run(player, true, "messenger.error.internal", () -> privacy.handle(player, packet));
         } else if (group == SocialPackets.class) {
             if (social != null) {
                 run(player, true, "social.error.internal", () -> social.handle(player, packet));

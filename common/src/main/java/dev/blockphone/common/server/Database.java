@@ -205,6 +205,27 @@ public final class Database implements AutoCloseable {
                     + "details VARCHAR(255) NOT NULL,"
                     + "created_at BIGINT NOT NULL)");
         }
+        try (Statement st = connection().createStatement()) {
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("privacy") + " ("
+                    + "uuid CHAR(36) NOT NULL PRIMARY KEY,"
+                    + "messages INT NOT NULL,"
+                    + "voice INT NOT NULL,"
+                    + "photos INT NOT NULL,"
+                    + "invites INT NOT NULL,"
+                    + "calls INT NOT NULL)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("privacy_lists") + " ("
+                    + "owner CHAR(36) NOT NULL,"
+                    + "target CHAR(36) NOT NULL,"
+                    + "kind INT NOT NULL,"
+                    + "created_at BIGINT NOT NULL,"
+                    + "PRIMARY KEY (owner, target))");
+        }
+        // Оформление личной страницы.
+        column("profiles", "avatar_type INT NOT NULL DEFAULT 0");
+        column("profiles", "avatar_pose INT NOT NULL DEFAULT 0");
+        column("profiles", "avatar_bg INT NOT NULL DEFAULT 0");
+        column("profiles", "banner_style INT NOT NULL DEFAULT 0");
+        column("profiles", "banner_image BIGINT NOT NULL DEFAULT 0");
         index("idx_follows_target", "follows", "target");
         index("idx_publics_title", "publics", "title_lower");
         index("idx_subscriptions_uuid", "subscriptions", "uuid");

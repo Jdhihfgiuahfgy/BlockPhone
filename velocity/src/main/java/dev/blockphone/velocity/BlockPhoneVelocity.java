@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.7.7",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.7.8",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =

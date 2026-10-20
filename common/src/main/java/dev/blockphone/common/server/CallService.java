@@ -97,6 +97,15 @@ final class CallService {
             if (chat == null) {
                 return;
             }
+            if (chat.type() == ChatType.DIRECT) {
+                for (UUID member : repo().members(chatId)) {
+                    if (!member.equals(player) && !backend.privacy().allows(member, player,
+                            dev.blockphone.common.protocol.data.PrivacyData.Kind.CALLS)) {
+                        fail(player, "privacy");
+                        return;
+                    }
+                }
+            }
             String title = chat.type() == ChatType.GROUP ? chat.title() : "BlockPhone";
             boolean isolated = "isolated".equalsIgnoreCase(backend.settings().voice().callGroupType());
             call = new Call(chatId, bridge.createGroup(title, isolated), System.currentTimeMillis());

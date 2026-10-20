@@ -41,7 +41,8 @@
   значок, список, переписка, отправка, группа, инфо, новый чат, тёмная тема.
   Сценарий ленты: `BLOCKPHONE_DEV_SCENARIO=social BLOCKPHONE_DEV_MESSENGER=1` — паблик «Новости сервера», посты, лайки,
   комментарии и жалоба прямо в базе; снимок камерой (с id сервера) → пост с фото через настоящую загрузку; снимаются лента,
-  пост, «Новый пост», профили, паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
+  пост, «Новый пост», профили (Стив — фигура «машет»), «Оформление» (`profile_look`), своя страница после сохранения
+  (`profile_self_look`), «Приватность» (`privacy`), паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
   играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
   в лог пишет позицию воспроизведения. Пишет рядом с треками придуманный тестовый `.lrc` и снимает текст в телефоне
@@ -105,6 +106,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
     maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports, maxVoiceSeconds (0 — голосовых нет),
     callsAvailable. Приходит после рукопожатия.
+  - `PrivacyPackets` (id 77–80, обрабатывает `PrivacyService`): C→S Request, Update(Privacy), ListAction(user, blockList, add);
+    S→C State(privacy, allowed, blocked). `SocialPackets.UpdateLook` (id 81): avatarType, pose, background, bannerStyle,
+    bannerImageId (0 — без фото, −1 — оставить, иначе — загруженное фото, Purpose POST). ProfileInfo несёт `ProfileLook look`,
+    `canMessage` (можно ли получателю писать этому игроку) и `blocked` (получатель его заблокировал).
   - `PhoneUsePackets` (id 75–76): C→S `InUse(using)` (открыл/закрыл телефон или камеру), S→C `State(player, using)`.
     Обрабатывает сам `BlockPhoneServer` (без базы): набор «с телефоном», рассылка игрокам с модом, новому — текущий набор,
     при выходе — снятие. Только при `phoneInHandVisible`.
@@ -121,6 +126,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     RequestPublics(SUBSCRIBED/MANAGED/POPULAR), Search, Report, RequestReports, ResolveReport(DISMISS/DELETE/DELETE_AND_MUTE), Mute.
 - `protocol/data/MessengerData` — UserInfo, MessageInfo, ChatInfo, ChatType и ограничения (1000 символов, 32 на название,
   50 участников, страница истории 40).
+- `protocol/data/PrivacyData` — `Audience` (EVERYONE, FOLLOWING — на кого подписан владелец, MUTUAL, NOBODY), `Kind` (MESSAGES,
+  VOICE, PHOTOS, INVITES, CALLS), `Privacy` (по Audience на каждый Kind; `with`, `get`), MAX_LIST 200.
+  `SocialData.ProfileLook` — avatarType (0 — голова, 1 — фигура), pose (0..7), background (0..11), bannerStyle (0..9), bannerImage.
 - `protocol/data/VoiceData` — `VoiceRef` (id, длительность), `CallInfo`, кодек `CODEC_ADPCM16` (IMA ADPCM 16 кГц моно, ~8 КБ/с).
 - `protocol/data/ImageRef` — фото на сервере (id, ширина, высота), `PhotoPolicy` (ANY/SERVER/NONE), `Purpose` (POST/CHAT), CHUNK.
 - `protocol/data/SocialData` — PostInfo, CommentInfo, ProfileInfo, PublicInfo (role получателя), PublicRef, ReportInfo, перечисления
@@ -157,6 +165,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     приходит вызов; принявшие входят в группу; не ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён.
     Тик каждые 5 с (планировщик бэкенда). Вышел из группы через меню SVC — `leftGroup`.
   - `RateLimiter` — «не больше N за окно» по игроку.
+  - `PrivacyService` — таблицы `privacy` и `privacy_lists` (kind 0 — «всегда можно», 1 — заблокирован; игрок только в одном списке);
+    `allows(owner, other, Kind)`: списки важнее настроек, FOLLOWING/MUTUAL — по таблице follows. Проверки: новая личка
+    (OpenDirect), сообщение/фото/голосовое в личном чате (`MessengerService.directAllowed`), приглашения в группу при создании и
+    ADD (отказавшиеся пропускаются, ошибка `privacy_invites` с числом), звонок в личном чате (`call.error.privacy`).
+    Оформление страницы — колонки profiles.avatar_type/avatar_pose/avatar_bg/banner_style/banner_image (`SocialRepository.look/setLook`),
+    фото баннера — images.kind 3 (KIND_BANNER, видно всем); старое фото баннера отвязывается и удаляется через сутки.
   - `filter/FilterSettings` (POJO для Gson; Paper заполняет из `filter.*` в config.yml; `fixNulls()`) и `filter/ContentFilter` —
     автомодерация: слова (чёрный/белый список; «слово», «слово*», «*слово», «*слово*», «regex:…»; сравнение по «скелету»:
     похожие буквы/цифры сведены, повторы схлопнуты, буквы через разделители склеены; censor → звёздочки или block) и ссылки
@@ -235,6 +249,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `Wallpapers` — обои: градиент или своя картинка из `blockphone/wallpapers/` (обрезка по центру, через `PhotoTextures`);
     `setCustom(name)`, `importAndSet(path)` (из галереи), `list()`.
   - `PhoneClock` — время (реальное/игровое, 12/24ч) и дата с локалью телефона.
+- `social/ProfileLooks` — аватар по `ProfileLook`: фон-градиент (12) + голова или фигура из скина (`submitSkinRenderState`, своя
+  модель на каждую из 8 поз, широкая и тонкая; координаты переводятся через `g.pose()` — модель рисуется отдельной картинкой в
+  экранных координатах) и баннер (фото или один из 10 градиентов). `social/PrivacyClient` — мои настройки приватности.
+  Экраны ленты: `ProfileView` (баннер, аватар, «Оформление», «Приватность», «Личка закрыта», меню «Заблокировать»),
+  `ProfileLookView` (предпросмотр, голова/фигура, поза, фон, баннер, фото из галереи), `PrivacyView` (5 настроек — ЛКМ/ПКМ,
+  списки «Всегда можно»/«Заблокированы» через `UserPickView`). `SocialView.hitDir` — клик с направлением (ЛКМ +1, ПКМ −1).
 - `ui/PhotoPicker` (выбор фото из галереи поверх приложения; неподходящие под политику — затемнены), `ui/ImageViewer`
   (просмотр фото на весь экран), `ui/Images` (фото с сервера: `draw` с обрезкой, `drawFit`, `height`), `ui/PopupMenu` (меню-пункты).
 - `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:

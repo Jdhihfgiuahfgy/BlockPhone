@@ -328,6 +328,18 @@ public final class SocialPackets {
         }
     }
 
+    /** Оформление своей страницы. bannerImageId: 0 — без фото, -1 — оставить как есть, иначе — загруженное фото. */
+    public record UpdateLook(int avatarType, int pose, int background, int bannerStyle, long bannerImageId) implements Packet {
+        public static UpdateLook read(PacketReader r) {
+            return new UpdateLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readLong());
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeVarInt(avatarType).writeVarInt(pose).writeVarInt(background).writeVarInt(bannerStyle).writeLong(bannerImageId);
+        }
+    }
+
     public record Follow(UUID user, boolean follow) implements Packet {
         public static Follow read(PacketReader r) {
             return new Follow(r.readUuid(), r.readBoolean());

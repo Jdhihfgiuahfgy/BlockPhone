@@ -151,6 +151,24 @@ public final class SocialRepository {
                 + "ON DUPLICATE KEY UPDATE bio = VALUES(bio), updated_at = VALUES(updated_at)", uuid, bio, now);
     }
 
+    /** Оформление страницы (без фото баннера — его id отдельно). */
+    public record LookRow(int avatarType, int pose, int background, int bannerStyle, long bannerImage) {
+    }
+
+    public LookRow look(UUID uuid) throws SQLException {
+        LookRow row = one("SELECT avatar_type, avatar_pose, avatar_bg, banner_style, banner_image FROM " + profiles + " WHERE uuid = ?",
+                rs -> new LookRow(rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getLong(5)), uuid);
+        return row != null ? row : new LookRow(0, 0, 0, 0, 0);
+    }
+
+    public void setLook(UUID uuid, LookRow look, long now) throws SQLException {
+        update("INSERT INTO " + profiles + " (uuid, bio, updated_at, avatar_type, avatar_pose, avatar_bg, banner_style, banner_image) "
+                        + "VALUES (?, '', ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE avatar_type = VALUES(avatar_type), "
+                        + "avatar_pose = VALUES(avatar_pose), avatar_bg = VALUES(avatar_bg), banner_style = VALUES(banner_style), "
+                        + "banner_image = VALUES(banner_image), updated_at = VALUES(updated_at)",
+                uuid, now, look.avatarType(), look.pose(), look.background(), look.bannerStyle(), look.bannerImage());
+    }
+
     // --- Подписки на игроков ---
 
     /** @return true — подписка новая. */
