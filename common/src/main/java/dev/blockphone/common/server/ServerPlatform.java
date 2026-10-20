@@ -22,6 +22,11 @@ public interface ServerPlatform {
         return permission.defaultAllowed();
     }
 
+    /** Выполнить в главном потоке сервера (для Simple Voice Chat). По умолчанию — сразу. */
+    default void runOnMain(Runnable task) {
+        task.run();
+    }
+
     void info(String message);
 
     void warn(String message, Throwable error);

@@ -22,9 +22,18 @@ social:
   # Сколько пабликов может создать один игрок (модераторов это не касается).
   max-publics-per-player: 3
 
+voice:
+  # Голосовые сообщения в мессенджере (запись с микрофона, работают без других модов).
+  messages: true
+  max-seconds: 60
+  # Звонки в чатах. Нужен плагин Simple Voice Chat на сервере и мод у игроков.
+  calls: true
+  # normal — в звонке слышно и тех, кто рядом; isolated — только участников звонка.
+  call-group-type: normal
+
 # Ники или UUID игроков с полными правами модератора (удаление постов и пабликов, заглушение, жалобы).
 # Удобно, если нет LuckPerms. Операторы (op) — модераторы и без этого списка.
-# Права: blockphone.post, blockphone.photo, blockphone.public.create (у всех);
+# Права: blockphone.post, blockphone.photo, blockphone.public.create, blockphone.voice, blockphone.call (у всех);
 #        blockphone.moderate.posts, .publics, .mute, .reports, blockphone.moderator — все сразу (у операторов).
 moderators: []
 

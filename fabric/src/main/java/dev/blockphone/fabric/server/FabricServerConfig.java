@@ -27,8 +27,18 @@ public final class FabricServerConfig {
     public Social social = new Social();
     /** Ники или UUID игроков с полными правами модератора (если нет LuckPerms; операторы — модераторы и так). */
     public List<String> moderators = new ArrayList<>();
+    /** Голосовые сообщения и звонки (звонки — через мод Simple Voice Chat). */
+    public Voice voice = new Voice();
     /** Хранилище переписки, ленты и фото. */
     public Storage storage = new Storage();
+
+    public static final class Voice {
+        public boolean messages = true;
+        public int maxSeconds = 60;
+        public boolean calls = true;
+        /** "normal" — в звонке слышно и тех, кто рядом; "isolated" — только участников звонка. */
+        public String callGroupType = "normal";
+    }
 
     public static final class Social {
         public boolean enabled = true;
@@ -60,7 +70,8 @@ public final class FabricServerConfig {
                 storage.user, storage.password, storage.tablePrefix);
         ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
                 social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
-        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators));
+        ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType);
+        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v);
     }
 
     public static FabricServerConfig load() {
@@ -81,6 +92,9 @@ public final class FabricServerConfig {
         }
         if (config.social == null) {
             config.social = new Social();
+        }
+        if (config.voice == null) {
+            config.voice = new Voice();
         }
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();

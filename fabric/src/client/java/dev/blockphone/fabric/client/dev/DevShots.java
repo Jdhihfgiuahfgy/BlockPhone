@@ -61,7 +61,7 @@ public final class DevShots {
     private record Step(int delayTicks, Predicate<Minecraft> ready, Consumer<Minecraft> action) {
     }
 
-    /** Сценарий: "all" (по умолчанию), "design", "music", "messenger" или "social" (два последних — с BLOCKPHONE_DEV_MESSENGER=1). */
+    /** Сценарий: "all" (по умолчанию), "design", "music", "messenger", "social", "voice" (три последних — с BLOCKPHONE_DEV_MESSENGER=1). */
     private final String scenario = System.getenv().getOrDefault("BLOCKPHONE_DEV_SCENARIO", "all");
     private final AtomicLong directChat = new AtomicLong(-1);
     private final AtomicLong groupChat = new AtomicLong(-1);
@@ -113,7 +113,8 @@ public final class DevShots {
         step(1, mc -> mc.options.pauseOnLostFocus = false);
 
         // 1. Все приложения в главном меню.
-        boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music");
+        boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music")
+                || scenario.equals("voice");
         for (boolean dark : server ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
@@ -189,6 +190,8 @@ public final class DevShots {
             planSocial(settings);
         } else if (scenario.equals("music")) {
             planMusic(settings);
+        } else if (scenario.equals("voice")) {
+            planVoice(settings);
         } else {
             planCameraGalleryNotes();
         }
@@ -380,6 +383,83 @@ public final class DevShots {
             MusicPlayer.stop();
             settings.musicVolume = originalVolume;
         });
+    }
+
+    // --- Голосовые и звонки (одиночная игра с BLOCKPHONE_DEV_MESSENGER=1; Simple Voice Chat — из среды разработки) ---
+
+    private void planVoice(PhoneSettings settings) {
+        waitFor(mc -> MessengerClient.loaded() && ClientSession.get() != null);
+        step(5, this::seedMessenger);
+        waitFor(mc -> directChat.get() > 0 && MessengerClient.chat(directChat.get()) != null);
+        step(40, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] voice: bridge={}, calls={}, maxVoice={}",
+                dev.blockphone.common.voice.VoiceBridges.current() != null, ClientSession.callsAvailable(),
+                ClientSession.maxVoiceSeconds()));
+        step(1, mc -> {
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+            phone(mc, p -> p.openApp("messenger"));
+            messenger(app -> app.openChat(directChat.get()));
+        });
+        // Тихий тестовый сигнал вместо микрофона (2,5 с, «глиссандо» 300→600 Гц).
+        step(20, mc -> {
+            int n = dev.blockphone.common.protocol.data.VoiceData.SAMPLE_RATE * 5 / 2;
+            short[] pcm = new short[n];
+            double phase = 0;
+            for (int i = 0; i < n; i++) {
+                phase += 2 * Math.PI * (300 + 300.0 * i / n) / dev.blockphone.common.protocol.data.VoiceData.SAMPLE_RATE;
+                pcm[i] = (short) (500 * Math.sin(phase));
+            }
+            dev.blockphone.fabric.client.voice.VoiceMessages.upload(pcm, result -> {
+                BlockPhoneFabric.LOGGER.info("[DevShots] voice upload: {} {}", result.voice(), result.error());
+                if (result.voice() != null) {
+                    MessengerClient.sendMessage(directChat.get(), "", null, result.voice());
+                }
+            });
+        });
+        shot(80, "voice_chat_sent");
+        step(1, mc -> {
+            var list = MessengerClient.messages(directChat.get()).list;
+            for (int i = list.size() - 1; i >= 0; i--) {
+                if (list.get(i).voice() != null) {
+                    dev.blockphone.fabric.client.voice.VoiceMessages.toggle(list.get(i).voice());
+                    break;
+                }
+            }
+        });
+        shot(25, "voice_playing");
+        // Интерфейс звонка на поддельных состояниях (сервер звонков проверен тестами).
+        step(60, mc -> {
+            var self = new dev.blockphone.common.protocol.data.MessengerData.UserInfo(mc.player.getUUID(), mc.player.getName().getString(), true);
+            var steve = new dev.blockphone.common.protocol.data.MessengerData.UserInfo(STEVE, "Steve", true);
+            dev.blockphone.fabric.client.voice.CallClient.handle(new dev.blockphone.common.protocol.packet.VoicePackets.CallState(
+                    new dev.blockphone.common.protocol.data.VoiceData.CallInfo(directChat.get(), List.of(steve), List.of(self),
+                            System.currentTimeMillis(), true)));
+        });
+        shot(30, "call_incoming");
+        step(1, mc -> {
+            var self = new dev.blockphone.common.protocol.data.MessengerData.UserInfo(mc.player.getUUID(), mc.player.getName().getString(), true);
+            var steve = new dev.blockphone.common.protocol.data.MessengerData.UserInfo(STEVE, "Steve", true);
+            dev.blockphone.fabric.client.voice.CallClient.handle(new dev.blockphone.common.protocol.packet.VoicePackets.CallState(
+                    new dev.blockphone.common.protocol.data.VoiceData.CallInfo(directChat.get(), List.of(steve, self), List.of(),
+                            System.currentTimeMillis() - 65_000, true)));
+        });
+        shot(30, "call_bar");
+        step(1, mc -> mc.setScreen(null));
+        shot(40, "call_hud");
+        step(1, mc -> dev.blockphone.fabric.client.voice.CallClient.handle(new dev.blockphone.common.protocol.packet.VoicePackets.CallState(
+                new dev.blockphone.common.protocol.data.VoiceData.CallInfo(directChat.get(), List.of(), List.of(), 0, false))));
+        // Настоящий звонок через Simple Voice Chat (если он подключился): позвонить в группу и посмотреть ответ сервера.
+        step(40, mc -> dev.blockphone.fabric.client.voice.CallClient.start(groupChat.get()));
+        step(40, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] real call: myCall={}, error={}",
+                dev.blockphone.fabric.client.voice.CallClient.myCall(), MessengerClient.recentError()));
+        step(1, mc -> {
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+            phone(mc, p -> p.openApp("messenger"));
+            messenger(app -> app.openChat(groupChat.get()));
+        });
+        shot(40, "call_real_group");
+        step(1, mc -> dev.blockphone.fabric.client.voice.CallClient.leave(groupChat.get()));
     }
 
     private static void copyMinecraftMusic(Minecraft mc) {

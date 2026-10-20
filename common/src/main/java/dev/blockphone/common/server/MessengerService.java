@@ -7,6 +7,7 @@ import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.ChatType;
 import dev.blockphone.common.protocol.data.MessengerData.MessageInfo;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
+import dev.blockphone.common.protocol.data.VoiceData.VoiceRef;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.common.server.MessengerRepository.ChatRow;
 import dev.blockphone.common.server.MessengerRepository.MessageRow;
@@ -41,6 +42,10 @@ public final class MessengerService {
 
     public boolean available() {
         return backend.available();
+    }
+
+    MessengerRepository repo() {
+        return repo;
     }
 
     private Map<UUID, String> online() {
@@ -106,7 +111,7 @@ public final class MessengerService {
 
     private void sendMessage(UUID player, MessengerPackets.SendMessage p) throws SQLException {
         String text = p.text().strip();
-        if (text.isEmpty() && p.imageId() <= 0) {
+        if (text.isEmpty() && p.imageId() <= 0 && p.voiceId() <= 0) {
             return;
         }
         if (text.length() > MessengerData.MAX_MESSAGE_LENGTH) {
@@ -130,10 +135,19 @@ public final class MessengerService {
                 return;
             }
         }
+        VoiceRef voice = null;
+        if (p.voiceId() > 0) {
+            voice = backend.voices().claim(player, p.voiceId(), p.chatId());
+            if (voice == null) {
+                send(player, new MessengerPackets.Failure("voice.error.not_found", ""));
+                return;
+            }
+        }
         long now = System.currentTimeMillis();
-        long id = repo.insertMessage(p.chatId(), player, text, image != null ? image.id() : 0, now);
+        long id = repo.insertMessage(p.chatId(), player, text, image != null ? image.id() : 0, voice != null ? voice.id() : 0, now);
         repo.markRead(p.chatId(), player, id);
-        MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), text, image, now, 0, false);
+        MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), text, image, voice, now, 0,
+                false);
         for (UUID member : repo.members(p.chatId())) {
             if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
@@ -144,7 +158,7 @@ public final class MessengerService {
     private void editMessage(UUID player, MessengerPackets.EditMessage p) throws SQLException {
         MessageRow row = repo.message(p.messageId());
         String text = p.text().strip();
-        if (row == null || row.deleted() || !row.sender().equals(player) || (text.isEmpty() && row.imageId() <= 0)) {
+        if (row == null || row.deleted() || !row.sender().equals(player) || (text.isEmpty() && row.imageId() <= 0 && row.voiceId() <= 0)) {
             return;
         }
         if (text.length() > MessengerData.MAX_MESSAGE_LENGTH) {
@@ -153,7 +167,8 @@ public final class MessengerService {
         }
         long now = System.currentTimeMillis();
         repo.editMessage(row.id(), text, now);
-        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), text, row.imageId(), row.sentAt(), now, false));
+        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), text, row.imageId(), row.voiceId(), row.sentAt(), now,
+                false));
     }
 
     private void deleteMessage(UUID player, MessengerPackets.DeleteMessage p) throws SQLException {
@@ -163,7 +178,8 @@ public final class MessengerService {
         }
         repo.deleteMessage(row.id());
         backend.imageRepo().delete(row.imageId());
-        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), "", 0, row.sentAt(), row.editedAt(), true));
+        backend.voices().repo().delete(row.voiceId());
+        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), "", 0, 0, row.sentAt(), row.editedAt(), true));
     }
 
     private void broadcastUpdated(MessageRow row) throws SQLException {
@@ -358,10 +374,11 @@ public final class MessengerService {
     private List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
         Map<UUID, String> names = names(rows.stream().map(MessageRow::sender).toList());
         Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(MessageRow::imageId).toList());
+        Map<Long, VoiceRef> voices = backend.voices().repo().refs(rows.stream().map(MessageRow::voiceId).toList());
         List<MessageInfo> result = new ArrayList<>(rows.size());
         for (MessageRow row : rows) {
             result.add(new MessageInfo(row.id(), row.chatId(), backend.user(row.sender(), names.get(row.sender())), row.text(),
-                    images.get(row.imageId()), row.sentAt(), row.editedAt(), row.deleted()));
+                    images.get(row.imageId()), voices.get(row.voiceId()), row.sentAt(), row.editedAt(), row.deleted()));
         }
         return result;
     }
@@ -400,7 +417,7 @@ public final class MessengerService {
             long now = System.currentTimeMillis();
             long id = repo.insertMessage(chatId, sender, text, now);
             MessageInfo message = new MessageInfo(id, chatId, new UserInfo(sender, senderName, backend.isOnline(sender)),
-                    text, null, now, 0, false);
+                    text, null, null, now, 0, false);
             for (UUID member : repo.members(chatId)) {
                 if (backend.isOnline(member)) {
                     send(member, new MessengerPackets.NewMessage(message, ""));

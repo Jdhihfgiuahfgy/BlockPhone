@@ -209,6 +209,9 @@ public class PhoneScreen extends Screen {
         if (dialog != null) {
             dialog.render(g, sx, sy);
         }
+        if (CallOverlay.visible()) {
+            CallOverlay.render(g, sx, sy);
+        }
 
         g.disableScissor();
         // Скруглённые углы экрана и камера-«точка».
@@ -342,6 +345,9 @@ public class PhoneScreen extends Screen {
         }
         double sx = toScreenX(event.x());
         double sy = toScreenY(event.y());
+        if (CallOverlay.mouseClicked(sx, sy)) {
+            return true;
+        }
         if (dialog != null) {
             if (dialog.mouseClicked(sx, sy)) {
                 dialog = null;

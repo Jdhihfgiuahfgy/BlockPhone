@@ -35,19 +35,23 @@ public final class MessengerData {
         }
     }
 
-    /** Сообщение. image — фото или null; editedAt = 0 — не редактировалось; deleted — удалено (текст пустой). */
-    public record MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, long sentAt, long editedAt,
-                              boolean deleted) {
+    /**
+     * Сообщение. image — фото или null; voice — голосовое или null; editedAt = 0 — не редактировалось;
+     * deleted — удалено (текст пустой).
+     */
+    public record MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
+                              long sentAt, long editedAt, boolean deleted) {
         public static MessageInfo read(PacketReader r) {
             return new MessageInfo(r.readLong(), r.readLong(), UserInfo.read(r), r.readString(MAX_MESSAGE_LENGTH * 2),
-                    r.readNullable(ImageRef::read), r.readLong(), r.readLong(), r.readBoolean());
+                    r.readNullable(ImageRef::read), r.readNullable(VoiceData.VoiceRef::read), r.readLong(), r.readLong(),
+                    r.readBoolean());
         }
 
         public static void write(PacketWriter w, MessageInfo m) {
             w.writeLong(m.id).writeLong(m.chatId);
             UserInfo.write(w, m.sender);
-            w.writeString(m.text).writeNullable(m.image, ImageRef::write).writeLong(m.sentAt).writeLong(m.editedAt)
-                    .writeBoolean(m.deleted);
+            w.writeString(m.text).writeNullable(m.image, ImageRef::write).writeNullable(m.voice, VoiceData.VoiceRef::write)
+                    .writeLong(m.sentAt).writeLong(m.editedAt).writeBoolean(m.deleted);
         }
     }
 

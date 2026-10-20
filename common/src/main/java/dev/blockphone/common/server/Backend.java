@@ -8,20 +8,24 @@ import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.common.protocol.packet.SessionPacket;
 import dev.blockphone.common.protocol.packet.SocialPackets;
+import dev.blockphone.common.protocol.packet.VoicePackets;
+import dev.blockphone.common.voice.VoiceBridge;
+import dev.blockphone.common.voice.VoiceBridges;
 
 import java.sql.SQLException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Supplier;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Серверное «ядро» с базой данных: один фоновый поток (база и состояние без гонок), одно подключение к базе,
  * игроки онлайн, права и сведения о сессии. На нём работают мессенджер ({@link MessengerService}),
- * лента ({@link SocialService}) и фото ({@link ImageService}).
+ * лента ({@link SocialService}), фото ({@link ImageService}), голосовые ({@link VoiceService}) и звонки ({@link CallService}).
  */
 public final class Backend {
     private static final long UNUSED_IMAGE_TTL_MS = 24 * 3600_000L;
@@ -34,7 +38,9 @@ public final class Backend {
     private final ImageService images;
     private final MessengerService messenger;
     private final SocialService social;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+    private final VoiceService voices;
+    private final CallService calls;
+    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread thread = new Thread(r, "BlockPhone Server");
         thread.setDaemon(true);
         return thread;
@@ -46,6 +52,11 @@ public final class Backend {
     private volatile String serverId = "";
 
     public Backend(ServerPlatform platform, ServerSettings settings) {
+        this(platform, settings, VoiceBridges::current);
+    }
+
+    /** bridges — откуда брать голосовой мост (тесты подставляют заглушку). */
+    public Backend(ServerPlatform platform, ServerSettings settings, Supplier<VoiceBridge> bridges) {
         this.platform = platform;
         this.settings = settings;
         this.database = new Database(settings.storage());
@@ -54,6 +65,9 @@ public final class Backend {
         this.images = new ImageService(this);
         this.messenger = settings.messengerEnabled() ? new MessengerService(this) : null;
         this.social = settings.social().enabled() ? new SocialService(this) : null;
+        this.voices = new VoiceService(this);
+        this.calls = new CallService(this, bridges);
+        VoiceBridges.setLeaveListener((player, group) -> run(player, false, null, () -> calls.leftGroup(player, group)));
     }
 
     public void start() {
@@ -70,12 +84,14 @@ public final class Backend {
                 if (removed > 0) {
                     platform.info("Removed " + removed + " unused uploaded photos");
                 }
+                voices.cleanup();
                 available = true;
                 platform.info("BlockPhone storage ready (" + settings.storage().type() + ")");
             } catch (Exception e) {
                 platform.warn("BlockPhone storage failed to start, messenger and feed disabled", e);
             }
         });
+        executor.scheduleWithFixedDelay(() -> run(null, false, null, calls::tick), 5, 5, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     public void stop() {
@@ -116,6 +132,14 @@ public final class Backend {
 
     ImageService images() {
         return images;
+    }
+
+    VoiceService voices() {
+        return voices;
+    }
+
+    CallService calls() {
+        return calls;
     }
 
     public MessengerService messenger() {
@@ -189,8 +213,9 @@ public final class Backend {
         long mutedUntil = social != null ? social.mutedUntil(player) : 0;
         int reports = social != null && Rights.has(rights, Rights.MOD_REPORTS) ? social.openReports() : 0;
         ServerSettings.Social s = settings.social();
+        boolean callsOk = calls.available() && Rights.has(rights, Rights.CALL);
         send(player, new SessionPacket(serverId, social != null, s.photos(), s.maxPhotoBytes(), s.maxPhotoSide(), rights, mutedUntil,
-                reports));
+                reports, voices.maxSeconds(player), callsOk));
     }
 
     // --- События платформы ---
@@ -202,6 +227,7 @@ public final class Backend {
             sendSession(uuid);
             if (messenger != null) {
                 messenger.join(uuid, name);
+                calls.join(uuid);
             }
         });
     }
@@ -210,6 +236,10 @@ public final class Backend {
         run(uuid, false, null, () -> {
             String name = online.remove(uuid);
             images.forget(uuid);
+            voices.forget(uuid);
+            if (messenger != null) {
+                calls.quit(uuid);
+            }
             if (social != null) {
                 social.forget(uuid);
             }
@@ -235,6 +265,13 @@ public final class Backend {
             }
         } else if (group == ImagePackets.class) {
             run(player, true, "photo.error.internal", () -> images.handle(player, packet));
+        } else if (group == VoicePackets.class) {
+            if (packet instanceof VoicePackets.UploadBegin || packet instanceof VoicePackets.UploadChunk
+                    || packet instanceof VoicePackets.RequestVoice) {
+                run(player, true, "voice.error.internal", () -> voices.handle(player, packet));
+            } else if (messenger != null) {
+                run(player, true, "messenger.error.internal", () -> calls.handle(player, packet));
+            }
         } else if (packet instanceof SessionPacket.Refresh) {
             run(player, true, null, () -> sendSession(player));
         }
@@ -263,6 +300,8 @@ public final class Backend {
                         send(player, new SocialPackets.Failure(errorKey, ""));
                     } else if (errorKey.startsWith("photo.")) {
                         send(player, new ImagePackets.UploadResult(-1, null, errorKey));
+                    } else if (errorKey.startsWith("voice.")) {
+                        send(player, new VoicePackets.UploadResult(-1, null, errorKey));
                     } else {
                         send(player, new MessengerPackets.Failure(errorKey, ""));
                     }

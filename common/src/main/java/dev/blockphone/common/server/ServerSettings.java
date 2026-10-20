@@ -15,10 +15,33 @@ import java.util.List;
  * @param moderators         ники или UUID игроков с полными правами модератора (на случай, если нет LuckPerms)
  */
 public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social,
-                             List<String> moderators) {
+                             List<String> moderators, Voice voice) {
 
     public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage) {
-        this(messengerEnabled, phoneInHandVisible, storage, Social.defaults(), List.of());
+        this(messengerEnabled, phoneInHandVisible, storage, Social.defaults(), List.of(), Voice.defaults());
+    }
+
+    public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social, List<String> moderators) {
+        this(messengerEnabled, phoneInHandVisible, storage, social, moderators, Voice.defaults());
+    }
+
+    /**
+     * Голос.
+     *
+     * @param messages      голосовые сообщения в мессенджере
+     * @param maxSeconds    предел длины голосового
+     * @param calls         звонки через группы Simple Voice Chat (нужен мод/плагин SVC на сервере)
+     * @param callGroupType тип группы SVC: "normal" (слышно и тех, кто рядом), "isolated" (только участников звонка)
+     */
+    public record Voice(boolean messages, int maxSeconds, boolean calls, String callGroupType) {
+        public static Voice defaults() {
+            return new Voice(true, 60, true, "normal");
+        }
+
+        public Voice {
+            maxSeconds = Math.max(5, Math.min(dev.blockphone.common.protocol.data.VoiceData.HARD_MAX_SECONDS, maxSeconds));
+            callGroupType = callGroupType == null ? "normal" : callGroupType;
+        }
     }
 
     /** Нужен ли фоновый поток с базой данных (мессенджер или лента включены). */

@@ -46,6 +46,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             MusicPlayer.tick();
             Spotify.tick();
+            dev.blockphone.fabric.client.voice.VoiceMessages.tick();
+            dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
                 if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
                     MusicPlayer.toggle();

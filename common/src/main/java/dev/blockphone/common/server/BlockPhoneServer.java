@@ -27,9 +27,15 @@ public final class BlockPhoneServer {
     private final Map<UUID, String> modded = new ConcurrentHashMap<>();
 
     public BlockPhoneServer(ServerPlatform platform, ServerSettings settings) {
+        this(platform, settings, dev.blockphone.common.voice.VoiceBridges::current);
+    }
+
+    /** bridges — откуда брать голосовой мост для звонков (тесты подставляют заглушку). */
+    public BlockPhoneServer(ServerPlatform platform, ServerSettings settings,
+                            java.util.function.Supplier<dev.blockphone.common.voice.VoiceBridge> bridges) {
         this.platform = platform;
         this.settings = settings;
-        this.backend = settings.backendEnabled() ? new Backend(platform, settings) : null;
+        this.backend = settings.backendEnabled() ? new Backend(platform, settings, bridges) : null;
     }
 
     public void start() {

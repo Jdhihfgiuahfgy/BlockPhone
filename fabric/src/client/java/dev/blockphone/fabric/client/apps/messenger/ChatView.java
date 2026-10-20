@@ -1,7 +1,10 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
 import dev.blockphone.common.protocol.data.ImageRef;
+import dev.blockphone.common.BlockPhone;
 import dev.blockphone.common.protocol.data.MessengerData;
+import dev.blockphone.common.protocol.data.VoiceData.CallInfo;
+import dev.blockphone.common.protocol.data.VoiceData.VoiceRef;
 import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.ChatType;
 import dev.blockphone.common.protocol.data.MessengerData.MessageInfo;
@@ -16,6 +19,10 @@ import dev.blockphone.fabric.client.photo.PhotoTextures;
 import dev.blockphone.fabric.client.ui.ImageViewer;
 import dev.blockphone.fabric.client.ui.Images;
 import dev.blockphone.fabric.client.ui.PhotoPicker;
+import dev.blockphone.fabric.client.voice.CallClient;
+import dev.blockphone.fabric.client.voice.VoiceMessages;
+import dev.blockphone.fabric.client.voice.VoiceRecorder;
+import net.minecraft.resources.Identifier;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -36,7 +43,9 @@ import java.util.Map;
 /**
  * Переписка: пузыри сообщений (свои справа, синие), разделители дней, подгрузка истории при прокрутке вверх,
  * поле ввода (Enter — отправить, Shift+Enter — новая строка), ПКМ по сообщению — меню (изменить/удалить/копировать),
- * фото: кнопка «+» слева от поля — выбрать из галереи (загружается сразу), клик по фото — просмотр.
+ * фото: кнопка «+» слева от поля — выбрать из галереи (загружается сразу), клик по фото — просмотр;
+ * голосовые: при пустом поле справа — микрофон (нажать — запись, ещё раз «➤» — отправить, «×» — отмена);
+ * звонок: трубка в строке статуса, идущий звонок — зелёная полоса под ней (Simple Voice Chat).
  */
 final class ChatView extends MessengerView {
     private static final float TEXT_SCALE = 0.75f;
@@ -52,11 +61,27 @@ final class ChatView extends MessengerView {
     private static final long TYPING_SEND_MS = 3000;
     private static final int IMAGE_W = 100;
     private static final int ATTACH_H = 24;
+    private static final int VOICE_W = 96;
+    private static final int VOICE_H = 16;
+    private static final int CALL_H = 16;
+    private static final Identifier MIC = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/voice/mic.png");
+    private static final Identifier CALL = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/voice/call.png");
+    private static final Identifier HANGUP = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/voice/hangup.png");
+    private static final Identifier PLAY = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/music/play.png");
+    private static final Identifier PAUSE = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/music/pause.png");
 
     /** Элемент ленты: сообщение (или неподтверждённое) либо разделитель дня. */
     private record Item(MessageInfo message, MessengerClient.Pending pending, String separator,
-                        List<FormattedCharSequence> lines, String name, String time, ImageRef image, int imageH,
+                        List<FormattedCharSequence> lines, String name, String time, ImageRef image, int imageH, VoiceRef voice,
                         int width, int height, boolean own) {
+    }
+
+    /** Голосовое на экране (клик — играть/пауза). */
+    private record VoiceHit(int x, int y, int w, int h, VoiceRef voice) {
+    }
+
+    /** Кнопка в строке статуса / полосе звонка. */
+    private record ButtonHit(int x, int y, int w, int h, Runnable action) {
     }
 
     /** Фото на экране (клик — просмотр). */
@@ -75,6 +100,15 @@ final class ChatView extends MessengerView {
     private final Map<String, List<FormattedCharSequence>> wrapCache = new HashMap<>();
     private final List<Hit> hits = new ArrayList<>();
     private final List<ImageHit> imageHits = new ArrayList<>();
+    private final List<VoiceHit> voiceHits = new ArrayList<>();
+    private final List<ButtonHit> buttons = new ArrayList<>();
+    /** Идёт запись голосового (null — нет). */
+    private VoiceRecorder recorder;
+    /** Запись остановлена — ждём данные и отправляем. */
+    private boolean recordingSend;
+    private boolean voiceUploading;
+    private String voiceError;
+    private long voiceErrorAt;
     private final PhotoPicker picker = new PhotoPicker(this::attach);
     private final ImageViewer viewer = new ImageViewer();
     /** Прикреплённое фото (загружается или загружено), null — нет. */
@@ -130,12 +164,14 @@ final class ChatView extends MessengerView {
 
     @Override
     void onHidden() {
+        cancelRecording();
         MessengerClient.setOpenChat(-1);
         input.setFocused(false);
     }
 
     @Override
     void tick() {
+        tickVoice();
         if (MessengerClient.loaded() && chat() == null) {
             app.pop(); // Чат удалён или нас исключили.
         }
@@ -146,10 +182,79 @@ final class ChatView extends MessengerView {
         return input.isFocused();
     }
 
+    /** Каждый тик: запись дошла до предела — отправить; запись остановлена — сжать и загрузить. */
+    private void tickVoice() {
+        if (recorder == null) {
+            return;
+        }
+        if (recorder.error() != null) {
+            showVoiceError(MessengerApp.tr(recorder.error()));
+            recorder = null;
+            recordingSend = false;
+            return;
+        }
+        if (recorder.full() && !recordingSend) {
+            finishRecording();
+        }
+        if (recordingSend && recorder.finished()) {
+            short[] samples = recorder.samples();
+            recorder = null;
+            recordingSend = false;
+            if (samples.length < dev.blockphone.common.protocol.data.VoiceData.SAMPLE_RATE / 2) {
+                showVoiceError(MessengerApp.tr("voice.too_short"));
+                return;
+            }
+            voiceUploading = true;
+            VoiceMessages.upload(samples, result -> {
+                voiceUploading = false;
+                if (result.voice() != null) {
+                    MessengerClient.sendMessage(chatId, "", null, result.voice());
+                    scroll = 0;
+                } else {
+                    showVoiceError(MessengerApp.tr(result.error()));
+                }
+            });
+        }
+    }
+
+    private void showVoiceError(String text) {
+        voiceError = text;
+        voiceErrorAt = System.currentTimeMillis();
+    }
+
+    private boolean voiceEnabled() {
+        return editingId < 0 && ClientSession.maxVoiceSeconds() > 0;
+    }
+
+    private void startRecording() {
+        dev.blockphone.fabric.client.voice.VoiceMessages.stop();
+        recorder = VoiceRecorder.start(ClientSession.maxVoiceSeconds());
+        recordingSend = false;
+    }
+
+    private void finishRecording() {
+        if (recorder != null) {
+            recorder.stop();
+            recordingSend = true;
+        }
+    }
+
+    private void cancelRecording() {
+        if (recorder != null) {
+            recorder.stop();
+            recorder = null;
+            recordingSend = false;
+        }
+    }
+
     // --- Раскладка ---
 
     private int inputTop() {
         return height() - INPUT_H - 4;
+    }
+
+    private int areaTop() {
+        return STATUS_H + 2 + (CallClient.call(chatId) != null ? CALL_H : 0);
     }
 
     private int areaBottom() {
@@ -190,23 +295,23 @@ final class ChatView extends MessengerView {
             String senderKey = m.sender().uuid().toString();
             String name = group && !own && !senderKey.equals(prevSender) ? m.sender().name() : null;
             String time = (m.editedAt() > 0 && !m.deleted() ? MessengerApp.tr("messenger.edited") + " " : "") + MessengerFormat.time(m.sentAt());
-            items.add(bubble(m, null, lines, name, time, m.deleted() ? null : m.image(), own));
+            items.add(bubble(m, null, lines, name, time, m.deleted() ? null : m.image(), m.deleted() ? null : m.voice(), own));
             prevTime = m.sentAt();
             prevSender = senderKey;
         }
         for (MessengerClient.Pending p : MessengerClient.pending(chatId)) {
             List<FormattedCharSequence> lines = p.text().isEmpty() ? List.of() : wrap("p:" + p.nonce(), p.text());
-            items.add(bubble(null, p, lines, null, "...", p.image(), true));
+            items.add(bubble(null, p, lines, null, "...", p.image(), p.voice(), true));
         }
         return items;
     }
 
     private Item separator(String label) {
-        return new Item(null, null, label, List.of(), null, null, null, 0, 0, SEPARATOR_H, false);
+        return new Item(null, null, label, List.of(), null, null, null, 0, null, 0, SEPARATOR_H, false);
     }
 
     private Item bubble(MessageInfo m, MessengerClient.Pending p, List<FormattedCharSequence> lines, String name, String time,
-                        ImageRef image, boolean own) {
+                        ImageRef image, VoiceRef voice, boolean own) {
         float textW = 0;
         for (FormattedCharSequence line : lines) {
             textW = Math.max(textW, PhoneDraw.font().width(line) * TEXT_SCALE);
@@ -219,9 +324,13 @@ final class ChatView extends MessengerView {
             contentW = Math.max(contentW, IMAGE_W);
             imageH = Images.height(image, (int) Math.ceil(contentW));
         }
+        if (voice != null) {
+            contentW = Math.max(contentW, VOICE_W);
+        }
         int width = (int) Math.ceil(contentW) + PAD_X * 2;
-        int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0) + (image != null ? imageH + 3 : 0);
-        return new Item(m, p, null, lines, name, time, image, imageH, width, height, own);
+        int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0) + (image != null ? imageH + 3 : 0)
+                + (voice != null ? VOICE_H + 6 : 0);
+        return new Item(m, p, null, lines, name, time, image, imageH, voice, width, height, own);
     }
 
     private static int totalHeight(List<Item> items) {
@@ -237,10 +346,12 @@ final class ChatView extends MessengerView {
     @Override
     void render(GuiGraphics g, int mouseX, int mouseY) {
         int w = width();
-        renderStatus(g);
+        buttons.clear();
+        renderStatus(g, mouseX, mouseY);
+        renderCallBar(g, mouseX, mouseY);
 
         List<Item> items = layout();
-        int areaTop = STATUS_H + 2;
+        int areaTop = areaTop();
         int areaBottom = areaBottom();
         int total = totalHeight(items);
         clampScroll(total);
@@ -251,6 +362,7 @@ final class ChatView extends MessengerView {
 
         hits.clear();
         imageHits.clear();
+        voiceHits.clear();
         g.enableScissor(0, areaTop, w, areaBottom);
         if (!data.loaded) {
             MessengerApp.centerHint(g, this, MessengerApp.tr("messenger.loading"), (areaTop + areaBottom) / 2 - 4);
@@ -274,10 +386,16 @@ final class ChatView extends MessengerView {
         viewer.render(g, w, height());
     }
 
-    private void renderStatus(GuiGraphics g) {
+    private void renderStatus(GuiGraphics g, int mouseX, int mouseY) {
         ChatInfo chat = chat();
         if (chat == null) {
             return;
+        }
+        if (ClientSession.callsAvailable() && CallClient.call(chatId) == null) {
+            int bx = width() - 16;
+            boolean hover = PhoneDraw.inside(mouseX, mouseY, bx - 2, 0, 14, STATUS_H);
+            PhoneDraw.tinted(g, CALL, bx, 1, 10, 10, 32, 32, hover ? PhoneTheme.online() : PhoneTheme.secondaryText());
+            buttons.add(new ButtonHit(bx - 2, 0, 14, STATUS_H, () -> CallClient.start(chatId)));
         }
         List<String> typing = MessengerClient.typing(chatId);
         String status;
@@ -298,8 +416,86 @@ final class ChatView extends MessengerView {
                 color = PhoneTheme.accent();
             }
         }
-        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(status, width() - 16, 0.6f), width() / 2f, 3, color, 0.6f, false);
+        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(status, width() - 36, 0.6f), width() / 2f, 3, color, 0.6f, false);
         g.fill(0, STATUS_H, width(), STATUS_H + 1, PhoneTheme.separator());
+    }
+
+    /** Полоса идущего звонка: кто в звонке, время, «Войти» / «Ответить» / «Выйти». */
+    private void renderCallBar(GuiGraphics g, int mouseX, int mouseY) {
+        CallInfo call = CallClient.call(chatId);
+        if (call == null) {
+            return;
+        }
+        int w = width();
+        int top = STATUS_H + 1;
+        g.fill(0, top, w, top + CALL_H, PhoneTheme.mix(PhoneTheme.online(), PhoneTheme.background(), 0.75f));
+        g.fill(0, top + CALL_H - 1, w, top + CALL_H, PhoneTheme.separator());
+        PhoneDraw.tinted(g, CALL, 6, top + 3, 10, 10, 32, 32, PhoneTheme.online());
+        boolean mine = CallClient.inCall(chatId);
+        boolean ringingMe = !mine && call.invited().stream().anyMatch(u -> MessengerClient.isSelf(u.uuid()));
+        String text;
+        if (mine) {
+            text = call.participants().size() > 1
+                    ? MessengerApp.tr("call.in_call", call.participants().size(), VoiceMessages.time(CallClient.duration()))
+                    : MessengerApp.tr("call.calling");
+        } else if (ringingMe) {
+            text = MessengerApp.tr("call.incoming_short");
+        } else {
+            text = MessengerApp.tr("call.ongoing", call.participants().size());
+        }
+        int right = w - 4;
+        if (mine) {
+            right = callButton(g, right, top, MessengerApp.tr("call.leave"), PhoneTheme.danger(), mouseX, mouseY, () -> CallClient.leave(chatId));
+        } else if (ringingMe) {
+            right = callButton(g, right, top, MessengerApp.tr("call.decline"), PhoneTheme.danger(), mouseX, mouseY,
+                    () -> CallClient.answer(chatId, false));
+            right = callButton(g, right, top, MessengerApp.tr("call.answer"), PhoneTheme.online(), mouseX, mouseY,
+                    () -> CallClient.answer(chatId, true));
+        } else if (ClientSession.callsAvailable()) {
+            right = callButton(g, right, top, MessengerApp.tr("call.join"), PhoneTheme.online(), mouseX, mouseY, () -> CallClient.start(chatId));
+        }
+        PhoneDraw.text(g, PhoneDraw.ellipsize(text, right - 22, 0.6f), 20, top + 5, PhoneTheme.text(), 0.6f, false);
+    }
+
+    /** Кнопка в полосе звонка (справа налево). Возвращает новую правую границу. */
+    private int callButton(GuiGraphics g, int right, int top, String label, int color, int mouseX, int mouseY, Runnable action) {
+        int bw = (int) PhoneDraw.width(label, 0.6f) + 8;
+        int x = right - bw;
+        boolean hover = PhoneDraw.inside(mouseX, mouseY, x, top + 2, bw, CALL_H - 4);
+        PhoneDraw.roundedRect(g, x, top + 2, right, top + CALL_H - 2, 3, hover ? PhoneTheme.mix(color, PhoneTheme.WHITE, 0.15f) : color);
+        PhoneDraw.centeredText(g, label, x + bw / 2f, top + 5, 0xFFFFFFFF, 0.6f, false);
+        buttons.add(new ButtonHit(x, top + 2, bw, CALL_H - 4, action));
+        return x - 3;
+    }
+
+    /** Голосовое в пузыре: кнопка, полоска проигрывания, длительность. */
+    private void renderVoice(GuiGraphics g, VoiceRef voice, int x, int y, int w, boolean own, boolean pending) {
+        int fg = own ? PhoneTheme.onAccent() : PhoneTheme.accent();
+        int dim = own ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0x60000000 : PhoneTheme.separator();
+        PhoneDraw.roundedRect(g, x, y + 1, x + 14, y + 15, 7, fg);
+        int iconColor = own ? PhoneTheme.accent() : PhoneTheme.onAccent();
+        boolean playing = VoiceMessages.playing(voice.id());
+        if (VoiceMessages.loading(voice.id())) {
+            PhoneDraw.centeredText(g, "…", x + 7, y + 4, iconColor, 0.75f, false);
+        } else {
+            PhoneDraw.tinted(g, playing ? PAUSE : PLAY, x + 3, y + 4, 8, 8, 32, 32, iconColor);
+        }
+        int bx = x + 18;
+        int bw = w - 18;
+        float progress = VoiceMessages.progress(voice.id());
+        // «Волна» — столбики разной высоты, проигранные — ярче.
+        int bars = bw / 3;
+        for (int i = 0; i < bars; i++) {
+            int h = 2 + (int) (Math.abs(Math.sin(voice.id() * 7.3 + i * 1.7) * 5) + Math.abs(Math.sin(i * 0.6)) * 2);
+            boolean played = i < bars * progress;
+            g.fill(bx + i * 3, y + 8 - h / 2, bx + i * 3 + 2, y + 8 + (h + 1) / 2, played || pending ? fg : dim);
+        }
+        String time = VoiceMessages.failed(voice.id()) ? "×" : VoiceMessages.time(voice.durationMs());
+        int timeColor = own ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xC0000000 : PhoneTheme.secondaryText();
+        PhoneDraw.text(g, time, bx, y + 13, timeColor, SMALL, false);
+        if (!pending) {
+            voiceHits.add(new VoiceHit(x, y, w, VOICE_H, voice));
+        }
     }
 
     private void renderItem(GuiGraphics g, Item item, int y, int mouseX, int mouseY) {
@@ -335,6 +531,10 @@ final class ChatView extends MessengerView {
             imageHits.add(new ImageHit(x + PAD_X, ty + 1, iw, item.imageH(), item.image()));
             ty += item.imageH() + 3;
         }
+        if (item.voice() != null) {
+            renderVoice(g, item.voice(), x + PAD_X, ty, item.width() - PAD_X * 2, item.own(), pending);
+            ty += VOICE_H + 6;
+        }
         for (FormattedCharSequence line : item.lines()) {
             g.pose().pushMatrix();
             g.pose().translate(x + PAD_X, ty);
@@ -367,14 +567,54 @@ final class ChatView extends MessengerView {
         if (attachment != null) {
             renderAttachment(g, mouseX, mouseY, top - ATTACH_H - 2);
         }
+        if (voiceError != null && System.currentTimeMillis() - voiceErrorAt < 4000) {
+            int h = PhoneDraw.wrappedHeight(voiceError, w - 28, 0.7f) + 8;
+            int ey = top - h - 4 - (attachment != null ? ATTACH_H : 0);
+            PhoneDraw.roundedRect(g, 8, ey, w - 8, ey + h, 4, 0xE0B8403A);
+            PhoneDraw.wrapped(g, voiceError, 14, ey + 4, w - 28, 0xFFFFFFFF, 0.7f, true);
+        }
+        if (recorder != null || voiceUploading) {
+            renderRecording(g, mouseX, mouseY, top);
+            return;
+        }
 
         boolean canSend = !input.text().isBlank() || (attachment != null && attachment.state() == ImageUploads.State.DONE);
         int bx = w - 26;
         int by = top + 2;
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, by, 22, 22);
-        int color = canSend ? (hovered ? PhoneTheme.accentHover() : PhoneTheme.accent()) : PhoneTheme.separator();
+        boolean mic = !canSend && attachment == null && voiceEnabled();
+        int color = canSend || mic ? (hovered ? PhoneTheme.accentHover() : PhoneTheme.accent()) : PhoneTheme.separator();
         PhoneDraw.roundedRect(g, bx, by, bx + 22, by + 22, 11, color);
-        PhoneDraw.centeredText(g, editingId >= 0 ? "✔" : "➤", bx + 11, by + 7, PhoneTheme.onAccent(), 1f, false);
+        if (mic) {
+            PhoneDraw.tinted(g, MIC, bx + 5, by + 5, 12, 12, 32, 32, PhoneTheme.onAccent());
+        } else {
+            PhoneDraw.centeredText(g, editingId >= 0 ? "✔" : "➤", bx + 11, by + 7, PhoneTheme.onAccent(), 1f, false);
+        }
+    }
+
+    /** Вместо поля ввода во время записи: «×», мигающая точка, время, громкость, «➤». */
+    private void renderRecording(GuiGraphics g, int mouseX, int mouseY, int top) {
+        int w = width();
+        g.fill(0, top - 2, w, top + INPUT_H + 2, PhoneTheme.background());
+        PhoneDraw.panel(g, 6, top, w - 30, top + INPUT_H, PhoneTheme.card());
+        if (voiceUploading || recordingSend) {
+            PhoneDraw.text(g, MessengerApp.tr("voice.sending"), 14, top + 9, PhoneTheme.secondaryText(), 0.7f, false);
+            return;
+        }
+        PhoneDraw.button(g, 9, top + 5, 16, 16, "×", mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER);
+        boolean blink = (System.currentTimeMillis() / 500) % 2 == 0;
+        PhoneDraw.roundedRect(g, 30, top + 10, 36, top + 16, 3, blink ? PhoneTheme.danger() : 0x00000000);
+        String time = VoiceMessages.time(recorder.recordedMs()) + " / " + VoiceMessages.time(ClientSession.maxVoiceSeconds() * 1000L);
+        PhoneDraw.text(g, time, 40, top + 6, PhoneTheme.text(), 0.7f, false);
+        int lx = 40;
+        int lw = w - 30 - 8 - lx;
+        g.fill(lx, top + 17, lx + lw, top + 19, PhoneTheme.separator());
+        g.fill(lx, top + 17, lx + Math.round(lw * recorder.level()), top + 19, PhoneTheme.danger());
+        int bx = w - 26;
+        int by = top + 2;
+        boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, by, 22, 22);
+        PhoneDraw.roundedRect(g, bx, by, bx + 22, by + 22, 11, hovered ? PhoneTheme.accentHover() : PhoneTheme.accent());
+        PhoneDraw.centeredText(g, "➤", bx + 11, by + 7, PhoneTheme.onAccent(), 1f, false);
     }
 
     /** Полоска над полем ввода: миниатюра прикреплённого фото, состояние загрузки, «×». */
@@ -429,7 +669,7 @@ final class ChatView extends MessengerView {
     }
 
     private void clampScroll(int total) {
-        int area = areaBottom() - (STATUS_H + 2);
+        int area = areaBottom() - areaTop();
         double max = Math.max(0, total - area);
         scroll = Math.max(0, Math.min(max, scroll));
     }
@@ -479,7 +719,7 @@ final class ChatView extends MessengerView {
         menu = items;
         int mh = items.size() * 14 + 4;
         menuX = Math.max(4, Math.min(width() - 80, x));
-        menuY = Math.max(STATUS_H + 2, Math.min(areaBottom() - mh, y));
+        menuY = Math.max(areaTop(), Math.min(areaBottom() - mh, y));
     }
 
     // --- Ввод ---
@@ -500,6 +740,21 @@ final class ChatView extends MessengerView {
             clearAttachment();
             return true;
         }
+        if (recorder != null) {
+            int top = inputTop();
+            if (!recordingSend && PhoneDraw.inside(x, y, 9, top + 5, 16, 16)) {
+                cancelRecording();
+            } else if (PhoneDraw.inside(x, y, width() - 26, top + 2, 22, 22)) {
+                finishRecording();
+            }
+            return true;
+        }
+        for (ButtonHit hit : buttons) {
+            if (button == 0 && PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                hit.action().run();
+                return true;
+            }
+        }
         if (menu != null) {
             int rowH = 14;
             for (int i = 0; i < menu.size(); i++) {
@@ -514,7 +769,12 @@ final class ChatView extends MessengerView {
             return true;
         }
         if (PhoneDraw.inside(x, y, width() - 26, inputTop() + 2, 22, 22)) {
-            submit();
+            boolean canSend = !input.text().isBlank() || attachment != null;
+            if (!canSend && voiceEnabled() && !voiceUploading) {
+                startRecording();
+            } else {
+                submit();
+            }
             return true;
         }
         if (input.mouseClicked(x, y, button)) {
@@ -525,6 +785,12 @@ final class ChatView extends MessengerView {
             return true;
         }
         if (button == 0) {
+            for (VoiceHit hit : voiceHits) {
+                if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    VoiceMessages.toggle(hit.voice());
+                    return true;
+                }
+            }
             for (ImageHit hit : imageHits) {
                 if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
                     viewer.open(hit.image());
@@ -585,6 +851,10 @@ final class ChatView extends MessengerView {
 
     @Override
     boolean onBack() {
+        if (recorder != null) {
+            cancelRecording();
+            return true;
+        }
         if (viewer.isOpen()) {
             viewer.close();
             return true;

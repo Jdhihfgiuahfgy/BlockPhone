@@ -15,6 +15,10 @@ loom {
     }
 }
 
+repositories {
+    maven { url = 'https://api.modrinth.com/maven' }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
     mappings loom.officialMojangMappings()
@@ -22,6 +26,9 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_version}"
 
     implementation project(':common')
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
+    // Сам Simple Voice Chat — только для запуска из среды разработки (проверка звонков в DevShots).
+    modLocalRuntime "maven.modrinth:simple-voice-chat:${rootProject.voicechat_mod_version}"
 
     // Базы данных мессенджера (на клиенте не используются, но мод один на клиент и сервер).
     include(implementation("com.h2database:h2:${rootProject.h2_version}") { transitive = false })

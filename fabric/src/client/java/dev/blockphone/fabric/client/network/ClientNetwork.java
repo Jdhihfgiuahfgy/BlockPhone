@@ -9,6 +9,9 @@ import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.common.protocol.packet.SessionPacket;
 import dev.blockphone.common.protocol.packet.SocialPackets;
+import dev.blockphone.common.protocol.packet.VoicePackets;
+import dev.blockphone.fabric.client.voice.CallClient;
+import dev.blockphone.fabric.client.voice.VoiceMessages;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
 import dev.blockphone.fabric.client.photo.ImageUploads;
@@ -69,6 +72,12 @@ public final class ClientNetwork {
             ImageUploads.onResult(result);
         } else if (packet instanceof ImagePackets.ImageData data) {
             RemoteImages.onData(data);
+        } else if (packet instanceof VoicePackets.UploadResult result) {
+            VoiceMessages.onUploadResult(result);
+        } else if (packet instanceof VoicePackets.VoiceChunk chunk) {
+            VoiceMessages.onChunk(chunk);
+        } else if (packet instanceof VoicePackets.CallState state) {
+            CallClient.handle(state);
         } else {
             MessengerClient.handle(packet);
         }
@@ -80,6 +89,8 @@ public final class ClientNetwork {
         SocialClient.reset();
         ImageUploads.reset();
         RemoteImages.reset();
+        VoiceMessages.reset();
+        CallClient.reset();
         ClientSession.reset();
     }
 

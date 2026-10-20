@@ -2,6 +2,8 @@
 // Никаких зависимостей от Minecraft — его подключают fabric, paper и velocity.
 // JDBC-драйверы (H2, MariaDB) поставляют платформы; здесь они нужны только для тестов.
 dependencies {
+    // Интеграция с Simple Voice Chat (группы для звонков) — только интерфейсы, сам мод ставит игрок/админ.
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
     testRuntimeOnly "com.h2database:h2:${rootProject.h2_version}"

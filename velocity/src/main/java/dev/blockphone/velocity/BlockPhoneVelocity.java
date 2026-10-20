@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.5.0",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.6.0",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -61,9 +61,16 @@ public final class BlockPhoneVelocity implements ServerPlatform {
     static final class Config {
         boolean messengerEnabled = true;
         Social social = new Social();
+        /** Голосовые сообщения. Звонков на прокси нет: Simple Voice Chat работает на серверах сети. */
+        Voice voice = new Voice();
         /** Ники или UUID игроков с полными правами модератора (у прокси нет операторов). */
         List<String> moderators = new ArrayList<>();
         Storage storage = new Storage();
+
+        static final class Voice {
+            boolean messages = true;
+            int maxSeconds = 60;
+        }
 
         static final class Social {
             boolean enabled = true;
@@ -94,8 +101,9 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled,
                 ImageRef.PhotoPolicy.parse(config.social.photos), config.social.maxPhotoKb * 1024, config.social.maxPhotoSide,
                 config.social.maxPublicsPerPlayer);
+        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators)));
+                List.copyOf(config.moderators), voice));
         core.start();
         proxy.getChannelRegistrar().register(CHANNEL);
     }
@@ -154,6 +162,9 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         }
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
+        }
+        if (config.voice == null) {
+            config.voice = new Config.Voice();
         }
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);

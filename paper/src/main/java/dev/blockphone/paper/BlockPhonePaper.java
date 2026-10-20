@@ -39,6 +39,10 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         getConfig().options().copyDefaults(true);
         saveConfig();
         registerPermissions();
+        dev.blockphone.common.voice.VoiceBridges.setMainThread(this::runOnMain);
+        if (getServer().getPluginManager().getPlugin("voicechat") != null) {
+            PaperVoicechat.register(this);
+        }
         core = new BlockPhoneServer(this, readSettings(getConfig()));
         core.start();
         getServer().getMessenger().registerOutgoingPluginChannel(this, BlockPhone.CHANNEL);
@@ -70,8 +74,10 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
                 c.getInt("social.max-photo-kb", 600) * 1024, c.getInt("social.max-photo-side", 1280),
                 c.getInt("social.max-publics-per-player", 3));
         List<String> moderators = c.getStringList("moderators");
+        ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
+                c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators);
+                social, moderators, voice);
     }
 
     /**
@@ -162,6 +168,15 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
     public boolean hasPermission(UUID player, Permission permission) {
         Player target = Bukkit.getPlayer(player);
         return target != null ? target.hasPermission(permission.node()) : permission.defaultAllowed();
+    }
+
+    @Override
+    public void runOnMain(Runnable task) {
+        if (Bukkit.isPrimaryThread()) {
+            task.run();
+        } else if (isEnabled()) {
+            Bukkit.getScheduler().runTask(this, task);
+        }
     }
 
     @Override

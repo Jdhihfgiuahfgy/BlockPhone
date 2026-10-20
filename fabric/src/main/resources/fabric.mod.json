@@ -3,7 +3,7 @@
   "id": "blockphone",
   "version": "${version}",
   "name": "BlockPhone",
-  "description": "A smartphone in your HUD: camera, gallery, music, notes, Telegram and a server messenger.",
+  "description": "A smartphone in your HUD: camera, gallery, music, notes, a server messenger with voice messages and calls, and a feed.",
   "authors": [],
   "contact": {},
   "license": "All-Rights-Reserved",
@@ -15,6 +15,9 @@
     ],
     "client": [
       "dev.blockphone.fabric.client.BlockPhoneClient"
+    ],
+    "voicechat": [
+      "dev.blockphone.common.voice.SvcPlugin"
     ]
   },
   "mixins": [
@@ -28,5 +31,8 @@
     "fabric-api": "*",
     "minecraft": "${minecraft_version}",
     "java": ">=21"
+  },
+  "suggests": {
+    "voicechat": "*"
   }
 }

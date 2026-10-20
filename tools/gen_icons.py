@@ -388,6 +388,34 @@ def music_volume():
     return img
 
 
+# ---------------- Голос (textures/gui/voice/) ----------------
+
+def voice_mic():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([92, 28, 164, 148], radius=36, fill=WHITE)
+    d.arc([60, 76, 196, 184], start=0, end=180, fill=WHITE, width=16)
+    d.rectangle([120, 180, 136, 220], fill=WHITE)
+    d.rounded_rectangle([84, 212, 172, 228], radius=8, fill=WHITE)
+    return img
+
+
+def voice_call():
+    img, d = glyph_canvas()
+    # Трубка: два «наушника» и дуга между ними.
+    d.arc([40, 40, 216, 216], start=200, end=340, fill=WHITE, width=34)
+    d.rounded_rectangle([34, 112, 88, 176], radius=16, fill=WHITE)
+    d.rounded_rectangle([168, 112, 222, 176], radius=16, fill=WHITE)
+    return img.rotate(-35, resample=Image.BICUBIC, center=(128, 128))
+
+
+def voice_hangup():
+    img, d = glyph_canvas()
+    d.arc([30, 70, 226, 230], start=200, end=340, fill=WHITE, width=34)
+    d.rounded_rectangle([24, 128, 80, 184], radius=16, fill=WHITE)
+    d.rounded_rectangle([176, 128, 232, 184], radius=16, fill=WHITE)
+    return img
+
+
 # ---------------- Погода (прозрачный фон) ----------------
 
 def blank():
@@ -495,6 +523,9 @@ if __name__ == "__main__":
              "volume": music_volume}
     for name, fn in music.items():
         save(fn(), os.path.join(ASSETS, "textures", "gui", "music"), name, 32)
+    voice = {"mic": voice_mic, "call": voice_call, "hangup": voice_hangup}
+    for name, fn in voice.items():
+        save(fn(), os.path.join(ASSETS, "textures", "gui", "voice"), name, 32)
     save(mod_icon(), ASSETS, "icon", 128)
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))

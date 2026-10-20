@@ -37,7 +37,8 @@ public final class MessengerClient {
     }
 
     /** Отправленное, но ещё не подтверждённое сервером сообщение (показывается сразу, полупрозрачным). image — фото или null. */
-    public record Pending(String nonce, long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image, long sentAt) {
+    public record Pending(String nonce, long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image,
+                          dev.blockphone.common.protocol.data.VoiceData.VoiceRef voice, long sentAt) {
     }
 
     private static final Map<Long, ChatInfo> CHATS = new LinkedHashMap<>();
@@ -184,14 +185,24 @@ public final class MessengerClient {
 
     /** Сообщение с фото (image — уже загруженное на сервер, или null). */
     public static void sendMessage(long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image) {
-        String nonce = "c" + (++nonceCounter) + "_" + System.nanoTime();
-        PENDING.put(nonce, new Pending(nonce, chatId, text, image, System.currentTimeMillis()));
-        ClientNetwork.send(new MessengerPackets.SendMessage(chatId, nonce, text, image != null ? image.id() : 0));
+        sendMessage(chatId, text, image, null);
     }
 
-    /** Текст сообщения для превью и уведомлений: «[Фото] подпись». */
+    /** Сообщение с фото и/или голосовым (уже загруженными на сервер; null — нет). */
+    public static void sendMessage(long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image,
+                                   dev.blockphone.common.protocol.data.VoiceData.VoiceRef voice) {
+        String nonce = "c" + (++nonceCounter) + "_" + System.nanoTime();
+        PENDING.put(nonce, new Pending(nonce, chatId, text, image, voice, System.currentTimeMillis()));
+        ClientNetwork.send(new MessengerPackets.SendMessage(chatId, nonce, text, image != null ? image.id() : 0,
+                voice != null ? voice.id() : 0));
+    }
+
+    /** Текст сообщения для превью и уведомлений: «[Фото] подпись», «[Голосовое 0:07]». */
     public static String previewText(MessageInfo message) {
         String text = message.text().replace('\n', ' ');
+        if (message.voice() != null) {
+            return PhoneLang.tr("messenger.voice_preview", dev.blockphone.fabric.client.voice.VoiceMessages.time(message.voice().durationMs()));
+        }
         if (message.image() == null) {
             return text;
         }

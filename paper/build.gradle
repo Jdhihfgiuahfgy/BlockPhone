@@ -11,6 +11,7 @@ repositories {
 dependencies {
     compileOnly "io.papermc.paper:paper-api:${rootProject.paper_api_version}"
     implementation project(':common')
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
 }
 
 processResources {

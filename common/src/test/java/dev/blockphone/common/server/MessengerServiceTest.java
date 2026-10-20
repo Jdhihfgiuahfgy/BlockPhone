@@ -84,7 +84,7 @@ class MessengerServiceTest {
         long chatId = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
         assertEquals(chatId, platform.last(STEVE, MessengerPackets.ChatUpdate.class).chat().id());
 
-        send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n1", "  Привет, Стив!  ", 0));
+        send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n1", "  Привет, Стив!  ", 0, 0));
         MessengerPackets.NewMessage forAlex = platform.last(ALEX, MessengerPackets.NewMessage.class);
         MessengerPackets.NewMessage forSteve = platform.last(STEVE, MessengerPackets.NewMessage.class);
         assertEquals("n1", forAlex.nonce());
@@ -142,7 +142,7 @@ class MessengerServiceTest {
         send(ALEX, "Alex", new MessengerPackets.OpenDirect(STEVE));
         long chatId = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
         for (int i = 0; i < 10; i++) {
-            send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n" + i, "spam " + i, 0));
+            send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n" + i, "spam " + i, 0, 0));
         }
         assertEquals(8, platform.of(STEVE, MessengerPackets.NewMessage.class).size());
         assertEquals("messenger.error.rate_limit", platform.last(ALEX, MessengerPackets.Failure.class).key());

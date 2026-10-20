@@ -18,8 +18,8 @@
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
-| `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация (протокол + логика + SQL на H2, без Minecraft) |
-| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG (на музыке Minecraft из кэша Loom) |
+| `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек голосовых ADPCM |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -44,6 +44,10 @@
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
   играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
   в лог пишет позицию воспроизведения.
+  Сценарий голоса: `BLOCKPHONE_DEV_SCENARIO=voice BLOCKPHONE_DEV_MESSENGER=1` — голосовое из тихого тестового сигнала
+  (микрофон не трогается) → загрузка → пузырь → проигрывание; интерфейс звонка на поддельных состояниях (входящий, полоса, HUD);
+  настоящий звонок в группу через SVC (в dev голосовой чат SVC выключен до первоначальной настройки — сервер отвечает ошибкой).
+  В среде разработки подключён сам мод Simple Voice Chat (`modLocalRuntime`, версия `voicechat_mod_version`).
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
@@ -70,6 +74,8 @@ JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без
 Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
 Декодер MP3 JLayer (`javazoom:jlayer`, LGPL) — jar-in-jar в Fabric (`jlayer_version`); OGG — stb_vorbis из LWJGL (есть в игре).
 Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
+API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозиторий maven.maxhenkel.de) — `compileOnly` в common, fabric и paper;
+сам SVC ставит игрок/админ. Классы с типами SVC (`SvcPlugin`, `SvcBridge`, `PaperVoicechat`) загружаются только при наличии SVC.
 **При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity).
 
 Пакет: `dev.blockphone`. Mod id: `blockphone`.
@@ -85,9 +91,13 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   - `MessengerPackets.*` (id 2–22): S→C ChatList, ChatUpdate, ChatRemoved, History, NewMessage, MessageUpdated, UserList,
     ChatOpened, TypingState, Presence, Failure(ключ messenger.error.*); C→S RequestHistory, SendMessage(nonce), EditMessage,
     DeleteMessage, MarkRead, SearchUsers, OpenDirect, CreateGroup, GroupAction(RENAME/ADD/REMOVE/LEAVE), Typing.
-    SendMessage несёт imageId (0 — без фото), MessageInfo — `ImageRef image` (null — без фото).
+    SendMessage несёт imageId и voiceId (0 — нет), MessageInfo — `ImageRef image` и `VoiceRef voice` (null — нет).
   - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
-    maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports. Приходит после рукопожатия.
+    maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports, maxVoiceSeconds (0 — голосовых нет),
+    callsAvailable. Приходит после рукопожатия.
+  - `VoicePackets.*` (id 66–74): голосовые — UploadBegin(uploadId, size, codec, durationMs) → UploadChunk × N → UploadResult(VoiceRef |
+    voice.error.*), RequestVoice → VoiceChunk × N; звонки — S→C CallState(CallInfo: участники, кому звонят, начало, active),
+    C→S StartCall (позвонить или войти), AnswerCall(accept), LeaveCall. Ошибки звонков — `MessengerPackets.Failure` (call.error.*).
   - `ImagePackets.*` (id 25–29): UploadBegin(uploadId, size, purpose POST/CHAT, serverId снимка) → UploadChunk × N (по 30 000 байт)
     → UploadResult(ImageRef | ключ ошибки photo.error.*); RequestImage → ImageData × N (total = 0 — нет доступа).
   - `SocialPackets.*` (id 30–65): S→C FeedPage, PostUpdated(post, nonce), PostRemoved, Comments, CommentAdded/Removed, Profile,
@@ -98,6 +108,7 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
     RequestPublics(SUBSCRIBED/MANAGED/POPULAR), Search, Report, RequestReports, ResolveReport(DISMISS/DELETE/DELETE_AND_MUTE), Mute.
 - `protocol/data/MessengerData` — UserInfo, MessageInfo, ChatInfo, ChatType и ограничения (1000 символов, 32 на название,
   50 участников, страница истории 40).
+- `protocol/data/VoiceData` — `VoiceRef` (id, длительность), `CallInfo`, кодек `CODEC_ADPCM16` (IMA ADPCM 16 кГц моно, ~8 КБ/с).
 - `protocol/data/ImageRef` — фото на сервере (id, ширина, высота), `PhotoPolicy` (ANY/SERVER/NONE), `Purpose` (POST/CHAT), CHUNK.
 - `protocol/data/SocialData` — PostInfo, CommentInfo, ProfileInfo, PublicInfo (role получателя), PublicRef, ReportInfo, перечисления
   FeedKind/Role/ReportTarget/NoticeType, `Rights` (биты прав), лимиты (пост 2000, комментарий 500, «о себе» 200, паблик 32/300,
@@ -111,10 +122,10 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
     serverId (таблица meta); права `has(uuid, Permission)` (узел, плюс `blockphone.moderator`, плюс список `moderators` в настройках),
     `rights()` → маска для клиента; `sendSession`. Пакеты раскладывает по группе (`getEnclosingClass`): MessengerPackets → мессенджер,
     SocialPackets → лента, ImagePackets → фото. Ошибка в обработчике → Failure соответствующей группы. `execute` — для тестов/отладки.
-  - `Permission` — узлы: `blockphone.post`, `.photo`, `.public.create` (у всех); `blockphone.moderate.posts/.publics/.mute/.reports`
+  - `Permission` — узлы: `blockphone.post`, `.photo`, `.public.create`, `.voice`, `.call` (у всех); `blockphone.moderate.posts/.publics/.mute/.reports`
     и `blockphone.moderator` (все сразу) — по умолчанию у операторов.
   - `ServerSettings` (+ `Storage`: h2 | mysql; `Social`: enabled, photos any|server|none, maxPhotoBytes, maxPhotoSide,
-    maxPublicsPerPlayer; `moderators` — ники/UUID). Старый конструктор (3 параметра) — для тестов, с настройками ленты по умолчанию.
+    maxPublicsPerPlayer; `moderators` — ники/UUID; `Voice`: messages, maxSeconds, calls, callGroupType). Короткие конструкторы — для тестов.
   - `Database` — одно JDBC-соединение, драйвер создаётся напрямую (без DriverManager); SQL в диалекте MySQL, H2 в `MODE=MySQL`.
     Таблицы `<prefix>users/chats/members/messages(+image_id)/meta/images(MEDIUMBLOB)/profiles/follows/publics/public_admins/
     subscriptions/posts/likes/comments/reports/mutes/modlog`. Новые колонки — `column()` (ADD COLUMN, «уже есть» игнорируется).
@@ -127,7 +138,15 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
     название, лимит на игрока), жалобы (5 за 10 мин) и модерация (удаление, заглушение, журнал modlog + лог сервера).
   - `ImageService` — приём загрузок (политика сервера, право PHOTO, заглушение для постов, размер, 10/мин; формат и размер по
     заголовку — `ImageHeader`, без ImageIO), `claim` (прикрепить), выдача кусками с проверкой доступа (пост — всем, сообщение — участникам).
+  - `VoiceService` + `VoiceRepository` (таблица voices, chat_id = 0 — не отправлено, удаляется через сутки) — приём голосовых
+    (право VOICE, длительность ≤ maxSeconds, размер), `claim` к чату, выдача только участникам чата.
+  - `CallService` — звонки: звонящий создаёт скрытую группу SVC (через `VoiceBridge`) и входит в неё, остальным участникам чата онлайн
+    приходит вызов; принявшие входят в группу; не ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён.
+    Тик каждые 5 с (планировщик бэкенда). Вышел из группы через меню SVC — `leftGroup`.
   - `RateLimiter` — «не больше N за окно» по игроку.
+- `voice/` — Simple Voice Chat: `VoiceBridge` (интерфейс: connected, createGroup, join, leave, removeGroup), `VoiceBridges` (текущий мост,
+  главный поток сервера, слушатель выхода из группы — без типов SVC), `SvcBridge` (реализация на `VoicechatServerApi`: скрытые
+  непостоянные группы с паролем, тип normal/isolated), `SvcPlugin` (плагин SVC: события старта/остановки сервера SVC и выхода из группы).
 
 **Как добавить пакет:** record в `protocol/packet` → `register(<следующий id>, …)` в `Packets` →
 обработка на клиенте (`ClientNetwork.handle` → `MessengerClient`/`SocialClient`/…) и на сервере (`Backend.handle` → сервис;
@@ -142,7 +161,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 - `server/FabricServerHandler` — права: fabric-permissions-api (LuckPerms) через отражение, иначе обычные — у всех,
   модераторские — у операторов уровня 2+ (`player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)`).
 - `server/FabricServerConfig` — `config/blockphone/server.json`: messengerEnabled, phoneInHandVisible, social{enabled, photos,
-  maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], storage{type,host,port,...}.
+  maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], voice{messages, maxSeconds, calls, callGroupType}, storage{type,host,port,...}.
+- Simple Voice Chat: точка входа `voicechat` в fabric.mod.json → `SvcPlugin` (из common); главный поток для SVC — `server::execute`.
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
@@ -194,6 +214,12 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   Shift+Enter — перенос, ПКМ — меню изменить/копировать/удалить), `ChatInfoView` (участники, переименование, исключение, выход),
   `UserRows`, `MessengerFormat`. `AppRegistry.Entry.badge` — число на значке иконки (мессенджер — непрочитанные).
   Фото в чате: «+» слева от поля → `PhotoPicker` → загрузка сразу (полоска над полем) → отправка с imageId; клик по фото — просмотр.
+- `voice/` — голос на клиенте: `Adpcm` (кодек и пересэмплирование), `VoiceRecorder` (микрофон по умолчанию через javax.sound,
+  16/48/44,1 кГц → 16 кГц, уровень, предел длины), `VoiceMessages` (сжатие и загрузка, скачивание, проигрывание по одному — музыка на
+  паузе), `CallClient` (звонки: свой, входящий, «рингтон» — колокольчик нотного блока, тосты). `phone/CallOverlay` — входящий звонок
+  поверх любого приложения телефона. Полоска звонка на HUD — в `MusicHud` (под виджетом музыки).
+- Голос в `ChatView`: пустое поле → справа микрофон (запись → «➤» отправить / «×» отмена), пузыри голосовых («волна», проигрывание),
+  трубка в строке статуса (позвонить), зелёная полоса идущего звонка (Войти/Ответить/Отклонить/Выйти).
 - `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
   прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`
@@ -253,14 +279,17 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
   (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
 - `config.yml`: `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
-  max-publics-per-player), `moderators`, `storage.type` (h2/mysql), `storage.table-prefix`, `storage.mysql.*`.
+  max-publics-per-player), `voice.*` (messages, max-seconds, calls, call-group-type), `moderators`, `storage.type` (h2/mysql),
+  `storage.table-prefix`, `storage.mysql.*`. Simple Voice Chat: `softdepend: [voicechat]`, регистрация через `PaperVoicechat`
+  (`BukkitVoicechatService`); главный поток для SVC — планировщик Bukkit (`runOnMain`).
   Новые ключи дописываются в существующий config.yml (`copyDefaults`). Права регистрируются из `Permission`
   (обычные — default true, модераторские — op; `blockphone.moderator` — родитель всех модераторских).
 
 ### velocity (`dev.blockphone.velocity`)
 - `BlockPhoneVelocity` — `@Plugin`: регистрирует канал, на `ServerPostConnectEvent` (каждый переход между серверами) — приветствие,
   `PluginMessageEvent` на нашем канале обрабатывает сам и **не пропускает** ни к серверам, ни от серверов к клиенту.
-  Настройки: `plugins/blockphone/config.json` (messengerEnabled, social, moderators, storage). Права — LuckPerms Velocity
+  Настройки: `plugins/blockphone/config.json` (messengerEnabled, social, voice{messages, maxSeconds}, moderators, storage).
+  Звонков через прокси нет (SVC работает на серверах сети, прокси его группами управлять не может). Права — LuckPerms Velocity
   (`getPermissionValue`; не задано → по умолчанию, у прокси нет операторов — модераторов задавать в `moderators`).
   BungeeCord пока не поддержан.
 
@@ -299,7 +328,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
    Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.
 5. ✅ Музыка: свои файлы (MP3/OGG/WAV), плеер с очередью, виджет на HUD, клавиши; Яндекс Музыка (неоф. API: Моя волна,
    Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
-6. Simple Voice Chat: голосовые сообщения, групповые звонки.
+6. ✅ Голос: голосовые сообщения (свой захват микрофона и ADPCM — работают без других модов) и звонки в личных и групповых чатах
+   через скрытые группы Simple Voice Chat (Fabric/Paper с SVC). Не сделано: звонки через Velocity, выбор микрофона (берётся по умолчанию).
 7. Telegram через TDLib (только Windows), кружочки из кадров игры.
 
 Принятые доп. функции: режим «на ходу» (маленький телефон, можно ходить); телефон в руке виден другим (с выключателем в конфиге сервера, без поломки предмета в руке, работает и на Paper); уведомления/экран блокировки.

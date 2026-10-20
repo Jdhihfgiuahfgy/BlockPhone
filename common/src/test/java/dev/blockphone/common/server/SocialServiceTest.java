@@ -299,7 +299,7 @@ class SocialServiceTest {
         send(ALEX, new MessengerPackets.OpenDirect(STEVE));
         long chatId = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
         ImagePackets.UploadResult chatPhoto = upload(ALEX, png(8, 8), ImageRef.Purpose.CHAT, serverId());
-        send(ALEX, new MessengerPackets.SendMessage(chatId, "p1", "", chatPhoto.image().id()));
+        send(ALEX, new MessengerPackets.SendMessage(chatId, "p1", "", chatPhoto.image().id(), 0));
         MessengerPackets.NewMessage message = platform.last(STEVE, MessengerPackets.NewMessage.class);
         assertEquals(8, message.message().image().width());
         assertNotNull(download(STEVE, chatPhoto.image().id()));

@@ -18,8 +18,8 @@ public final class MessengerRepository {
     public record ChatRow(long id, ChatType type, String title, UUID owner, long createdAt) {
     }
 
-    /** imageId = 0 — без фото. */
-    public record MessageRow(long id, long chatId, UUID sender, String text, long imageId, long sentAt, long editedAt,
+    /** imageId = 0 — без фото, voiceId = 0 — без голосового. */
+    public record MessageRow(long id, long chatId, UUID sender, String text, long imageId, long voiceId, long sentAt, long editedAt,
                              boolean deleted) {
     }
 
@@ -120,6 +120,7 @@ public final class MessengerRepository {
     public void deleteChat(long chatId) throws SQLException {
         for (String sql : new String[]{
                 "DELETE FROM " + db.table("images") + " WHERE kind = " + ImageRepository.KIND_MESSAGE + " AND ref_id = ?",
+                "DELETE FROM " + db.table("voices") + " WHERE chat_id = ?",
                 "DELETE FROM " + messages + " WHERE chat_id = ?",
                 "DELETE FROM " + members + " WHERE chat_id = ?",
                 "DELETE FROM " + chats + " WHERE id = ?"}) {
@@ -215,21 +216,23 @@ public final class MessengerRepository {
 
     private static MessageRow messageRow(ResultSet rs) throws SQLException {
         return new MessageRow(rs.getLong("id"), rs.getLong("chat_id"), UUID.fromString(rs.getString("sender")),
-                rs.getString("text"), rs.getLong("image_id"), rs.getLong("sent_at"), rs.getLong("edited_at"), rs.getBoolean("deleted"));
+                rs.getString("text"), rs.getLong("image_id"), rs.getLong("voice_id"), rs.getLong("sent_at"), rs.getLong("edited_at"),
+                rs.getBoolean("deleted"));
     }
 
     public long insertMessage(long chatId, UUID sender, String text, long now) throws SQLException {
-        return insertMessage(chatId, sender, text, 0, now);
+        return insertMessage(chatId, sender, text, 0, 0, now);
     }
 
-    public long insertMessage(long chatId, UUID sender, String text, long imageId, long now) throws SQLException {
+    public long insertMessage(long chatId, UUID sender, String text, long imageId, long voiceId, long now) throws SQLException {
         try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + messages
-                + " (chat_id, sender, text, image_id, sent_at) VALUES (?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                + " (chat_id, sender, text, image_id, voice_id, sent_at) VALUES (?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, chatId);
             ps.setString(2, sender.toString());
             ps.setString(3, text);
             ps.setLong(4, imageId);
-            ps.setLong(5, now);
+            ps.setLong(5, voiceId);
+            ps.setLong(6, now);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 keys.next();
@@ -282,7 +285,7 @@ public final class MessengerRepository {
     }
 
     public void deleteMessage(long id) throws SQLException {
-        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET text = '', image_id = 0, deleted = TRUE WHERE id = ?")) {
+        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET text = '', image_id = 0, voice_id = 0, deleted = TRUE WHERE id = ?")) {
             ps.setLong(1, id);
             ps.executeUpdate();
         }

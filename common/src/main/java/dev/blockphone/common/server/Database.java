@@ -101,6 +101,8 @@ public final class Database implements AutoCloseable {
         index("idx_messages_chat", "messages", "chat_id, id");
         // Этап 4: фото в сообщениях.
         column("messages", "image_id BIGINT NOT NULL DEFAULT 0");
+        // Этап 6: голосовые сообщения.
+        column("messages", "voice_id BIGINT NOT NULL DEFAULT 0");
         migrateSocial();
     }
 
@@ -118,6 +120,16 @@ public final class Database implements AutoCloseable {
                     + "ref_id BIGINT NOT NULL DEFAULT 0,"
                     + "width INT NOT NULL,"
                     + "height INT NOT NULL,"
+                    + "size INT NOT NULL,"
+                    + "data MEDIUMBLOB NOT NULL,"
+                    + "created_at BIGINT NOT NULL)");
+            // chat_id = 0 — ещё не отправлено (удаляется через сутки).
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("voices") + " ("
+                    + "id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,"
+                    + "owner CHAR(36) NOT NULL,"
+                    + "chat_id BIGINT NOT NULL DEFAULT 0,"
+                    + "codec INT NOT NULL,"
+                    + "duration_ms INT NOT NULL,"
                     + "size INT NOT NULL,"
                     + "data MEDIUMBLOB NOT NULL,"
                     + "created_at BIGINT NOT NULL)");

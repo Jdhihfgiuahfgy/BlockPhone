@@ -72,6 +72,16 @@ public final class ClientSession {
         return session != null ? session.maxPhotoSide() : 1280;
     }
 
+    /** Предел длины голосового (0 — голосовые недоступны). */
+    public static int maxVoiceSeconds() {
+        return session != null ? session.maxVoiceSeconds() : 0;
+    }
+
+    /** На сервере есть Simple Voice Chat, звонки включены и разрешены игроку. */
+    public static boolean callsAvailable() {
+        return session != null && session.callsAvailable();
+    }
+
     public static int openReports() {
         return session != null ? session.openReports() : 0;
     }
@@ -81,7 +91,7 @@ public final class ClientSession {
         SessionPacket s = session;
         if (s != null) {
             session = new SessionPacket(s.serverId(), s.socialEnabled(), s.photoPolicy(), s.maxPhotoBytes(), s.maxPhotoSide(),
-                    s.rights(), s.mutedUntil(), Math.max(0, count));
+                    s.rights(), s.mutedUntil(), Math.max(0, count), s.maxVoiceSeconds(), s.callsAvailable());
         }
     }
 

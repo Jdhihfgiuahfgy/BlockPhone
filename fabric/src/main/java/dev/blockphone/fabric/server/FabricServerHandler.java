@@ -38,6 +38,8 @@ public final class FabricServerHandler {
                 return;
             }
             FabricServerConfig config = FabricServerConfig.load();
+            // Simple Voice Chat: действия с группами — в потоке сервера.
+            dev.blockphone.common.voice.VoiceBridges.setMainThread(server::execute);
             core = new BlockPhoneServer(new FabricPlatform(server), config.toSettings());
             core.start();
         });
@@ -112,6 +114,11 @@ public final class FabricServerHandler {
                     ServerPlayNetworking.send(target, new RawPayload(data));
                 }
             });
+        }
+
+        @Override
+        public void runOnMain(Runnable task) {
+            server.execute(task);
         }
 
         /** fabric-permissions-api (LuckPerms), иначе: обычные права — у всех, модераторские — у операторов уровня 2+. */

@@ -20,5 +20,7 @@ subprojects {
 
     repositories {
         mavenCentral()
+        // API Simple Voice Chat (звонки).
+        maven { url = 'https://maven.maxhenkel.de/repository/public' }
     }
 }

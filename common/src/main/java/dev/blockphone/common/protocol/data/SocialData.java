@@ -29,6 +29,10 @@ public final class SocialData {
         public static final int MOD_PUBLICS = 1 << 4;
         public static final int MOD_MUTE = 1 << 5;
         public static final int MOD_REPORTS = 1 << 6;
+        /** Голосовые сообщения. */
+        public static final int VOICE = 1 << 7;
+        /** Звонки. */
+        public static final int CALL = 1 << 8;
         /** Любое модераторское право. */
         public static final int ANY_MOD = MOD_POSTS | MOD_PUBLICS | MOD_MUTE | MOD_REPORTS;
 

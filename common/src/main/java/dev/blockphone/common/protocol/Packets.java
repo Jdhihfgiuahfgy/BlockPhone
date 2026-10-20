@@ -6,6 +6,7 @@ import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.common.protocol.packet.SessionPacket;
 import dev.blockphone.common.protocol.packet.SocialPackets;
+import dev.blockphone.common.protocol.packet.VoicePackets;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -93,6 +94,16 @@ public final class Packets {
         register(63, SocialPackets.RequestReports.class, SocialPackets.RequestReports::read);
         register(64, SocialPackets.ResolveReport.class, SocialPackets.ResolveReport::read);
         register(65, SocialPackets.Mute.class, SocialPackets.Mute::read);
+        // Голосовые сообщения и звонки
+        register(66, VoicePackets.UploadBegin.class, VoicePackets.UploadBegin::read);
+        register(67, VoicePackets.UploadChunk.class, VoicePackets.UploadChunk::read);
+        register(68, VoicePackets.UploadResult.class, VoicePackets.UploadResult::read);
+        register(69, VoicePackets.RequestVoice.class, VoicePackets.RequestVoice::read);
+        register(70, VoicePackets.VoiceChunk.class, VoicePackets.VoiceChunk::read);
+        register(71, VoicePackets.CallState.class, VoicePackets.CallState::read);
+        register(72, VoicePackets.StartCall.class, VoicePackets.StartCall::read);
+        register(73, VoicePackets.AnswerCall.class, VoicePackets.AnswerCall::read);
+        register(74, VoicePackets.LeaveCall.class, VoicePackets.LeaveCall::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {
