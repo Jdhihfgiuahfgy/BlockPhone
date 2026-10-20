@@ -235,7 +235,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
 - `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`), `cameraKey`
-  (камера сразу), `compactKey` («на ходу») и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст —
+  (камера сразу), `compactKey` («на ходу», J), `cursorKey` (курсор «на ходу», левый Alt) и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст —
   Spotify; не назначены); `passMovementThrough` — в режиме «на ходу» клавиши ходьбы/прыжка/приседа/бега передаются игроку
   (`KeyMapping.setDown` по состоянию клавиатуры), пока приложение не ждёт текст;
   каждый тик `MusicPlayer.tick()` и `Spotify.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
@@ -266,8 +266,15 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     Иконка (`Entry.drawIcon`) — плитка-градиент в оттенке цвета приложения + белый символ `textures/gui/glyph/<id>.png`, окрашенный.
   - `PhoneState` — экземпляры приложений и текущее приложение между открытиями телефона; `LOCK` — экран блокировки,
     `markClosed()`/`shouldLock()` (включён в настройках и телефон был закрыт > 15 с или открывается впервые).
-  - Режим «на ходу» (`PhoneScreen.compact()/toggleCompact()`, настройка `compactPhone`): телефон ~60 % высоты окна в правом нижнем
-    углу, без затемнения фона; переключение — клавишей `compactKey` или в настройках.
+  - Режим «на ходу» — `phone/PhonePin`: свой экземпляр `PhoneScreen` прикреплён в правом нижнем углу (~60 % высоты) и рисуется
+    в HUD (`HudElementRegistry.addLast`), пока мышь у игры (камера крутится, можно ходить); пока зажата `cursorKey` (по умолчанию
+    левый Alt) — тот же экран открыт как `Screen` (курсор), отпустил — `setScreen(null)` с флагом `hiding` (приложения не
+    закрываются, `removed()` пропускается); пока поле ввода в фокусе или открыт диалог — курсор остаётся. Вкл/выкл — `compactKey`
+    (по умолчанию J), «назад» с рабочего стола / клавиша телефона — снять. `PhoneScreen.compact()` = прикреплён.
+    Размер экрана задаётся `ClientCompat.initScreen` (1.21.11 `init(w, h)`, 1.21.10 `init(mc, w, h)`).
+  - Уведомления — `phone/NotifyPrefs`: `allowed/toast/center/ring` по настройкам `notifyAll`, `notifyToasts`, `notifyCenter`,
+    `notifySound`, `notifyMuted` (messenger, feed, telegram, calls); проверяют `MessengerNotifications`, `SocialNotifications`,
+    `TelegramNotifications`, `CallClient`. Страница настроек NOTIFY.
   - `PhoneNotifications` — центр уведомлений (до 30, ключ для замены/снятия, «что открыть» при нажатии). Добавляют
     `MessengerNotifications`, `SocialNotifications`, `TelegramNotifications`, `CallClient` (пропущенный звонок); снимаются при
     открытии чата/ленты. `PhoneScreen.unlock()`/`locked()`; Esc на экране блокировки закрывает телефон.
@@ -451,7 +458,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `hasControlDownWithQuirk`→`hasControlDown`, пакет gamerules). Ресурсы — общие (fabric.mod.json: minecraft 1.21.10).
 - Если различие не сводится к переименованию — маленький класс-«переходник» в `fabric/`, а его вариант для 1.21.10 — по тому
   же пути в `fabric-1.21.10/src/` (подменяет общий при сборке): `fabric/compat/Compat` (оператор: `permissions()` /
-  `hasPermissions(2)`), `client/photo/SmoothTexture` (линейный фильтр: `sampler` / `setFilter(true, false)`).
+  `hasPermissions(2)`), `client/photo/SmoothTexture` (линейный фильтр: `sampler` / `setFilter(true, false)`), `client/compat/ClientCompat`
+  (`initScreen`).
 - После правок в `fabric/` проверять обе: `./gradlew :fabric:compileClientJava :fabric-1.21.10:compileClientJava`. Миксины
   проверяются только запуском (`:fabric-1.21.10:runClient`, сценарий DevShots `hand` — быстрый).
 - Сверка имён 1.21.10: `javap -cp <minecraft-clientOnly-…1.21.10…jar>;<minecraft-common-…jar> <класс>` (jar-ы — в

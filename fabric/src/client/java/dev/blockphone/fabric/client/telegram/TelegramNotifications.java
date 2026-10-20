@@ -25,7 +25,12 @@ final class TelegramNotifications {
         if (!(chat.type instanceof TdApi.ChatTypePrivate)) {
             text = Telegram.senderName(message) + ": " + text;
         }
-        mc.getToastManager().addToast(new TelegramToast(chat, title, text));
+        if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("telegram")) {
+            mc.getToastManager().addToast(new TelegramToast(chat, title, text));
+        }
+        if (!dev.blockphone.fabric.client.phone.NotifyPrefs.center("telegram")) {
+            return;
+        }
         long chatId = chat.id;
         dev.blockphone.fabric.client.phone.PhoneNotifications.add("telegram:" + chatId, "telegram", title, text, null, phone -> {
             phone.openApp("telegram");

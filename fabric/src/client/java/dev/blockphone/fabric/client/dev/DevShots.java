@@ -239,6 +239,8 @@ public final class DevShots {
             shot(20, "accent_page");
             step(1, mc -> settingsPage("wallpaper"));
             shot(30, "wallpaper_page");
+            step(1, mc -> settingsPage("notify"));
+            shot(20, "notify_page");
             // Экран блокировки с уведомлениями.
             step(1, mc -> {
                 UUID steve = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7");
@@ -308,20 +310,22 @@ public final class DevShots {
         shot(30, "world_home");
         step(1, mc -> phone(mc, p -> p.openApp("weather")));
         shot(20, "world_weather");
-        // Режим «на ходу»: маленький телефон в углу, мир виден.
+        // Режим «на ходу»: телефон прикреплён в углу, мышь у игры (курсора нет).
         step(1, mc -> {
-            settings.compactPhone = true;
             mc.setScreen(null);
-            mc.setScreen(new PhoneScreen());
+            dev.blockphone.fabric.client.phone.PhonePin.pin(mc);
         });
         shot(30, "world_compact");
         // Телефон в руке: свой персонаж от третьего лица спереди.
         step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));
         shot(30, "world_phone_in_hand");
         step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
+        // Как при зажатом Alt: курсор, телефоном можно пользоваться.
+        step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true);
+        shot(30, "world_compact_cursor");
         step(1, mc -> {
-            settings.compactPhone = false;
-            mc.setScreen(null);
+            dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;
+            dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);
             mc.setScreen(new PhoneScreen());
         });
 

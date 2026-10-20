@@ -118,7 +118,7 @@ public final class CallClient {
         }
         boolean nowRinging = call.active() && call.invited().stream().anyMatch(u -> u.uuid().equals(self));
         boolean joined = call.active() && call.participants().stream().anyMatch(u -> u.uuid().equals(self));
-        if (wasRinging && !nowRinging && !joined) {
+        if (wasRinging && !nowRinging && !joined && dev.blockphone.fabric.client.phone.NotifyPrefs.center("calls")) {
             // Не ответили (или отклонили) — пропущенный звонок в центре уведомлений.
             UserInfo caller = before.participants().isEmpty() ? null : before.participants().get(0);
             long chatId = call.chatId();
@@ -136,13 +136,15 @@ public final class CallClient {
             notifiedChat = -1;
         } else if (ringing.chatId() != notifiedChat) {
             notifiedChat = ringing.chatId();
-            toast(PhoneLang.tr("call.incoming"), title(ringing), caller(ringing));
+            if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("calls")) {
+                toast(PhoneLang.tr("call.incoming"), title(ringing), caller(ringing));
+            }
         }
     }
 
     /** Каждый тик: «рингтон» входящего вызова. */
     public static void tick() {
-        if (incoming() == null) {
+        if (incoming() == null || !dev.blockphone.fabric.client.phone.NotifyPrefs.ring()) {
             return;
         }
         long now = System.currentTimeMillis();

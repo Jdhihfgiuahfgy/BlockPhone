@@ -29,6 +29,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
     /** Музыка: пауза/продолжить, следующий, предыдущий трек (по умолчанию не назначены). */
     /** Включить/выключить режим «на ходу» (по умолчанию не назначена). */
     public static KeyMapping compactKey;
+    /** «На ходу»: пока зажата — курсор для телефона (по умолчанию левый Alt). */
+    public static KeyMapping cursorKey;
     public static KeyMapping musicPlayKey;
     public static KeyMapping musicNextKey;
     public static KeyMapping musicPrevKey;
@@ -41,7 +43,10 @@ public final class BlockPhoneClient implements ClientModInitializer {
         cameraKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.blockphone.camera", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), KEY_CATEGORY));
 
-        compactKey = register("key.blockphone.compact");
+        compactKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.compact", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, KEY_CATEGORY));
+        cursorKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.cursor", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, KEY_CATEGORY));
         musicPlayKey = register("key.blockphone.music_play");
         musicNextKey = register("key.blockphone.music_next");
         musicPrevKey = register("key.blockphone.music_prev");
@@ -53,11 +58,11 @@ public final class BlockPhoneClient implements ClientModInitializer {
             passMovementThrough(client);
             dev.blockphone.fabric.client.phone.PhoneHolders.tick(client);
             while (compactKey.consumeClick()) {
-                if (client.screen == null && client.player != null) {
-                    dev.blockphone.fabric.client.config.PhoneSettings.get().compactPhone = true;
-                    client.setScreen(new PhoneScreen());
+                if (client.screen == null || client.screen instanceof PhoneScreen) {
+                    dev.blockphone.fabric.client.phone.PhonePin.toggle(client);
                 }
             }
+            dev.blockphone.fabric.client.phone.PhonePin.tick(client);
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
@@ -86,6 +91,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
                 if (dev.blockphone.fabric.client.telegram.VideoNoteRecorder.active()) {
                     dev.blockphone.fabric.client.telegram.VideoNoteRecorder.stop();
                 } else if (client.screen == null && client.player != null) {
+                    // Из режима «на ходу» — в полноэкранный телефон.
+                    dev.blockphone.fabric.client.phone.PhonePin.unpin(client);
                     client.setScreen(new PhoneScreen());
                 }
             }
@@ -98,6 +105,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
         CameraMode.init();
         dev.blockphone.fabric.client.phone.PhoneInHandLayer.init();
         MusicHud.init();
+        dev.blockphone.fabric.client.phone.PhonePin.init();
         dev.blockphone.fabric.client.music.lyrics.LyricsWorld.init();
         dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {

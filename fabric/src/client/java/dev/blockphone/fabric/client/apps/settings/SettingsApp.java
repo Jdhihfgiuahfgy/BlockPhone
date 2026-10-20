@@ -40,7 +40,7 @@ public final class SettingsApp extends PhoneApp {
     private static final int ROW_H = 20;
     private static final int MARGIN = 6;
 
-    private enum Page { MAIN, ACCENT, WALLPAPER, HUD, APPS }
+    private enum Page { MAIN, ACCENT, WALLPAPER, HUD, APPS, NOTIFY }
 
     /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. */
     private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
@@ -74,6 +74,7 @@ public final class SettingsApp extends PhoneApp {
             case WALLPAPER -> PhoneLang.tr("settings.wallpaper");
             case HUD -> PhoneLang.tr("settings.music_hud");
             case APPS -> PhoneLang.tr("settings.apps");
+            case NOTIFY -> PhoneLang.tr("settings.notify");
         };
     }
 
@@ -167,12 +168,11 @@ public final class SettingsApp extends PhoneApp {
                         () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
                         dir -> s.lockScreen = !s.lockScreen, null, false),
                 new Row(() -> PhoneLang.tr("settings.compact"),
-                        () -> PhoneLang.tr(s.compactPhone ? "settings.on" : "settings.off"),
+                        () -> BlockPhoneClient.compactKey.getTranslatedKeyMessage().getString() + " · "
+                                + PhoneLang.tr("settings.compact_cursor", BlockPhoneClient.cursorKey.getTranslatedKeyMessage().getString()),
                         dir -> {
                             if (phone != null) {
-                                phone.toggleCompact();
-                            } else {
-                                s.compactPhone = !s.compactPhone;
+                                dev.blockphone.fabric.client.phone.PhonePin.toggle(net.minecraft.client.Minecraft.getInstance());
                             }
                         }, null, false))));
         result.add(new Section("settings.section.music", List.of(
@@ -220,6 +220,10 @@ public final class SettingsApp extends PhoneApp {
 
         ServerHelloPacket hello = ClientNetwork.serverHello();
         String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());
+        result.add(new Section("settings.section.notify", List.of(
+                new Row(() -> PhoneLang.tr("settings.notify"),
+                        () -> PhoneLang.tr(s.notifyAll ? "settings.on" : "settings.off"),
+                        dir -> open(Page.NOTIFY), null, true))));
         result.add(new Section("settings.section.apps", List.of(
                 new Row(() -> PhoneLang.tr("settings.apps"),
                         () -> String.valueOf(dev.blockphone.fabric.client.apps.custom.CustomApps.all().size()),
@@ -254,6 +258,7 @@ public final class SettingsApp extends PhoneApp {
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
             case HUD -> renderHud(g, mouseX, mouseY);
             case APPS -> renderApps(g, mouseX, mouseY);
+            case NOTIFY -> renderSections(g, mouseX, mouseY, notifySections(), 4 - (int) scroll);
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
@@ -341,6 +346,25 @@ public final class SettingsApp extends PhoneApp {
                 toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v))));
         result.add(new Section("settings.hud.reset_section", List.of(
                 new Row(() -> PhoneLang.tr("settings.hud.reset"), () -> "", dir -> resetHud(s), null, false))));
+        return result;
+    }
+
+    private List<Section> notifySections() {
+        PhoneSettings s = PhoneSettings.get();
+        List<Section> result = new ArrayList<>();
+        result.add(new Section("settings.notify.general", List.of(
+                toggle("settings.notify.all", () -> s.notifyAll, v -> s.notifyAll = v),
+                toggle("settings.notify.toasts", () -> s.notifyToasts, v -> s.notifyToasts = v),
+                toggle("settings.notify.center", () -> s.notifyCenter, v -> s.notifyCenter = v),
+                toggle("settings.notify.ring", () -> s.notifySound, v -> s.notifySound = v))));
+        List<Row> apps = new ArrayList<>();
+        for (String app : dev.blockphone.fabric.client.phone.NotifyPrefs.APPS) {
+            apps.add(new Row(() -> PhoneLang.tr("settings.notify.app." + app),
+                    () -> PhoneLang.tr(!s.notifyAll ? "settings.notify.all_off"
+                            : dev.blockphone.fabric.client.phone.NotifyPrefs.appEnabled(app) ? "settings.on" : "settings.off"),
+                    dir -> dev.blockphone.fabric.client.phone.NotifyPrefs.toggleApp(app), null, false));
+        }
+        result.add(new Section("settings.notify.apps", apps));
         return result;
     }
 

@@ -669,5 +669,20 @@
   "settings.lyrics_unsynced": "Текст без времени строк",
   "music.playlists": "Мои плейлисты",
   "music.no_playlists": "Плейлистов пока нет",
-  "music.playlist_empty": "В плейлисте нет доступных треков"
+  "music.playlist_empty": "В плейлисте нет доступных треков",
+  "key.blockphone.cursor": "Курсор для телефона «на ходу» (зажать)",
+  "settings.compact_cursor": "курсор — %s",
+  "settings.section.notify": "Уведомления",
+  "settings.notify": "Уведомления",
+  "settings.notify.general": "Общие",
+  "settings.notify.all": "Все уведомления",
+  "settings.notify.toasts": "Всплывающие окошки",
+  "settings.notify.center": "Центр и экран блокировки",
+  "settings.notify.ring": "Звук входящего звонка",
+  "settings.notify.apps": "Приложения",
+  "settings.notify.all_off": "выкл (все)",
+  "settings.notify.app.messenger": "Мессенджер",
+  "settings.notify.app.feed": "Лента",
+  "settings.notify.app.telegram": "Telegram",
+  "settings.notify.app.calls": "Звонки"
 }

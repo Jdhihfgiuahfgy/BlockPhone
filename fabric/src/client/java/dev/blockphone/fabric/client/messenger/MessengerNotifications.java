@@ -26,7 +26,12 @@ public final class MessengerNotifications {
         String title = chat.type() == ChatType.GROUP
                 ? message.sender().name() + " → " + MessengerClient.title(chat)
                 : message.sender().name();
-        mc.getToastManager().addToast(new MessageToast(message, title));
+        if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("messenger")) {
+            mc.getToastManager().addToast(new MessageToast(message, title));
+        }
+        if (!dev.blockphone.fabric.client.phone.NotifyPrefs.center("messenger")) {
+            return;
+        }
         long chatId = chat.id();
         dev.blockphone.fabric.client.phone.PhoneNotifications.add("messenger:" + chatId, "messenger", title,
                 MessengerClient.previewText(message), message.sender().uuid(), phone -> {

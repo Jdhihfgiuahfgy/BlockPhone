@@ -39,7 +39,12 @@ public final class SocialNotifications {
             case FOLLOW -> PhoneLang.tr("social.notice.follow_text");
             default -> notice.text();
         };
-        Minecraft.getInstance().getToastManager().addToast(new NoticeToast(notice, title, text));
+        if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("feed")) {
+            Minecraft.getInstance().getToastManager().addToast(new NoticeToast(notice, title, text));
+        }
+        if (!dev.blockphone.fabric.client.phone.NotifyPrefs.center("feed")) {
+            return;
+        }
         long postId = notice.postId();
         java.util.UUID actor = notice.actor().uuid();
         dev.blockphone.common.protocol.data.SocialData.NoticeType type = notice.type();

@@ -65,6 +65,13 @@ public final class PhoneSettings {
     public boolean lockScreen = true;
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
     public boolean compactPhone = false;
+    /** Уведомления: все вкл/выкл, всплывающие окошки, центр уведомлений и экран блокировки, звук звонка. */
+    public boolean notifyAll = true;
+    public boolean notifyToasts = true;
+    public boolean notifyCenter = true;
+    public boolean notifySound = true;
+    /** Приложения с выключенными уведомлениями (messenger, feed, telegram, calls). */
+    public java.util.Set<String> notifyMuted = new java.util.HashSet<>();
     /** Текст песни в мире (если у трека есть текст). */
     public boolean lyricsWorld = true;
     /** "world" — строка остаётся там, где появилась; "view" — следует за взглядом. */

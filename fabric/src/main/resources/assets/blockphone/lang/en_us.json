@@ -669,5 +669,20 @@
   "settings.lyrics_unsynced": "Lyrics without timing",
   "music.playlists": "My playlists",
   "music.no_playlists": "No playlists yet",
-  "music.playlist_empty": "No available tracks in this playlist"
+  "music.playlist_empty": "No available tracks in this playlist",
+  "key.blockphone.cursor": "Cursor for the walking phone (hold)",
+  "settings.compact_cursor": "cursor — %s",
+  "settings.section.notify": "Notifications",
+  "settings.notify": "Notifications",
+  "settings.notify.general": "General",
+  "settings.notify.all": "All notifications",
+  "settings.notify.toasts": "Pop-ups",
+  "settings.notify.center": "Center & lock screen",
+  "settings.notify.ring": "Incoming call sound",
+  "settings.notify.apps": "Apps",
+  "settings.notify.all_off": "off (all)",
+  "settings.notify.app.messenger": "Messenger",
+  "settings.notify.app.feed": "Feed",
+  "settings.notify.app.telegram": "Telegram",
+  "settings.notify.app.calls": "Calls"
 }

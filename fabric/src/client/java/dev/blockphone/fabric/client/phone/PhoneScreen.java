@@ -64,17 +64,14 @@ public class PhoneScreen extends Screen {
         originY = (height - PHONE_H * scale) / 2f;
     }
 
-    /** Режим «на ходу»: телефон маленький в углу, фон не затемняется, можно ходить (пока не печатаешь). */
+    /** Режим «на ходу» ({@link PhonePin}): телефон маленький в углу, фон не затемняется, можно ходить и крутить камеру. */
     public boolean compact() {
-        return PhoneSettings.get().compactPhone;
+        return PhonePin.pinned(this);
     }
 
-    /** Переключить режим «на ходу». */
-    public void toggleCompact() {
-        PhoneSettings settings = PhoneSettings.get();
-        settings.compactPhone = !settings.compactPhone;
-        settings.save();
-        layoutPhone();
+    /** Открыт диалог (тогда курсор не прячется, пока не ответишь). */
+    public boolean dialogOpen() {
+        return dialog != null;
     }
 
     /** Приложение ждёт ввода текста (тогда клавиши ходьбы не пропускаются в игру). */
@@ -135,6 +132,10 @@ public class PhoneScreen extends Screen {
     }
 
     public void closePhone() {
+        if (PhonePin.pinned(this)) {
+            PhonePin.unpin(minecraft);
+            return;
+        }
         if (closingAt >= 0) {
             return;
         }
@@ -174,6 +175,9 @@ public class PhoneScreen extends Screen {
 
     @Override
     public void removed() {
+        if (PhonePin.hiding()) {
+            return; // «на ходу» телефон лишь отдаёт мышь игре — приложения остаются открытыми
+        }
         PhoneState.markClosed();
         if (app != null) {
             app.onHidden();
@@ -198,7 +202,7 @@ public class PhoneScreen extends Screen {
 
     /** 0 — телефон спрятан внизу, 1 — полностью выдвинут. */
     private float slideProgress() {
-        if (!PhoneSettings.get().animations) {
+        if (!PhoneSettings.get().animations || (PhonePin.pinned(this) && closingAt < 0)) {
             return 1f;
         }
         long now = System.currentTimeMillis();
@@ -487,7 +491,7 @@ public class PhoneScreen extends Screen {
             return true;
         }
         if (!app.capturesKeyboard() && BlockPhoneClient.compactKey.matches(event)) {
-            toggleCompact();
+            PhonePin.toggle(minecraft);
             return true;
         }
         return super.keyPressed(event);
