@@ -44,6 +44,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         Voice voice = new Voice();
         /** Ники или UUID игроков с полными правами модератора. */
         List<String> moderators = new ArrayList<>();
+        /** Автомодерация слов и ссылок для всей сети. */
+        dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
         Storage storage = new Storage();
 
         static final class Social {
@@ -81,7 +83,7 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice));
+                List.copyOf(config.moderators), voice, config.filter));
         core.start();
         getProxy().registerChannel(BlockPhone.CHANNEL);
         getProxy().getPluginManager().registerListener(this, this);
@@ -144,6 +146,10 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         if (config.voice == null) {
             config.voice = new Config.Voice();
         }
+        if (config.filter == null) {
+            config.filter = new dev.blockphone.common.server.filter.FilterSettings();
+        }
+        config.filter.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }

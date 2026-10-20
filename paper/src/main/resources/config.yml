@@ -37,6 +37,50 @@ voice:
 #        blockphone.moderate.posts, .publics, .mute, .reports, blockphone.moderator — все сразу (у операторов).
 moderators: []
 
+# Автомодерация текста: сообщения, названия групп, посты, комментарии, «о себе», паблики.
+# Игроки с правом blockphone.filter.bypass (по умолчанию — операторы) не проверяются, если bypass-for-moderators: true.
+filter:
+  enabled: true
+  bypass-for-moderators: true
+  # Писать нарушения в лог сервера.
+  log: true
+  apply-to:
+    messages: true
+    group-names: true
+    posts: true
+    comments: true
+    profiles: true
+    publics: true
+  words:
+    # «слово» — целое слово (или фраза); «слово*» — начинается так; «*слово» — заканчивается так; «*слово*» — где угодно;
+    # «regex:выражение» — регулярное выражение. Регистр и обходы не важны: похожие латинские/русские буквы, цифры вместо букв,
+    # повторы букв («плоооохо»), буквы через точки или пробелы («п.л.о.х.о»).
+    blacklist: []
+    # Слова-исключения: никогда не нарушение (например, «class», если в чёрном списке «*ass*»).
+    whitelist: []
+    # censor — заменить звёздочками; block — не отправлять (игрок увидит причину).
+    action: censor
+  links:
+    # allow — разрешены все ссылки, кроме запрещённых списками; block — запрещены все, кроме разрешённых.
+    mode: allow
+    # Домены (подходят и поддомены); можно с началом пути: youtube.com/watch
+    domain-whitelist: []
+    domain-blacklist: []
+    # Форматы: url (с «://»), scheme:https / scheme:http / scheme:ftp …, www, domain (просто site.ru), ip, email,
+    # invite (приглашения Discord/Telegram/WhatsApp/VK), obfuscated (site[.]ru, site (dot) ru, site точка ru) и свои (ниже).
+    # Порядок: белый список доменов → чёрный список доменов → чёрный список форматов → белый список форматов → mode.
+    format-whitelist: []
+    format-blacklist: [ip, obfuscated]
+    # Свои форматы: имя: регулярное выражение. Имя можно указать в списках форматов.
+    custom-formats: {}
+    # censor — заменить ссылку звёздочками; block — не отправлять.
+    action: block
+  # Столько нарушений за window-minutes минут → игрок не может писать mute-minutes минут (0 — выключено).
+  auto-mute:
+    violations: 5
+    window-minutes: 10
+    mute-minutes: 15
+
 storage:
   # h2 — встроенная база в папке плагина (ничего настраивать не нужно)
   # mysql — сервер MySQL или MariaDB (настройки ниже)

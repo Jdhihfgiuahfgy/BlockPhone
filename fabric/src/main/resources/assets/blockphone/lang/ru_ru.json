@@ -540,5 +540,10 @@
   "settings.hud.paused": "На паузе",
   "settings.hud.sample_title": "Название трека",
   "settings.hud.sample_artist": "Исполнитель",
-  "settings.hud.sample_lyric": "Здесь будет строка песни"
+  "settings.hud.sample_lyric": "Здесь будет строка песни",
+  "messenger.error.filter_words": "Сообщение не отправлено: недопустимые слова.",
+  "messenger.error.filter_links": "Сообщение не отправлено: такие ссылки здесь запрещены.",
+  "messenger.error.filter_muted": "Слишком много нарушений — писать можно через %s мин.",
+  "social.error.filter_words": "Не опубликовано: недопустимые слова.",
+  "social.error.filter_links": "Не опубликовано: такие ссылки здесь запрещены."
 }

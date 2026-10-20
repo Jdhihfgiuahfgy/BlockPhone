@@ -19,6 +19,7 @@ public enum Permission {
     MOD_PUBLICS("blockphone.moderate.publics", false, Rights.MOD_PUBLICS, "Delete any public"),
     MOD_MUTE("blockphone.moderate.mute", false, Rights.MOD_MUTE, "Mute players in the feed"),
     MOD_REPORTS("blockphone.moderate.reports", false, Rights.MOD_REPORTS, "View and resolve reports"),
+    FILTER_BYPASS("blockphone.filter.bypass", false, 0, "Not checked by the automatic content filter"),
     MODERATOR("blockphone.moderator", false, 0, "All moderator permissions");
 
     private final String node;

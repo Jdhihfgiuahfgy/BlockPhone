@@ -1,5 +1,7 @@
 package dev.blockphone.common.server;
 
+import dev.blockphone.common.server.filter.ContentFilter;
+
 import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
@@ -48,6 +50,7 @@ public final class Backend {
 
     /** Игроки с модом, которые сейчас онлайн (в сети серверов — во всей сети): UUID → ник. */
     private final Map<UUID, String> online = new ConcurrentHashMap<>();
+    private final ContentFilter filter;
     private volatile boolean available;
     private volatile String serverId = "";
 
@@ -67,6 +70,10 @@ public final class Backend {
         this.social = settings.social().enabled() ? new SocialService(this) : null;
         this.voices = new VoiceService(this);
         this.calls = new CallService(this, bridges);
+        this.filter = new ContentFilter(settings.filter());
+        for (String bad : filter.badEntries()) {
+            platform.warn("BlockPhone filter: bad entry ignored: " + bad, null);
+        }
         VoiceBridges.setLeaveListener((player, group) -> run(player, false, null, () -> calls.leftGroup(player, group)));
     }
 
@@ -166,6 +173,40 @@ public final class Backend {
     UserInfo user(UUID uuid, String name) {
         String resolved = name != null ? name : online.getOrDefault(uuid, "?");
         return new UserInfo(uuid, resolved, online.containsKey(uuid));
+    }
+
+    /**
+     * Автомодерация текста игрока (см. {@link ContentFilter}). Нарушение пишется в лог; много нарушений подряд — автомьют
+     * (в ленте — обычное заглушение, в мессенджере — {@link #filterMutedUntil}).
+     */
+    public ContentFilter.Verdict filter(UUID player, ContentFilter.Context context, String text) {
+        if (text.isEmpty() || !filter.applies(context)
+                || (filter.settings().bypassForModerators && has(player, Permission.FILTER_BYPASS))) {
+            return new ContentFilter.Verdict(text, false, null, java.util.List.of());
+        }
+        ContentFilter.Verdict verdict = filter.check(text);
+        if (verdict.violation()) {
+            long now = System.currentTimeMillis();
+            String name = online.getOrDefault(player, player.toString());
+            if (filter.settings().log) {
+                platform.info("[filter] " + name + " " + context.name().toLowerCase(java.util.Locale.ROOT)
+                        + (verdict.blocked() ? " blocked: " : " censored: ") + verdict.found());
+            }
+            if (filter.recordViolation(player, now)) {
+                int minutes = filter.settings().autoMute.muteMinutes;
+                platform.info("[filter] " + name + " auto-muted for " + minutes + " min");
+                if (social != null) {
+                    social.autoMute(player, now + minutes * 60_000L);
+                }
+                send(player, new MessengerPackets.Failure("messenger.error.filter_muted", String.valueOf(minutes)));
+            }
+        }
+        return verdict;
+    }
+
+    /** До какого времени игрок не может писать из-за автомьюта фильтра (0 — может). */
+    public long filterMutedUntil(UUID player) {
+        return filter.mutedUntil(player, System.currentTimeMillis());
     }
 
     void send(UUID player, Packet packet) {

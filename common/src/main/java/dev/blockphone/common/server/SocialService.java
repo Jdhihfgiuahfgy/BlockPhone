@@ -1,5 +1,7 @@
 package dev.blockphone.common.server;
 
+import dev.blockphone.common.server.filter.ContentFilter;
+
 import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
@@ -138,6 +140,12 @@ public final class SocialService {
         if (!canWrite(player)) {
             return;
         }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.POST, text);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        text = verdict.text();
         if (p.publicId() > 0) {
             PublicRow pub = repo.publicRow(p.publicId());
             if (pub == null || role(pub, player) == Role.NONE) {
@@ -290,6 +298,12 @@ public final class SocialService {
             fail(player, "too_long");
             return;
         }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.COMMENT, text);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        text = verdict.text();
         PostRow post = repo.post(p.postId(), player);
         if (post == null || post.deleted()) {
             send(player, new SocialPackets.PostRemoved(p.postId()));
@@ -363,6 +377,12 @@ public final class SocialService {
             fail(player, "too_long");
             return;
         }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.BIO, bio);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        bio = verdict.text();
         if (!canWrite(player)) {
             return;
         }
@@ -434,6 +454,12 @@ public final class SocialService {
     private void createPublic(UUID player, SocialPackets.CreatePublic p) throws SQLException {
         String title = p.title().strip();
         String description = p.description().strip();
+        String[] checked = filterPublic(player, title, description);
+        if (checked == null) {
+            return;
+        }
+        title = checked[0];
+        description = checked[1];
         if (!backend.has(player, Permission.CREATE_PUBLIC)) {
             fail(player, "no_permission");
             return;
@@ -480,8 +506,12 @@ public final class SocialService {
                     fail(player, "not_admin");
                     return;
                 }
-                String title = p.title().strip();
-                String description = p.description().strip();
+                String[] checked = filterPublic(player, p.title().strip(), p.description().strip());
+                if (checked == null) {
+                    return;
+                }
+                String title = checked[0];
+                String description = checked[1];
                 String error = checkPublicText(title, description, row.id());
                 if (error != null) {
                     fail(player, error);
@@ -739,6 +769,35 @@ public final class SocialService {
         }
         if (backend.isOnline(target)) {
             backend.sendSession(target);
+        }
+    }
+
+    /** Название и описание паблика через фильтр; null — запрещено (ошибка уже отправлена). */
+    private String[] filterPublic(UUID player, String title, String description) {
+        ContentFilter.Verdict t = backend.filter(player, ContentFilter.Context.PUBLIC, title);
+        ContentFilter.Verdict d = backend.filter(player, ContentFilter.Context.PUBLIC, description);
+        if (t.blocked() || d.blocked()) {
+            fail(player, t.blocked() ? t.reason() : d.reason());
+            return null;
+        }
+        return new String[]{t.text(), d.text()};
+    }
+
+    /** Автомьют от фильтра: заглушить до {@code until}, если игрок не заглушён дольше. */
+    void autoMute(UUID target, long until) {
+        try {
+            long now = System.currentTimeMillis();
+            if (repo.mutedUntil(target, now) >= until) {
+                return;
+            }
+            UUID system = new UUID(0, 0);
+            repo.mute(target, until, system, now);
+            repo.log(system, "auto_mute", target.toString(), "content filter", now);
+            if (backend.isOnline(target)) {
+                backend.sendSession(target);
+            }
+        } catch (SQLException e) {
+            backend.platform().warn("BlockPhone auto-mute failed", e);
         }
     }
 

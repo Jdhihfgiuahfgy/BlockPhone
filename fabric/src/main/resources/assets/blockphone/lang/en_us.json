@@ -540,5 +540,10 @@
   "settings.hud.paused": "While paused",
   "settings.hud.sample_title": "Track title",
   "settings.hud.sample_artist": "Artist",
-  "settings.hud.sample_lyric": "A line of the song goes here"
+  "settings.hud.sample_lyric": "A line of the song goes here",
+  "messenger.error.filter_words": "Message not sent: inappropriate words.",
+  "messenger.error.filter_links": "Message not sent: links like this are not allowed here.",
+  "messenger.error.filter_muted": "Too many violations — you can write again in %s min.",
+  "social.error.filter_words": "Not published: inappropriate words.",
+  "social.error.filter_links": "Not published: links like this are not allowed here."
 }

@@ -77,7 +77,41 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
                 c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators, voice);
+                social, moderators, voice, readFilter(c));
+    }
+
+    private static dev.blockphone.common.server.filter.FilterSettings readFilter(FileConfiguration c) {
+        dev.blockphone.common.server.filter.FilterSettings f = new dev.blockphone.common.server.filter.FilterSettings();
+        f.enabled = c.getBoolean("filter.enabled", f.enabled);
+        f.bypassForModerators = c.getBoolean("filter.bypass-for-moderators", f.bypassForModerators);
+        f.log = c.getBoolean("filter.log", f.log);
+        f.applyTo.messages = c.getBoolean("filter.apply-to.messages", true);
+        f.applyTo.groupNames = c.getBoolean("filter.apply-to.group-names", true);
+        f.applyTo.posts = c.getBoolean("filter.apply-to.posts", true);
+        f.applyTo.comments = c.getBoolean("filter.apply-to.comments", true);
+        f.applyTo.profiles = c.getBoolean("filter.apply-to.profiles", true);
+        f.applyTo.publics = c.getBoolean("filter.apply-to.publics", true);
+        f.words.blacklist = c.getStringList("filter.words.blacklist");
+        f.words.whitelist = c.getStringList("filter.words.whitelist");
+        f.words.action = c.getString("filter.words.action", f.words.action);
+        f.links.mode = c.getString("filter.links.mode", f.links.mode);
+        f.links.domainWhitelist = c.getStringList("filter.links.domain-whitelist");
+        f.links.domainBlacklist = c.getStringList("filter.links.domain-blacklist");
+        f.links.formatWhitelist = c.getStringList("filter.links.format-whitelist");
+        if (c.isList("filter.links.format-blacklist")) {
+            f.links.formatBlacklist = c.getStringList("filter.links.format-blacklist");
+        }
+        org.bukkit.configuration.ConfigurationSection custom = c.getConfigurationSection("filter.links.custom-formats");
+        if (custom != null) {
+            for (String key : custom.getKeys(false)) {
+                f.links.customFormats.put(key, custom.getString(key, ""));
+            }
+        }
+        f.links.action = c.getString("filter.links.action", f.links.action);
+        f.autoMute.violations = c.getInt("filter.auto-mute.violations", f.autoMute.violations);
+        f.autoMute.windowMinutes = c.getInt("filter.auto-mute.window-minutes", f.autoMute.windowMinutes);
+        f.autoMute.muteMinutes = c.getInt("filter.auto-mute.mute-minutes", f.autoMute.muteMinutes);
+        return f.fixNulls();
     }
 
     /**

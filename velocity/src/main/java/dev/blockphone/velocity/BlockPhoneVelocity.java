@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.7.6",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.7.7",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -65,6 +65,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         Voice voice = new Voice();
         /** Ники или UUID игроков с полными правами модератора (у прокси нет операторов). */
         List<String> moderators = new ArrayList<>();
+        /** Автомодерация слов и ссылок для всей сети. */
+        dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
         Storage storage = new Storage();
 
         static final class Voice {
@@ -103,7 +105,7 @@ public final class BlockPhoneVelocity implements ServerPlatform {
                 config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice));
+                List.copyOf(config.moderators), voice, config.filter));
         core.start();
         proxy.getChannelRegistrar().register(CHANNEL);
     }
@@ -166,6 +168,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         if (config.voice == null) {
             config.voice = new Config.Voice();
         }
+        if (config.filter == null) {
+            config.filter = new dev.blockphone.common.server.filter.FilterSettings();
+        }
+        config.filter.fixNulls();
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {

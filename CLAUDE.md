@@ -157,6 +157,15 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     приходит вызов; принявшие входят в группу; не ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён.
     Тик каждые 5 с (планировщик бэкенда). Вышел из группы через меню SVC — `leftGroup`.
   - `RateLimiter` — «не больше N за окно» по игроку.
+  - `filter/FilterSettings` (POJO для Gson; Paper заполняет из `filter.*` в config.yml; `fixNulls()`) и `filter/ContentFilter` —
+    автомодерация: слова (чёрный/белый список; «слово», «слово*», «*слово», «*слово*», «regex:…»; сравнение по «скелету»:
+    похожие буквы/цифры сведены, повторы схлопнуты, буквы через разделители склеены; censor → звёздочки или block) и ссылки
+    (форматы url, scheme:&lt;имя&gt;, www, domain (TLD из списка или любая 2-буквенная латинская), ip, email, invite, obfuscated
+    («[.]», «(dot)», «точка», « . »), свои форматы-регулярки; решение: белый список доменов → чёрный → чёрный форматов → белый форматов →
+    mode allow|block). Автомьют: N нарушений за окно → мьют (в ленте — обычный мьют от UUID 0, в мессенджере — в памяти).
+    `Backend.filter(player, Context, text)` (право `blockphone.filter.bypass`, лог `[filter]`) вызывают MessengerService
+    (сообщение, правка, название группы) и SocialService (пост, комментарий, «о себе», паблик). Ошибки: `*.error.filter_words`,
+    `filter_links`, `messenger.error.filter_muted` (минуты).
 - `voice/` — Simple Voice Chat: `VoiceBridge` (интерфейс: connected, createGroup, join, leave, removeGroup), `VoiceBridges` (текущий мост,
   главный поток сервера, слушатель выхода из группы — без типов SVC), `SvcBridge` (реализация на `VoicechatServerApi`: скрытые
   непостоянные группы с паролем, тип normal/isolated), `SvcPlugin` (плагин SVC: события старта/остановки сервера SVC и выхода из группы).
@@ -173,7 +182,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   с события JOIN (в JOIN игрок ещё не в списке игроков сервера — отправка через `getPlayerList()` теряла приветствие).
 - `server/FabricServerHandler` — права: fabric-permissions-api (LuckPerms) через отражение, иначе обычные — у всех,
   модераторские — у операторов уровня 2+ (`player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)`).
-- `server/FabricServerConfig` — `config/blockphone/server.json`: messengerEnabled, phoneInHandVisible, social{enabled, photos,
+- `server/FabricServerConfig` — `config/blockphone/server.json`: filter{...} (как FilterSettings), messengerEnabled, phoneInHandVisible, social{enabled, photos,
   maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], voice{messages, maxSeconds, calls, callGroupType}, storage{type,host,port,...}.
 - Simple Voice Chat: точка входа `voicechat` в fabric.mod.json → `SvcPlugin` (из common); главный поток для SVC — `server::execute`.
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
@@ -329,7 +338,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 ### paper (`dev.blockphone.paper`)
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
   (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
-- `config.yml`: `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
+- `config.yml`: `filter.*` (автомодерация, с комментариями), `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
   max-publics-per-player), `voice.*` (messages, max-seconds, calls, call-group-type), `moderators`, `storage.type` (h2/mysql),
   `storage.table-prefix`, `storage.mysql.*`. Simple Voice Chat: `softdepend: [voicechat]`, регистрация через `PaperVoicechat`
   (`BukkitVoicechatService`); главный поток для SVC — планировщик Bukkit (`runOnMain`).

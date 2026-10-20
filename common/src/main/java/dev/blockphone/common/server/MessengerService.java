@@ -1,5 +1,7 @@
 package dev.blockphone.common.server;
 
+import dev.blockphone.common.server.filter.ContentFilter;
+
 import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.protocol.data.MessengerData;
@@ -114,6 +116,15 @@ public final class MessengerService {
         if (text.isEmpty() && p.imageId() <= 0 && p.voiceId() <= 0) {
             return;
         }
+        if (filterMuted(player)) {
+            return;
+        }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.MESSAGE, text);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        text = verdict.text();
         if (text.length() > MessengerData.MAX_MESSAGE_LENGTH) {
             fail(player, "too_long");
             return;
@@ -165,6 +176,15 @@ public final class MessengerService {
             fail(player, "too_long");
             return;
         }
+        if (filterMuted(player)) {
+            return;
+        }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.MESSAGE, text);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        text = verdict.text();
         long now = System.currentTimeMillis();
         repo.editMessage(row.id(), text, now);
         broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), text, row.imageId(), row.voiceId(), row.sentAt(), now,
@@ -243,6 +263,12 @@ public final class MessengerService {
             fail(player, "bad_title");
             return;
         }
+        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.GROUP_NAME, title);
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        title = verdict.text();
         Set<UUID> invited = new LinkedHashSet<>(p.members());
         invited.remove(player);
         Set<UUID> known = repo.userNames(invited).keySet();
@@ -278,6 +304,12 @@ public final class MessengerService {
                     fail(player, "bad_title");
                     return;
                 }
+                ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.GROUP_NAME, title);
+                if (verdict.blocked()) {
+                    fail(player, verdict.reason());
+                    return;
+                }
+                title = verdict.text();
                 repo.renameChat(chat.id(), title);
                 pushChat(repo.chat(chat.id()), repo.members(chat.id()));
             }
@@ -393,6 +425,17 @@ public final class MessengerService {
 
     private void fail(UUID player, String key) {
         send(player, new MessengerPackets.Failure("messenger.error." + key, ""));
+    }
+
+    /** Автомьют фильтра: сообщить игроку, сколько ещё минут, и не пропустить сообщение. */
+    private boolean filterMuted(UUID player) {
+        long until = backend.filterMutedUntil(player);
+        if (until <= 0) {
+            return false;
+        }
+        long minutes = Math.max(1, (until - System.currentTimeMillis() + 59_999) / 60_000);
+        send(player, new MessengerPackets.Failure("messenger.error.filter_muted", String.valueOf(minutes)));
+        return true;
     }
 
     private void send(UUID player, Packet packet) {
