@@ -472,6 +472,39 @@ public final class DevShots {
             MusicPlayer.seek(64_600);
         });
         shot(40, "music_lyrics_view");
+        // Оформления виджета музыки в разных углах экрана.
+        String[][] looks = {{"compact", "top_center", "dark"}, {"large", "top_right", "dark"}, {"minimal", "bottom_left", "dark"},
+                {"cover", "middle_right", "accent"}, {"card", "top_left", "light"}};
+        for (String[] look : looks) {
+            step(1, mc -> {
+                settings.hudStyle = look[0];
+                settings.hudAnchor = look[1];
+                settings.hudColor = look[2];
+                settings.hudShowTime = true;
+                settings.hudShowLyrics = true;
+                MusicPlayer.seek(61_000);
+            });
+            shot(30, "hud_" + look[0]);
+        }
+        step(1, mc -> {
+            settings.hudStyle = "large";
+            settings.hudAnchor = "top_right";
+            settings.hudColor = "dark";
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+            phone(mc, p -> p.openApp("settings"));
+        });
+        step(5, mc -> settingsPage("hud"));
+        shot(30, "settings_hud");
+        step(1, mc -> {
+            mc.setScreen(null);
+            PhoneSettings fresh = new PhoneSettings();
+            settings.hudStyle = fresh.hudStyle;
+            settings.hudAnchor = fresh.hudAnchor;
+            settings.hudColor = fresh.hudColor;
+            settings.hudShowTime = fresh.hudShowTime;
+            settings.hudShowLyrics = fresh.hudShowLyrics;
+        });
         step(1, mc -> {
             settings.lyricsMode = "world";
             settings.lyricsScatter = true;

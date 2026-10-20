@@ -46,6 +46,7 @@
   играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
   в лог пишет позицию воспроизведения. Пишет рядом с треками придуманный тестовый `.lrc` и снимает текст в телефоне
   (`music_lyrics`), в мире (`music_lyrics_world`) и «перед глазами» (`music_lyrics_view`); поиск в сети на время выключен.
+  Затем пять оформлений виджета в разных местах (`hud_<стиль>`) и страница настроек виджета (`settings_hud`).
   Сценарий голоса: `BLOCKPHONE_DEV_SCENARIO=voice BLOCKPHONE_DEV_MESSENGER=1` — голосовое из тихого тестового сигнала
   (микрофон не трогается) → загрузка → пузырь → проигрывание; интерфейс звонка на поддельных состояниях (входящий, полоса, HUD);
   настоящий звонок в группу через SVC (в dev голосовой чат SVC выключен до первоначальной настройки — сервер отвечает ошибкой).
@@ -196,6 +197,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
   darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone,
+  hudStyle, hudAnchor, hudOffsetX/Y, hudScale, hudOpacity, hudColor, hudShowCover/Artist/Progress/Time/Lyrics/Paused,
   lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..12, lyricsScatter, lyricsAccentWord, lyricsOffsetMs, lyricsOnline).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
@@ -259,7 +261,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, уведомления;
   нажатие на уведомление — открыть, в другом месте — разблокировать),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
-  `settings/SettingsApp` (страницы MAIN / ACCENT — готовые цвета + HEX / WALLPAPER — градиенты + свои картинки; `openPage(name)`),
+  `settings/SettingsApp` (страницы MAIN / ACCENT — готовые цвета + HEX / WALLPAPER — градиенты + свои картинки /
+  HUD — виджет музыки: предпросмотр «экрана игры» 16:9 и настройки; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
   `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
   `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
   `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;
@@ -295,7 +298,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     `commandQueue().submitText`, полная яркость, обводка): строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
     остаётся или следует за взглядом; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
     гаснет и уплывает вверх. Прячется при F1 и остановке музыки.
-  - `MusicHud` — виджет «сейчас играет» слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
+  - `MusicHud` — виджет «сейчас играет»: оформления `STYLES` (card, compact — строка-«таблетка», large, minimal — без фона,
+    cover — квадрат-обложка), цвет `COLORS` (dark/light/accent) и непрозрачность подложки, угол/край `ANCHORS` (8 мест) + отступы,
+    масштаб 50–200 %, что показывать (обложка, исполнитель, полоска, время, строка текста песни, показ на паузе). `current()` →
+    `Info`, `measure()`/`draw()` рисуют в точке (0, 0) — их же использует предпросмотр в настройках (страница `HUD`).
+    Полоска звонка — всегда слева сверху (под виджетом, если он там). Было: слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
 - `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
   `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
   поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),

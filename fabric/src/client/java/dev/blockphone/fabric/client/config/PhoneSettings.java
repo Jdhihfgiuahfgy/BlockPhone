@@ -40,6 +40,27 @@ public final class PhoneSettings {
     public float musicVolume = 0.7f;
     /** Показывать виджет «сейчас играет» на экране игры. */
     public boolean musicHud = true;
+    /** Оформление виджета музыки: card | compact | large | minimal | cover. */
+    public String hudStyle = "card";
+    /** Угол/край экрана: top_left, top_center, top_right, middle_left, middle_right, bottom_left, bottom_center, bottom_right. */
+    public String hudAnchor = "top_left";
+    /** Отступ от края, пикселей интерфейса. */
+    public int hudOffsetX = 4;
+    public int hudOffsetY = 4;
+    /** Масштаб, % (50..200). */
+    public int hudScale = 100;
+    /** Непрозрачность подложки, % (0..100). */
+    public int hudOpacity = 88;
+    /** Цвет подложки: dark | light | accent. */
+    public String hudColor = "dark";
+    public boolean hudShowCover = true;
+    public boolean hudShowArtist = true;
+    public boolean hudShowProgress = true;
+    public boolean hudShowTime = false;
+    /** Текущая строка текста песни под виджетом. */
+    public boolean hudShowLyrics = false;
+    /** Показывать на паузе (иначе — только когда играет). */
+    public boolean hudShowPaused = true;
     /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */
     public boolean lockScreen = true;
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */

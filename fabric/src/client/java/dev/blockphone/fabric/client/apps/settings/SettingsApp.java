@@ -4,6 +4,7 @@ import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.BlockPhoneClient;
 import dev.blockphone.fabric.client.config.PhoneSettings;
+import dev.blockphone.fabric.client.music.MusicHud;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.phone.PhoneApp;
@@ -39,7 +40,7 @@ public final class SettingsApp extends PhoneApp {
     private static final int ROW_H = 20;
     private static final int MARGIN = 6;
 
-    private enum Page { MAIN, ACCENT, WALLPAPER }
+    private enum Page { MAIN, ACCENT, WALLPAPER, HUD }
 
     /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. */
     private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
@@ -71,6 +72,7 @@ public final class SettingsApp extends PhoneApp {
             case MAIN -> super.title();
             case ACCENT -> PhoneLang.tr("settings.accent");
             case WALLPAPER -> PhoneLang.tr("settings.wallpaper");
+            case HUD -> PhoneLang.tr("settings.music_hud");
         };
     }
 
@@ -170,8 +172,8 @@ public final class SettingsApp extends PhoneApp {
                         }, null, false))));
         result.add(new Section("settings.section.music", List.of(
                 new Row(() -> PhoneLang.tr("settings.music_hud"),
-                        () -> PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off"),
-                        dir -> s.musicHud = !s.musicHud, null, false),
+                        () -> PhoneLang.tr(s.musicHud ? "settings.hud.style." + s.hudStyle : "settings.off"),
+                        dir -> open(Page.HUD), null, true),
                 new Row(() -> PhoneLang.tr("settings.music_volume"),
                         () -> Math.round(s.musicVolume * 100) + "%",
                         dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false))));
@@ -235,15 +237,123 @@ public final class SettingsApp extends PhoneApp {
             case MAIN -> renderMain(g, mouseX, mouseY);
             case ACCENT -> renderAccent(g, mouseX, mouseY);
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
+            case HUD -> renderHud(g, mouseX, mouseY);
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
     }
 
     private int renderMain(GuiGraphics g, int mouseX, int mouseY) {
+        return renderSections(g, mouseX, mouseY, sections(), 4 - (int) scroll);
+    }
+
+    // --- Виджет музыки ---
+
+    private int renderHud(GuiGraphics g, int mouseX, int mouseY) {
         int w = contentWidth();
-        int y = 4 - (int) scroll;
-        for (Section section : sections()) {
+        int y = 6 - (int) scroll;
+        // Предпросмотр: «экран игры» в пропорциях 16:9 с виджетом в выбранном месте и масштабе.
+        int pw = w - 2 * MARGIN;
+        int ph = pw * 9 / 16;
+        PhoneDraw.rawRoundedRect(g, MARGIN, y, MARGIN + pw, y + ph, 4, 0xFF5B8C3E);
+        g.fillGradient(MARGIN, y, MARGIN + pw, y + ph * 2 / 3, 0xFF7DB4F0, 0xFFB8D8F8);
+        g.fill(MARGIN + pw / 2 - 30, y + ph - 9, MARGIN + pw / 2 + 30, y + ph - 3, 0xA0202020);
+        PhoneSettings s = PhoneSettings.get();
+        MusicHud.Info info = MusicHud.current();
+        if (info == null) {
+            info = new MusicHud.Info(PhoneLang.tr("settings.hud.sample_title"), PhoneLang.tr("settings.hud.sample_artist"), null,
+                    83_000, 215_000, true, PhoneLang.tr("settings.hud.sample_lyric"));
+        }
+        if (s.musicHud) {
+            // Экран игры ≈ 427×240 интерфейсных пикселей → уменьшаем до ширины предпросмотра.
+            float k = pw / 427f;
+            float scale = k * Math.max(0.5f, Math.min(2f, s.hudScale / 100f));
+            MusicHud.Size size = MusicHud.measure(info, s);
+            float ww = size.w() * scale;
+            float hh = size.h() * scale;
+            String a = s.hudAnchor;
+            float x = a.endsWith("left") ? s.hudOffsetX * k : a.endsWith("right") ? pw - ww - s.hudOffsetX * k : (pw - ww) / 2 + s.hudOffsetX * k;
+            float yy = a.startsWith("top") ? s.hudOffsetY * k : a.startsWith("bottom") ? ph - hh - s.hudOffsetY * k : (ph - hh) / 2 + s.hudOffsetY * k;
+            x = Math.max(0, Math.min(pw - ww, x));
+            yy = Math.max(0, Math.min(ph - hh, yy));
+            g.enableScissor(MARGIN, y, MARGIN + pw, y + ph);
+            g.pose().pushMatrix();
+            g.pose().translate(MARGIN + x, y + yy);
+            g.pose().scale(scale, scale);
+            MusicHud.draw(g, info, s);
+            g.pose().popMatrix();
+            g.disableScissor();
+        }
+        return renderSections(g, mouseX, mouseY, hudSections(), y + ph + 8);
+    }
+
+    private List<Section> hudSections() {
+        PhoneSettings s = PhoneSettings.get();
+        List<Section> result = new ArrayList<>();
+        result.add(new Section("settings.hud.look", List.of(
+                new Row(() -> PhoneLang.tr("settings.music_hud"),
+                        () -> PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off"),
+                        dir -> s.musicHud = !s.musicHud, null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.style"),
+                        () -> PhoneLang.tr("settings.hud.style." + s.hudStyle),
+                        dir -> s.hudStyle = cycle(MusicHud.STYLES, s.hudStyle, dir), null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.color"),
+                        () -> PhoneLang.tr("settings.hud.color." + s.hudColor),
+                        dir -> s.hudColor = cycle(MusicHud.COLORS, s.hudColor, dir), null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.opacity"),
+                        () -> s.hudOpacity + "%",
+                        dir -> s.hudOpacity = Math.floorMod(s.hudOpacity / 10 + dir, 11) * 10, null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.scale"),
+                        () -> s.hudScale + "%",
+                        dir -> s.hudScale = Math.floorMod((s.hudScale - 50) / 10 + dir, 16) * 10 + 50, null, false))));
+        result.add(new Section("settings.hud.place", List.of(
+                new Row(() -> PhoneLang.tr("settings.hud.anchor"),
+                        () -> PhoneLang.tr("settings.hud.anchor." + s.hudAnchor),
+                        dir -> s.hudAnchor = cycle(MusicHud.ANCHORS, s.hudAnchor, dir), null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.offset_x"),
+                        () -> String.valueOf(s.hudOffsetX),
+                        dir -> s.hudOffsetX = Math.floorMod(s.hudOffsetX / 4 + dir, 31) * 4, null, false),
+                new Row(() -> PhoneLang.tr("settings.hud.offset_y"),
+                        () -> String.valueOf(s.hudOffsetY),
+                        dir -> s.hudOffsetY = Math.floorMod(s.hudOffsetY / 4 + dir, 31) * 4, null, false))));
+        result.add(new Section("settings.hud.show", List.of(
+                toggle("settings.hud.cover", () -> s.hudShowCover, v -> s.hudShowCover = v),
+                toggle("settings.hud.artist", () -> s.hudShowArtist, v -> s.hudShowArtist = v),
+                toggle("settings.hud.progress", () -> s.hudShowProgress, v -> s.hudShowProgress = v),
+                toggle("settings.hud.time", () -> s.hudShowTime, v -> s.hudShowTime = v),
+                toggle("settings.hud.lyrics", () -> s.hudShowLyrics, v -> s.hudShowLyrics = v),
+                toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v))));
+        result.add(new Section("settings.hud.reset_section", List.of(
+                new Row(() -> PhoneLang.tr("settings.hud.reset"), () -> "", dir -> resetHud(s), null, false))));
+        return result;
+    }
+
+    private static Row toggle(String key, java.util.function.BooleanSupplier get, java.util.function.Consumer<Boolean> set) {
+        return new Row(() -> PhoneLang.tr(key), () -> PhoneLang.tr(get.getAsBoolean() ? "settings.on" : "settings.off"),
+                dir -> set.accept(!get.getAsBoolean()), null, false);
+    }
+
+    private static void resetHud(PhoneSettings s) {
+        PhoneSettings d = new PhoneSettings();
+        s.hudStyle = d.hudStyle;
+        s.hudAnchor = d.hudAnchor;
+        s.hudOffsetX = d.hudOffsetX;
+        s.hudOffsetY = d.hudOffsetY;
+        s.hudScale = d.hudScale;
+        s.hudOpacity = d.hudOpacity;
+        s.hudColor = d.hudColor;
+        s.hudShowCover = d.hudShowCover;
+        s.hudShowArtist = d.hudShowArtist;
+        s.hudShowProgress = d.hudShowProgress;
+        s.hudShowTime = d.hudShowTime;
+        s.hudShowLyrics = d.hudShowLyrics;
+        s.hudShowPaused = d.hudShowPaused;
+    }
+
+    private int renderSections(GuiGraphics g, int mouseX, int mouseY, List<Section> list, int startY) {
+        int w = contentWidth();
+        int y = startY;
+        for (Section section : list) {
             PhoneDraw.text(g, PhoneLang.tr(section.titleKey()).toUpperCase(PhoneClock.locale()), MARGIN + 2, y + 3,
                     PhoneTheme.secondaryText(), 0.6f, false);
             y += 12;
