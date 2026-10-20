@@ -61,7 +61,10 @@ public final class DevShots {
     private record Step(int delayTicks, Predicate<Minecraft> ready, Consumer<Minecraft> action) {
     }
 
-    /** Сценарий: "all" (по умолчанию), "design", "music", "messenger", "social", "voice" (три последних — с BLOCKPHONE_DEV_MESSENGER=1). */
+    /**
+     * Сценарий: "all" (по умолчанию), "design", "music", "telegram", "messenger", "social", "voice"
+     * (три последних — с BLOCKPHONE_DEV_MESSENGER=1).
+     */
     private final String scenario = System.getenv().getOrDefault("BLOCKPHONE_DEV_SCENARIO", "all");
     private final AtomicLong directChat = new AtomicLong(-1);
     private final AtomicLong groupChat = new AtomicLong(-1);
@@ -114,7 +117,7 @@ public final class DevShots {
 
         // 1. Все приложения в главном меню.
         boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music")
-                || scenario.equals("voice");
+                || scenario.equals("voice") || scenario.equals("telegram");
         for (boolean dark : server ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
@@ -192,6 +195,8 @@ public final class DevShots {
             planMusic(settings);
         } else if (scenario.equals("voice")) {
             planVoice(settings);
+        } else if (scenario.equals("telegram")) {
+            planTelegram();
         } else {
             planCameraGalleryNotes();
         }
@@ -460,6 +465,52 @@ public final class DevShots {
         });
         shot(40, "call_real_group");
         step(1, mc -> dev.blockphone.fabric.client.voice.CallClient.leave(groupChat.get()));
+    }
+
+    // --- Telegram (ключи — ненастоящие: проверяется запуск TDLib, экраны входа и запись «кружочка») ---
+
+    private void planTelegram() {
+        var accounts = dev.blockphone.fabric.client.music.Accounts.get();
+        int originalId = accounts.telegramApiId;
+        String originalHash = accounts.telegramApiHash;
+        step(1, mc -> {
+            accounts.telegramApiId = 0;
+            accounts.telegramApiHash = "";
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+            phone(mc, p -> p.openApp("telegram"));
+        });
+        shot(30, "telegram_keys");
+        step(1, mc -> dev.blockphone.fabric.client.telegram.Telegram.configure(1, "0123456789abcdef0123456789abcdef"));
+        waitFor(mc -> {
+            var status = dev.blockphone.fabric.client.telegram.Telegram.status();
+            return status == dev.blockphone.fabric.client.telegram.Telegram.Status.WAIT_PHONE
+                    || status == dev.blockphone.fabric.client.telegram.Telegram.Status.ERROR;
+        });
+        step(10, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] telegram status {} {}", dev.blockphone.fabric.client.telegram.Telegram.status(),
+                dev.blockphone.fabric.client.telegram.Telegram.fatal()));
+        shot(20, "telegram_phone");
+        // «Кружочек» из кадров мира: 3 секунды записи, затем кодирование в MP4.
+        step(1, mc -> dev.blockphone.fabric.client.telegram.VideoNoteRecorder.start(0));
+        shot(30, "telegram_video_note_recording");
+        step(40, mc -> dev.blockphone.fabric.client.telegram.VideoNoteRecorder.stop());
+        step(80, mc -> {
+            Path dir = dev.blockphone.fabric.client.storage.ClientFiles.root().resolve("telegram").resolve("videonotes");
+            try (var files = Files.list(dir)) {
+                files.forEach(f -> {
+                    try {
+                        BlockPhoneFabric.LOGGER.info("[DevShots] video note {} ({} bytes)", f.getFileName(), Files.size(f));
+                    } catch (Exception ignored) {
+                    }
+                });
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] no video notes", e);
+            }
+            dev.blockphone.fabric.client.telegram.Telegram.shutdown();
+            accounts.telegramApiId = originalId;
+            accounts.telegramApiHash = originalHash;
+            dev.blockphone.fabric.client.music.Accounts.save();
+        });
     }
 
     private static void copyMinecraftMusic(Minecraft mc) {

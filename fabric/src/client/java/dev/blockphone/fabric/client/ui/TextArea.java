@@ -32,6 +32,7 @@ public class TextArea {
     /** Начало выделения; -1 — выделения нет. */
     private int anchor = -1;
     private boolean focused;
+    private boolean masked;
     private int maxLength = 10_000;
     private String placeholder = "";
     private double scroll;
@@ -92,6 +93,17 @@ public class TextArea {
         lastInput = System.currentTimeMillis();
     }
 
+    /** Скрывать ввод точками (пароль); копирование запрещено. */
+    public void setMasked(boolean masked) {
+        this.masked = masked;
+        layoutDirty = true;
+    }
+
+    /** Текст для отрисовки и измерений: при маске — точки (той же длины, индексы совпадают). */
+    private String shown() {
+        return masked ? "•".repeat(text.length()) : text;
+    }
+
     public void moveCursorToEnd() {
         cursor = text.length();
         anchor = -1;
@@ -142,7 +154,7 @@ public class TextArea {
         while (lineStart < end) {
             int lastSpace = -1;
             int i = lineStart;
-            while (i < end && PhoneDraw.width(text.substring(lineStart, i + 1), scale) <= maxWidth) {
+            while (i < end && PhoneDraw.width(shown().substring(lineStart, i + 1), scale) <= maxWidth) {
                 if (text.charAt(i) == ' ') {
                     lastSpace = i;
                 }
@@ -170,7 +182,7 @@ public class TextArea {
 
     private float xOf(int index) {
         int[] line = lines().get(lineOf(index));
-        return PhoneDraw.width(text.substring(line[0], Math.min(index, line[1])), scale);
+        return PhoneDraw.width(shown().substring(line[0], Math.min(index, line[1])), scale);
     }
 
     private int indexAt(double mx, double my) {
@@ -181,7 +193,7 @@ public class TextArea {
         double localX = mx - x - PAD + (multiline ? 0 : scroll);
         int best = line[0];
         for (int i = line[0]; i <= line[1]; i++) {
-            float w = PhoneDraw.width(text.substring(line[0], i), scale);
+            float w = PhoneDraw.width(shown().substring(line[0], i), scale);
             if (w - 2 > localX) {
                 break;
             }
@@ -217,14 +229,14 @@ public class TextArea {
             if (selEnd > selStart && selEnd > line[0] && selStart <= line[1]) {
                 int a = Math.max(selStart, line[0]);
                 int b = Math.min(selEnd, line[1]);
-                float x1 = lx + PhoneDraw.width(text.substring(line[0], a), scale);
-                float x2 = lx + PhoneDraw.width(text.substring(line[0], b), scale);
+                float x1 = lx + PhoneDraw.width(shown().substring(line[0], a), scale);
+                float x2 = lx + PhoneDraw.width(shown().substring(line[0], b), scale);
                 if (b == line[1] && selEnd > line[1]) {
                     x2 += 2;
                 }
                 g.fill((int) x1, (int) ly, (int) Math.ceil(x2), (int) (ly + lh), PhoneTheme.accentTint(0x70));
             }
-            String lineText = text.substring(line[0], line[1]).replace("\n", "");
+            String lineText = shown().substring(line[0], line[1]).replace("\n", "");
             PhoneDraw.text(g, lineText, lx, ly + 1, textColor, scale, false);
         }
 
@@ -295,13 +307,13 @@ public class TextArea {
         }
         if (event.isCopy()) {
             if (hasSelection()) {
-                Minecraft.getInstance().keyboardHandler.setClipboard(selectedText());
+                Minecraft.getInstance().keyboardHandler.setClipboard(masked ? "" : selectedText());
             }
             return true;
         }
         if (event.isCut()) {
             if (hasSelection()) {
-                Minecraft.getInstance().keyboardHandler.setClipboard(selectedText());
+                Minecraft.getInstance().keyboardHandler.setClipboard(masked ? "" : selectedText());
                 replaceSelection("");
             }
             return true;
@@ -352,7 +364,7 @@ public class TextArea {
                     int[] l = lines().get(line);
                     int best = l[0];
                     for (int i = l[0]; i <= l[1]; i++) {
-                        if (PhoneDraw.width(text.substring(l[0], i), scale) > targetX + 1) {
+                        if (PhoneDraw.width(shown().substring(l[0], i), scale) > targetX + 1) {
                             break;
                         }
                         best = i;

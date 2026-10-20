@@ -69,8 +69,11 @@ public final class BlockPhoneClient implements ClientModInitializer {
                     Spotify.previous();
                 }
             }
+            dev.blockphone.fabric.client.telegram.VideoNoteRecorder.tick();
             while (openPhoneKey.consumeClick()) {
-                if (client.screen == null && client.player != null) {
+                if (dev.blockphone.fabric.client.telegram.VideoNoteRecorder.active()) {
+                    dev.blockphone.fabric.client.telegram.VideoNoteRecorder.stop();
+                } else if (client.screen == null && client.player != null) {
                     client.setScreen(new PhoneScreen());
                 }
             }
@@ -82,7 +85,11 @@ public final class BlockPhoneClient implements ClientModInitializer {
         });
         CameraMode.init();
         MusicHud.init();
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MusicPlayer.stop());
+        dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            MusicPlayer.stop();
+            dev.blockphone.fabric.client.telegram.Telegram.shutdown();
+        });
 
         ClientNetwork.init();
         DevShots.initIfRequested();

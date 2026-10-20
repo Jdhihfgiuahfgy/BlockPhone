@@ -19,7 +19,7 @@
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
 | `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
-| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек голосовых ADPCM |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка» |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -48,6 +48,8 @@
   (микрофон не трогается) → загрузка → пузырь → проигрывание; интерфейс звонка на поддельных состояниях (входящий, полоса, HUD);
   настоящий звонок в группу через SVC (в dev голосовой чат SVC выключен до первоначальной настройки — сервер отвечает ошибкой).
   В среде разработки подключён сам мод Simple Voice Chat (`modLocalRuntime`, версия `voicechat_mod_version`).
+  Сценарий Telegram: `BLOCKPHONE_DEV_SCENARIO=telegram` — экран ключей, запуск TDLib с ненастоящими ключами до шага «номер
+  телефона», запись «кружочка» из мира (3 с) и проверка файла MP4 (в логе); настоящие ключи из accounts.json восстанавливаются.
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
@@ -55,7 +57,8 @@
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
   галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`;
   кэш фото с серверов `blockphone/cache/<id сервера>/<id>.img`; своя музыка `blockphone/music/` (MP3/OGG/WAV, подпапки),
-  кэш треков Яндекса `blockphone/cache/music/` (последние 40); входы в сервисы `config/blockphone/accounts.json` (секреты!).
+  кэш треков Яндекса `blockphone/cache/music/` (последние 40); входы в сервисы `config/blockphone/accounts.json` (секреты!);
+  Telegram: база и файлы TDLib `blockphone/telegram/db`, `/files`, записанные «кружочки» `blockphone/telegram/videonotes/`.
 - Длинные heredoc в Bash-инструменте иногда ломаются, а `\n` внутри heredoc превращается в настоящий перевод строки —
   правки больших текстов делать скриптом, записанным через Write, или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
@@ -74,6 +77,9 @@ JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без
 Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
 Декодер MP3 JLayer (`javazoom:jlayer`, LGPL) — jar-in-jar в Fabric (`jlayer_version`); OGG — stb_vorbis из LWJGL (есть в игре).
 Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
+Telegram: TDLight (`it.tdlight:tdlight-java` + `tdlight-api` + `tdlight-natives:windows_amd64`, репозиторий mvn.mchv.eu, LGPL-3.0;
+TDLib — Boost) и JCodec (`org.jcodec:jcodec`, BSD) — jar-in-jar; мод из-за нативной библиотеки весит ~25 МБ.
+Версии — `tdlight_*_version`, `jcodec_version` в gradle.properties. Обновлять TDLight целиком (java, api и natives из одного BOM).
 API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозиторий maven.maxhenkel.de) — `compileOnly` в common, fabric и paper;
 сам SVC ставит игрок/админ. Классы с типами SVC (`SvcPlugin`, `SvcBridge`, `PaperVoicechat`) загружаются только при наличии SVC.
 **При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity).
@@ -220,6 +226,15 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   поверх любого приложения телефона. Полоска звонка на HUD — в `MusicHud` (под виджетом музыки).
 - Голос в `ChatView`: пустое поле → справа микрофон (запись → «➤» отправить / «×» отмена), пузыри голосовых («волна», проигрывание),
   трубка в строке статуса (позвонить), зелёная полоса идущего звонка (Войти/Ответить/Отклонить/Выйти).
+- `telegram/` — настоящий Telegram через TDLib (только Windows x64): `Telegram` (запуск `Init.init()` + `ClientFactory`, обновления
+  пересылаются в поток рендера; вход: SetTdlibParameters → номер → код → облачный пароль; чаты основного списка по `order`,
+  пользователи, файлы с докачкой (`localFile`), история по 40, отправка текста и «кружочков», «прочитано», выход, `shutdown` при
+  закрытии игры; подписи вложений), `TelegramAvatars`, `TelegramNotifications` (тосты), `VideoNoteEncoder` (JCodec: квадрат ARGB →
+  MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 15 к/с, до 15 с; кольцо и таймер
+  на экране; клавиша телефона — отправить, меню — отмена).
+- `apps/telegram/` — приложение: `TelegramApp` (корень — вход или список чатов по состоянию), `TgView`, `TgLoginView` (ключи api_id/api_hash
+  с my.telegram.org, номер, код, пароль — поле с маской `TextArea.setMasked`), `TgChatListView`, `TgChatView` (пузыри, фото, обложки
+  «кружочков», Enter — отправить, «◯» — записать «кружочек»). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
 - `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
   прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`
@@ -330,7 +345,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
    Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
 6. ✅ Голос: голосовые сообщения (свой захват микрофона и ADPCM — работают без других модов) и звонки в личных и групповых чатах
    через скрытые группы Simple Voice Chat (Fabric/Paper с SVC). Не сделано: звонки через Velocity, выбор микрофона (берётся по умолчанию).
-7. Telegram через TDLib (только Windows), кружочки из кадров игры.
+7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, отправка текста; «кружочки» из кадров игры
+   (JCodec). Не сделано: проигрывание голосовых и видео из Telegram (нужны декодеры Opus/H.264 с CABAC), стикеры WEBP, звук в «кружочках».
 
 Принятые доп. функции: режим «на ходу» (маленький телефон, можно ходить); телефон в руке виден другим (с выключателем в конфиге сервера, без поломки предмета в руке, работает и на Paper); уведомления/экран блокировки.
 Отклонено пока: геометки в чатах, команды для игроков без мода.

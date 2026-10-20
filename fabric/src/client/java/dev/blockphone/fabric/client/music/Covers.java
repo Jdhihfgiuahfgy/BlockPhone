@@ -44,6 +44,11 @@ public final class Covers {
         return null;
     }
 
+    /** Картинка из файла (аватары и фото Telegram). Квадратная обрезка по центру. */
+    public static PhotoTextures.@Nullable Image file(java.nio.file.Path path) {
+        return load("path:" + path, () -> java.nio.file.Files.readAllBytes(path));
+    }
+
     /** Обложка по адресу картинки. */
     public static PhotoTextures.@Nullable Image url(@Nullable String url) {
         if (url == null || url.isEmpty()) {

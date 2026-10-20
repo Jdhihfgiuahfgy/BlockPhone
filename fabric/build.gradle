@@ -17,6 +17,8 @@ loom {
 
 repositories {
     maven { url = 'https://api.modrinth.com/maven' }
+    // TDLight — TDLib для Java с готовыми нативными библиотеками (Telegram).
+    maven { url = 'https://mvn.mchv.eu/repository/mchv/' }
 }
 
 dependencies {
@@ -36,6 +38,15 @@ dependencies {
 
     // Музыка: декодер MP3 (LGPL). OGG декодирует stb_vorbis из LWJGL (уже есть в Minecraft).
     include(implementation("javazoom:jlayer:${rootProject.jlayer_version}") { transitive = false })
+
+    // Telegram: TDLight (LGPL-3.0) + TDLib (Boost) — нативная библиотека только для Windows x64.
+    include(implementation("it.tdlight:tdlight-java:${rootProject.tdlight_java_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-api:${rootProject.tdlight_api_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-natives:${rootProject.tdlight_natives_version}:windows_amd64") { transitive = false })
+    include(implementation("org.reactivestreams:reactive-streams:1.0.4"))
+    include(implementation("io.atlassian.util.concurrent:atlassian-util-concurrent:4.0.1") { transitive = false })
+    // «Кружочки»: кодировщик H.264/MP4 на чистой Java (BSD).
+    include(implementation("org.jcodec:jcodec:${rootProject.jcodec_version}") { transitive = false })
 
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"

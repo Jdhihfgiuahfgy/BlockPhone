@@ -13,7 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Входы в музыкальные сервисы: {@code config/blockphone/accounts.json} (отдельно от настроек — там секреты,
+ * Входы в сервисы (музыка, Telegram): {@code config/blockphone/accounts.json} (отдельно от настроек — там секреты,
  * этот файл никому не отправлять). Только поток рендера и потоки, которым поля переданы копией.
  */
 public final class Accounts {
@@ -28,6 +28,9 @@ public final class Accounts {
     public String spotifyRefreshToken = "";
     /** Когда истекает spotifyAccessToken (мс). */
     public long spotifyExpiresAt;
+    /** Telegram: api_id и api_hash приложения игрока (my.telegram.org → API development tools). */
+    public int telegramApiId;
+    public String telegramApiHash = "";
 
     private static Path file() {
         return FabricLoader.getInstance().getConfigDir().resolve("blockphone").resolve("accounts.json");
