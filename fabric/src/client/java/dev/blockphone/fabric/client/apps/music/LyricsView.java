@@ -44,7 +44,8 @@ final class LyricsView extends MusicView {
             hint(g, tr(key), height() / 2 - 10);
             return;
         }
-        int current = lyrics.lineAt(LyricsService.positionMs());
+        // Без времени строк «текущая строка» — догадка: не подсвечиваем и не прокручиваем сами.
+        int current = lyrics.synced() ? lyrics.lineAt(LyricsService.positionMs()) : -1;
         int w = width();
         int total = lyrics.lines().size() * ROW + height();
         if (current >= 0) {

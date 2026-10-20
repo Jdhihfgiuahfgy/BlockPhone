@@ -121,7 +121,8 @@ public final class LyricsService {
         Files.createDirectories(dir);
         String id = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1")
                 .digest((track.artist() + "\n" + track.title()).toLowerCase().getBytes(StandardCharsets.UTF_8))).substring(0, 20);
-        Path cached = dir.resolve(id + ".lrc");
+        // «v2» — после смены правил выбора (время строк, длина) старые найденные тексты ищутся заново.
+        Path cached = dir.resolve(id + ".v2.lrc");
         String text;
         if (Files.exists(cached)) {
             text = Files.readString(cached, StandardCharsets.UTF_8);
@@ -143,39 +144,53 @@ public final class LyricsService {
             String url = "https://lrclib.net/api/get?" + query
                     + (track.durationMs() > 0 ? "&duration=" + Math.round(track.durationMs() / 1000.0) : "");
             Http.Response response = Http.request("GET", url, headers, null);
+            String plain = "";
             if (response.ok()) {
-                return pick(JsonParser.parseString(response.body()).getAsJsonObject());
-            }
-            if (response.code() != 404) {
+                JsonObject exact = JsonParser.parseString(response.body()).getAsJsonObject();
+                if (has(exact, "syncedLyrics")) {
+                    return exact.get("syncedLyrics").getAsString();
+                }
+                plain = has(exact, "plainLyrics") ? exact.get("plainLyrics").getAsString() : "";
+            } else if (response.code() != 404) {
                 return null;
             }
-            // Точного совпадения (с длительностью) нет — поиск, первый результат с текстом.
+            // Нет точного совпадения или у него нет времени строк — ищем вариант с временем строк, ближайший по длине
+            // (другая запись той же песни с другой длиной даст текст, который «спешит» или «отстаёт»).
             response = Http.request("GET", "https://lrclib.net/api/search?" + query, headers, null);
             if (!response.ok()) {
-                return null;
+                return plain.isEmpty() ? null : plain;
             }
             JsonArray results = JsonParser.parseString(response.body()).getAsJsonArray();
+            double duration = track.durationMs() / 1000.0;
+            JsonObject best = null;
+            double bestDiff = Double.MAX_VALUE;
             for (JsonElement e : results) {
-                String text = pick(e.getAsJsonObject());
-                if (!text.isEmpty()) {
-                    return text;
+                JsonObject o = e.getAsJsonObject();
+                if (has(o, "syncedLyrics")) {
+                    double d = o.has("duration") && !o.get("duration").isJsonNull() ? o.get("duration").getAsDouble() : 0;
+                    double diff = duration > 0 && d > 0 ? Math.abs(d - duration) : 1000;
+                    if (diff < bestDiff) {
+                        bestDiff = diff;
+                        best = o;
+                    }
+                } else if (plain.isEmpty() && has(o, "plainLyrics")) {
+                    plain = o.get("plainLyrics").getAsString();
                 }
             }
-            return "";
+            // Запись дольше/короче больше чем на 4 с — скорее другая версия, время строк не подойдёт.
+            if (best != null && (duration <= 0 || bestDiff <= 4)) {
+                return best.get("syncedLyrics").getAsString();
+            }
+            return plain;
         } catch (Exception e) {
             BlockPhoneFabric.LOGGER.warn("LRCLIB request failed: {}", e.toString());
             return null;
         }
     }
 
-    private static String pick(JsonObject o) {
-        for (String field : new String[]{"syncedLyrics", "plainLyrics"}) {
-            JsonElement e = o.get(field);
-            if (e != null && !e.isJsonNull() && !e.getAsString().isBlank()) {
-                return e.getAsString();
-            }
-        }
-        return "";
+    private static boolean has(JsonObject o, String field) {
+        JsonElement e = o.get(field);
+        return e != null && !e.isJsonNull() && !e.getAsString().isBlank();
     }
 
     private LyricsService() {

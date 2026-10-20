@@ -25,6 +25,8 @@ final class Playback implements Runnable {
 
     volatile Phase phase = Phase.LOADING;
     volatile long positionMs;
+    /** Когда (System.nanoTime) была вычислена {@link #positionMs} — для плавного времени между обновлениями. */
+    volatile long positionNanos;
     volatile long durationMs;
     /** Ключ перевода ошибки (при FAILED). */
     volatile String error;
@@ -39,6 +41,24 @@ final class Playback implements Runnable {
         Thread thread = new Thread(this, "BlockPhone Music");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    private void setPosition(long ms) {
+        positionMs = ms;
+        positionNanos = System.nanoTime();
+    }
+
+    /**
+     * Позиция «сейчас»: последняя вычисленная плюс прошедшее с тех пор время (если играет), не дальше 300 мс вперёд —
+     * чтобы при подвисании потока звука текст не убегал.
+     */
+    long positionNow() {
+        long ms = positionMs;
+        if (phase != Phase.PLAYING) {
+            return ms;
+        }
+        long extra = (System.nanoTime() - positionNanos) / 1_000_000L;
+        return ms + Math.max(0, Math.min(300, extra));
     }
 
     @Override
@@ -70,7 +90,8 @@ final class Playback implements Runnable {
             short[] samples = new short[2048 * channels];
             byte[] bytes = new byte[samples.length * 2];
             long base = 0;
-            long framesAtBase = 0;
+            long framesWritten = 0;
+            int frameBytes = 2 * channels;
             while (!stopped) {
                 long seek = seekTo;
                 if (seek >= 0) {
@@ -83,8 +104,8 @@ final class Playback implements Runnable {
                         skip(decoder, seek);
                     }
                     base = seek;
-                    framesAtBase = line.getLongFramePosition();
-                    positionMs = seek;
+                    framesWritten = 0;
+                    setPosition(seek);
                 }
                 if (paused) {
                     if (line.isRunning()) {
@@ -112,7 +133,11 @@ final class Playback implements Runnable {
                     bytes[i * 2 + 1] = (byte) (v >> 8);
                 }
                 line.write(bytes, 0, n * 2);
-                positionMs = base + (line.getLongFramePosition() - framesAtBase) * 1000L / rate;
+                // Сколько звучало = записанное минус то, что ещё лежит в буфере звуковой карты. getLongFramePosition на части
+                // драйверов Windows обновляется рывками (до размера буфера) и «замирает» — текст песни тогда то спешит, то стоит.
+                framesWritten += n / channels;
+                long buffered = Math.max(0, (line.getBufferSize() - line.available()) / frameBytes);
+                setPosition(base + Math.max(0, framesWritten - buffered) * 1000L / rate);
             }
         } catch (LineUnavailableException | IllegalArgumentException e) {
             fail("music.error.audio_device", e);

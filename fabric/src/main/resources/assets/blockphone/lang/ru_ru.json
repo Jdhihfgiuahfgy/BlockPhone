@@ -486,7 +486,7 @@
   "music.lyrics.world_off": "В мире: выкл",
   "music.lyrics.loading": "Ищем текст…",
   "music.lyrics.not_found": "Текст не найден. Положите файл .lrc рядом с треком",
-  "music.lyrics.unsynced": "Без времени строк — показ примерный",
+  "music.lyrics.unsynced": "У этого текста нет времени строк — в мире он не показывается (можно включить в настройках)",
   "settings.section.lyrics": "Текст песни",
   "settings.lyrics_world": "Текст в мире",
   "settings.lyrics_mode": "Где показывать",
@@ -664,5 +664,7 @@
   "photo.error.daily_limit": "Достигнут предел загрузок за сутки (%s).",
   "voice.error.quota": "Загружено слишком много: на сервере на игрока отведено %s МБ.",
   "voice.error.daily_limit": "Достигнут предел загрузок за сутки (%s).",
-  "music.error.yandex_format": "Яндекс прислал трек не в формате MP3. Подробности — в журнале игры (строка «Yandex track … not downloaded»)."
+  "music.error.yandex_format": "Яндекс прислал трек не в формате MP3. Подробности — в журнале игры (строка «Yandex track … not downloaded»).",
+  "settings.lyrics_outline": "Обводка текста",
+  "settings.lyrics_unsynced": "Текст без времени строк"
 }

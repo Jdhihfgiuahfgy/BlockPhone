@@ -75,6 +75,10 @@ public final class PhoneSettings {
     public int lyricsDistance = 6;
     /** Слова разного размера и чуть вразброс. */
     public boolean lyricsScatter = true;
+    /** Тёмная обводка букв текста песни в мире. */
+    public boolean lyricsOutline = true;
+    /** Показывать в мире и текст без времени строк (появляется примерно, может не совпадать с песней). */
+    public boolean lyricsUnsynced = false;
     /** Последнее появившееся слово — акцентным цветом. */
     public boolean lyricsAccentWord = true;
     /** Сдвиг текста относительно музыки, мс (плюс — раньше). */

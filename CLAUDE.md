@@ -253,7 +253,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
   darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone,
   hudStyle, hudAnchor, hudOffsetX/Y, hudScale, hudOpacity, hudColor, hudShowCover/Artist/Progress/Time/Lyrics/Paused,
-  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..12, lyricsScatter, lyricsAccentWord, lyricsOffsetMs, lyricsOnline).
+  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..12, lyricsScatter, lyricsAccentWord, lyricsOutline, lyricsUnsynced, lyricsOffsetMs, lyricsOnline).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -343,6 +343,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `music/` — музыка (работает и с закрытым телефоном):
   - `MusicPlayer` — очередь, текущий трек, пауза, перемотка, перемешивание, повтор (OFF/ALL/ONE), история «назад»,
     подгружаемая очередь (`more` — для «Моей волны»), громкость = `musicVolume²` × общая громкость игры. Поток рендера.
+  - Время трека: `Playback.setPosition` после каждой записи = записанные кадры − буфер линии (`getBufferSize − available`),
+    `positionNow()` дополняет часами (не дальше 300 мс), `MusicPlayer.positionMs()` не шагает назад меньше чем на 400 мс
+    (кроме перемотки). DevShots music пишет в лог «music timing» (шаги назад, замирания, расхождение с часами).
   - `Playback` — один трек в своём потоке: файл (`TrackSources`: локальный или скачанный из Яндекса) → `AudioDecoder` →
     `javax.sound` SourceDataLine (буфер 0,25 с); пауза/перемотка/стоп — volatile-полями. `Track` — запись трека.
   - `audio/` — `Mp3Decoder` (JLayer; перемотка пропуском кадров), `OggDecoder` (stb_vorbis из памяти — пути с кириллицей),
@@ -364,10 +367,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `lyrics/Lyrics` — разбор текста: LRC (`[мм:сс.хх]`, несколько меток, `[offset:]`), расширенный LRC (`<мм:сс.хх>` у слов),
     обычный текст (строки равномерно по треку); слова без времени — пропорционально длине (к 75 % строки); строка не дольше 8 с;
     `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
-    (`TrackTags.Tags.lyrics`) → LRCLIB (`lrclib.net/api/get`, затем `/api/search`; кэш `blockphone/cache/lyrics/`, пустой файл — нет
-    текста; ошибка сети не кэшируется); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
+    (`TrackTags.Tags.lyrics`) → LRCLIB (`lrclib.net/api/get`; если нет syncedLyrics — `/api/search`: текст с временем строк и длиной ±4 с,
+    иначе обычный; кэш `blockphone/cache/lyrics/<sha1>.v2.lrc`, пустой файл — нет текста; ошибка сети не кэшируется); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
     `commandQueue().submitText`, полная яркость, обводка): строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
-    остаётся или следует за взглядом; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
+    остаётся или следует за взглядом, всегда повёрнута к камере (`camera.rotation()`); текст без времени строк в мире — только
+    при `lyricsUnsynced`; обводка — `lyricsOutline`; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
     гаснет и уплывает вверх. Прячется при F1 и остановке музыки.
   - `MusicHud` — виджет «сейчас играет»: оформления `STYLES` (card, compact — строка-«таблетка», large, minimal — без фона,
     cover — квадрат-обложка), цвет `COLORS` (dark/light/accent) и непрозрачность подложки, угол/край `ANCHORS` (8 мест) + отступы,

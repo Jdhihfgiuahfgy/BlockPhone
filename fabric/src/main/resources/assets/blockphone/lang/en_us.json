@@ -486,7 +486,7 @@
   "music.lyrics.world_off": "In world: off",
   "music.lyrics.loading": "Looking for lyrics…",
   "music.lyrics.not_found": "No lyrics found. Put an .lrc file next to the track",
-  "music.lyrics.unsynced": "No line timings — approximate",
+  "music.lyrics.unsynced": "These lyrics have no line timing — not shown in the world (can be enabled in settings)",
   "settings.section.lyrics": "Lyrics",
   "settings.lyrics_world": "Lyrics in world",
   "settings.lyrics_mode": "Placement",
@@ -664,5 +664,7 @@
   "photo.error.daily_limit": "Daily upload limit reached (%s).",
   "voice.error.quota": "Too much uploaded: the server allows %s MB per player.",
   "voice.error.daily_limit": "Daily upload limit reached (%s).",
-  "music.error.yandex_format": "Yandex sent the track in a format other than MP3. Details are in the game log (\"Yandex track … not downloaded\")."
+  "music.error.yandex_format": "Yandex sent the track in a format other than MP3. Details are in the game log (\"Yandex track … not downloaded\").",
+  "settings.lyrics_outline": "Text outline",
+  "settings.lyrics_unsynced": "Lyrics without timing"
 }

@@ -47,7 +47,8 @@ public final class LyricsWorld {
         Minecraft mc = Minecraft.getInstance();
         PhoneSettings settings = PhoneSettings.get();
         Lyrics lyrics = LyricsService.current();
-        if (!settings.lyricsWorld || lyrics == null || mc.player == null || mc.options.hideGui
+        if (!settings.lyricsWorld || lyrics == null || (!lyrics.synced() && !settings.lyricsUnsynced) || mc.player == null
+                || mc.options.hideGui
                 || MusicPlayer.state() == MusicPlayer.State.STOPPED) {
             shownLine = -1;
             fadingLine = -1;
@@ -133,7 +134,8 @@ public final class LyricsWorld {
 
         pose.pushPose();
         pose.translate(at.x - cam.x, at.y - cam.y, at.z - cam.z);
-        pose.mulPose(new Quaternionf().rotationYXZ((float) Math.PI - yaw * (float) (Math.PI / 180), -pitch * (float) (Math.PI / 180), 0));
+        // Строка стоит на месте, но всегда повёрнута к игроку (как ник над головой) — читается откуда угодно.
+        pose.mulPose(new Quaternionf(Minecraft.getInstance().gameRenderer.getMainCamera().rotation()));
         pose.scale(scale, -scale, scale);
         float x = -total / 2;
         for (int i = 0; i < words.size(); i++) {
@@ -151,7 +153,7 @@ public final class LyricsWorld {
                 FormattedCharSequence text = FormattedCharSequence.forward(word.text(), Style.EMPTY);
                 float half = font.width(word.text()) / 2f;
                 context.commandQueue().submitText(pose, -half, -font.lineHeight / 2f, text, false, Font.DisplayMode.NORMAL,
-                        FULL_BRIGHT, alphaBits | rgb, 0, a > 0.95f ? 0xFF101018 : 0);
+                        FULL_BRIGHT, alphaBits | rgb, 0, settings.lyricsOutline && a > 0.95f ? 0xFF101018 : 0);
                 pose.popPose();
             }
             x += w;

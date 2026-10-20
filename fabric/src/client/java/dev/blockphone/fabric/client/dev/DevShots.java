@@ -567,7 +567,34 @@ public final class DevShots {
         step(60, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] music state {} at {} ms of {} ms", MusicPlayer.state(),
                 MusicPlayer.positionMs(), MusicPlayer.durationMs()));
         shot(1, "music_player_seek");
-        step(1, mc -> music(MusicApp::openLyrics));
+        // Плавность времени трека (для синхронизации текста): позиция каждый кадр против настоящих часов.
+        java.util.List<long[]> samples = new java.util.ArrayList<>();
+        for (int i = 0; i < 120; i++) {
+            step(1, mc -> samples.add(new long[]{System.nanoTime() / 1_000_000L, MusicPlayer.positionMs()}));
+        }
+        step(1, mc -> {
+            long maxBack = 0;
+            long maxStall = 0;
+            long maxDrift = 0;
+            long stallStart = samples.get(0)[0];
+            for (int i = 1; i < samples.size(); i++) {
+                long dWall = samples.get(i)[0] - samples.get(0)[0];
+                long dPos = samples.get(i)[1] - samples.get(0)[1];
+                maxDrift = Math.max(maxDrift, Math.abs(dPos - dWall));
+                long step = samples.get(i)[1] - samples.get(i - 1)[1];
+                maxBack = Math.max(maxBack, -step);
+                if (step != 0) {
+                    stallStart = samples.get(i)[0];
+                }
+                maxStall = Math.max(maxStall, samples.get(i)[0] - stallStart);
+            }
+            BlockPhoneFabric.LOGGER.info("[DevShots] music timing: max backward {} ms, longest freeze {} ms, max drift from clock {} ms over {} ms",
+                    maxBack, maxStall, maxDrift, samples.get(samples.size() - 1)[0] - samples.get(0)[0]);
+        });
+        step(1, mc -> {
+            MusicPlayer.seek(62_000);
+            music(MusicApp::openLyrics);
+        });
         shot(30, "music_lyrics");
         step(1, mc -> phone(mc, PhoneScreen::back));
         step(1, mc -> phone(mc, PhoneScreen::back));
@@ -584,6 +611,12 @@ public final class DevShots {
         shot(60, "music_hud");
         step(1, mc -> MusicPlayer.seek(61_000));
         shot(50, "music_lyrics_world");
+        step(1, mc -> {
+            settings.lyricsOutline = false;
+            MusicPlayer.seek(61_500);
+        });
+        shot(40, "music_lyrics_no_outline");
+        step(1, mc -> settings.lyricsOutline = true);
         step(1, mc -> {
             settings.lyricsMode = "view";
             settings.lyricsScatter = false;

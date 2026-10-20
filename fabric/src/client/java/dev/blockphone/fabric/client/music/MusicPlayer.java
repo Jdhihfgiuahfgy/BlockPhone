@@ -65,9 +65,23 @@ public final class MusicPlayer {
         return s == State.PLAYING || s == State.LOADING;
     }
 
+    private static long lastShown;
+    private static Playback lastShownFor;
+
+    /** Позиция трека, плавная и без шагов назад (кроме перемотки и смены трека). */
     public static long positionMs() {
         Playback p = playback;
-        return p != null ? p.positionMs : 0;
+        if (p == null) {
+            return 0;
+        }
+        long now = p.positionNow();
+        // Небольшой откат назад (оценка буфера колеблется) не показываем; перемотку назад — показываем.
+        if (p == lastShownFor && now < lastShown && lastShown - now < 400 && p.seekTo < 0) {
+            return lastShown;
+        }
+        lastShownFor = p;
+        lastShown = now;
+        return now;
     }
 
     public static long durationMs() {
