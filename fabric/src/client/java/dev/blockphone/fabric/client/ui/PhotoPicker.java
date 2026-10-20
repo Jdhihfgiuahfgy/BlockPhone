@@ -11,10 +11,12 @@ import dev.blockphone.fabric.client.photo.PhotoTextures;
 import dev.blockphone.fabric.client.storage.ClientFiles;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Выбор фото из галереи поверх приложения (для поста или сообщения). Снимки, которые не подходят под политику
@@ -36,8 +38,19 @@ public final class PhotoPicker {
     private int width = 160;
     private long deniedAt;
 
+    /** Не null — выбор нескольких: окно не закрывается, отмеченные — с галочкой, onPick переключает отметку. */
+    private final @Nullable Predicate<PhotoStore.Photo> selected;
+    /** Не для сервера (например, Telegram): политика сервера не действует. */
+    private final boolean anyPhoto;
+
     public PhotoPicker(Consumer<PhotoStore.Photo> onPick) {
+        this(onPick, false, null);
+    }
+
+    public PhotoPicker(Consumer<PhotoStore.Photo> onPick, boolean anyPhoto, @Nullable Predicate<PhotoStore.Photo> selected) {
         this.onPick = onPick;
+        this.anyPhoto = anyPhoto;
+        this.selected = selected;
     }
 
     public boolean isOpen() {
@@ -52,7 +65,7 @@ public final class PhotoPicker {
             List<Item> list = new ArrayList<>();
             for (PhotoStore.Photo photo : PhotoStore.list()) {
                 PhotoMeta meta = PhotoStore.readMeta(photo);
-                list.add(new Item(photo, ClientSession.photoAllowed(meta)));
+                list.add(new Item(photo, anyPhoto || ClientSession.photoAllowed(meta)));
             }
             Minecraft.getInstance().execute(() -> {
                 items = list;
@@ -76,8 +89,10 @@ public final class PhotoPicker {
         width = w;
         g.fill(0, 0, w, h, PhoneTheme.background());
         PhoneDraw.text(g, PhoneLang.tr("photo.pick"), 8, 5, PhoneTheme.text(), 0.85f, false);
-        PhoneDraw.button(g, w - 22, 2, 18, 13, "×", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
-        String hint = ClientSession.photoPolicy() == PhotoPolicy.SERVER ? PhoneLang.tr("photo.only_server") : PhoneLang.tr("photo.any");
+        PhoneDraw.button(g, w - 22, 2, 18, 13, selected != null ? "✔" : "×", mouseX, mouseY,
+                selected != null ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
+        String hint = selected != null ? PhoneLang.tr("photo.pick_many")
+                : ClientSession.photoPolicy() == PhotoPolicy.SERVER ? PhoneLang.tr("photo.only_server") : PhoneLang.tr("photo.any");
         PhoneDraw.text(g, PhoneDraw.ellipsize(hint, w - 16, 0.6f), 8, 18, PhoneTheme.secondaryText(), 0.6f, false);
         if (loading) {
             PhoneDraw.centeredText(g, PhoneLang.tr("messenger.loading"), w / 2f, h / 2f, PhoneTheme.secondaryText(), 0.75f, false);
@@ -102,6 +117,12 @@ public final class PhotoPicker {
                 PhoneDraw.texture(g, thumb.id(), x, y, cell, cell, thumb.width(), thumb.height());
             } else {
                 g.fill(x, y, x + cell, y + cell, PhoneTheme.card());
+            }
+            if (selected != null && selected.test(item.photo())) {
+                PhoneDraw.outline(g, x, y, cell, cell, PhoneTheme.accent());
+                PhoneDraw.outline(g, x + 1, y + 1, cell - 2, cell - 2, PhoneTheme.accent());
+                PhoneDraw.roundedRect(g, x + cell - 12, y + 2, x + cell - 2, y + 12, 5, PhoneTheme.accent());
+                PhoneDraw.centeredText(g, "✔", x + cell - 7, y + 4, PhoneTheme.onAccent(), 0.6f, false);
             }
             if (!item.allowed()) {
                 g.fill(x, y, x + cell, y + cell, 0xB0000000);
@@ -143,7 +164,9 @@ public final class PhotoPicker {
         if (col >= 0 && col < COLUMNS && index >= 0 && index < items.size()) {
             Item item = items.get(index);
             if (item.allowed()) {
-                close();
+                if (selected == null) {
+                    close();
+                }
                 onPick.accept(item.photo());
             } else {
                 deniedAt = System.currentTimeMillis();

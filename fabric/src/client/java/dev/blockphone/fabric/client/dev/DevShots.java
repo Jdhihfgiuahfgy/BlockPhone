@@ -179,6 +179,12 @@ public final class DevShots {
         shot(40, "apps_settings");
     }
 
+    private static void telegramDebug(String what) {
+        if (PhoneState.existing("telegram") instanceof dev.blockphone.fabric.client.apps.telegram.TelegramApp app) {
+            app.debugChat(what);
+        }
+    }
+
     private static void customApp(String id, Consumer<dev.blockphone.fabric.client.apps.custom.CustomApp> action) {
         if (PhoneState.existing("app." + id) instanceof dev.blockphone.fabric.client.apps.custom.CustomApp app) {
             action.accept(app);
@@ -822,6 +828,24 @@ public final class DevShots {
             accounts.telegramApiHash = originalHash;
             dev.blockphone.fabric.client.music.Accounts.save();
         });
+        // Переписка на поддельных данных: альбом, ответ, пересланное, реакции, меню сообщения, полосы над полем.
+        step(5, mc -> {
+            List<Path> pictures = dev.blockphone.fabric.client.photo.PhotoStore.list().stream()
+                    .map(dev.blockphone.fabric.client.photo.PhotoStore.Photo::file).toList();
+            long chatId = dev.blockphone.fabric.client.telegram.Telegram.debugInject(pictures);
+            if (!(mc.screen instanceof PhoneScreen)) {
+                mc.setScreen(new PhoneScreen());
+            }
+            phone(mc, p -> p.openApp("telegram"));
+            if (PhoneState.existing("telegram") instanceof dev.blockphone.fabric.client.apps.telegram.TelegramApp app) {
+                app.openChat(chatId);
+            }
+        });
+        shot(40, "telegram_chat");
+        step(1, mc -> telegramDebug("menu"));
+        shot(20, "telegram_menu");
+        step(1, mc -> telegramDebug("reply"));
+        shot(30, "telegram_reply");
     }
 
     private static void copyMinecraftMusic(Minecraft mc) {

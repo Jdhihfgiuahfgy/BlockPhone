@@ -324,8 +324,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 15 к/с, до 15 с; кольцо и таймер
   на экране; клавиша телефона — отправить, меню — отмена).
 - `apps/telegram/` — приложение: `TelegramApp` (корень — вход или список чатов по состоянию), `TgView`, `TgLoginView` (ключи api_id/api_hash
-  с my.telegram.org, номер, код, пароль — поле с маской `TextArea.setMasked`), `TgChatListView`, `TgChatView` (пузыри, фото, обложки
-  «кружочков», Enter — отправить, «◯» — записать «кружочек»). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
+  с my.telegram.org, номер, код, пароль — поле с маской `TextArea.setMasked`), `TgChatListView`, `TgChatView` (пузыри; альбомы — сообщения
+  подряд с одним `mediaAlbumId` одним пузырём с сеткой; ответ (цитата) и «Переслано от»; реакции-«таблетки» (клик — поставить/
+  снять); ПКМ — полоса быстрых реакций + меню Ответить/Копировать/Изменить/Удалить; полосы над полем — ответ/правка и выбранные фото;
+  «+» — `PhotoPicker` с выбором нескольких (до 10 → `Telegram.sendPhotos`, альбом через `SendMessageAlbum`); Enter — отправить,
+  «◯» — записать «кружочек»). Значки 8 быстрых реакций — свои цветные `textures/gui/reaction/*.png` (gen_icons.py), прочие эмодзи —
+  шрифтом игры. `Telegram.debugInject` — поддельный чат для DevShots (сценарий telegram: `telegram_chat`, `_menu`, `_reply`). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
 - `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
   прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`

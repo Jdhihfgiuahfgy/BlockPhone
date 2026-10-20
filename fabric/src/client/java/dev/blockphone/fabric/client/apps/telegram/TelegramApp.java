@@ -49,6 +49,13 @@ public final class TelegramApp extends PhoneApp {
         push(new TgChatView(this, chatId));
     }
 
+    /** Для автоскриншотов: "menu" — меню сообщения, "reply" — ответ и выбранные фото. */
+    public void debugChat(String what) {
+        if (view() instanceof TgChatView chat) {
+            chat.debug(what);
+        }
+    }
+
     void showDialog(PhoneDialog dialog) {
         if (phone != null) {
             phone.showDialog(dialog);

@@ -684,5 +684,17 @@
   "settings.notify.app.messenger": "Messenger",
   "settings.notify.app.feed": "Feed",
   "settings.notify.app.telegram": "Telegram",
-  "settings.notify.app.calls": "Calls"
+  "settings.notify.app.calls": "Calls",
+  "telegram.forwarded": "Forwarded from %s",
+  "telegram.edited": "edited",
+  "telegram.editing": "Editing message",
+  "telegram.reply_to": "Reply to %s",
+  "telegram.reply": "Reply",
+  "telegram.copy": "Copy",
+  "telegram.edit": "Edit",
+  "telegram.delete": "Delete",
+  "telegram.delete_all": "Delete the message for everyone?",
+  "telegram.delete_me": "Delete the message for you?",
+  "telegram.caption_placeholder": "Caption…",
+  "photo.pick_many": "Tick photos (up to 10) and press ✔"
 }

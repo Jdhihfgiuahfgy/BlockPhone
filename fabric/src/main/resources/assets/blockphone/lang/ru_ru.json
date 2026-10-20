@@ -684,5 +684,17 @@
   "settings.notify.app.messenger": "Мессенджер",
   "settings.notify.app.feed": "Лента",
   "settings.notify.app.telegram": "Telegram",
-  "settings.notify.app.calls": "Звонки"
+  "settings.notify.app.calls": "Звонки",
+  "telegram.forwarded": "Переслано от %s",
+  "telegram.edited": "изм.",
+  "telegram.editing": "Изменение сообщения",
+  "telegram.reply_to": "Ответ: %s",
+  "telegram.reply": "Ответить",
+  "telegram.copy": "Копировать",
+  "telegram.edit": "Изменить",
+  "telegram.delete": "Удалить",
+  "telegram.delete_all": "Удалить сообщение у всех?",
+  "telegram.delete_me": "Удалить сообщение у себя?",
+  "telegram.caption_placeholder": "Подпись…",
+  "photo.pick_many": "Отметьте фото (до 10) и нажмите ✔"
 }

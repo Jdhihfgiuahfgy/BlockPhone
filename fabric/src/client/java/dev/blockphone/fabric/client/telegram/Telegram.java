@@ -168,7 +168,7 @@ public final class Telegram {
             return;
         }
         c.send(function, result -> Minecraft.getInstance().execute(() -> {
-            if (result instanceof TdApi.Error error) {
+            if (result instanceof TdApi.Error error && !(function instanceof TdApi.GetMessage)) {
                 showError(error);
             }
             if (onResult != null) {
@@ -247,6 +247,18 @@ public final class Telegram {
                 ChatMessages m = MESSAGES.get(u.chatId);
                 if (m != null) {
                     m.list.stream().filter(x -> x.id == u.messageId).forEach(x -> x.content = u.newContent);
+                }
+            }
+            case TdApi.UpdateMessageInteractionInfo u -> {
+                ChatMessages m = MESSAGES.get(u.chatId);
+                if (m != null) {
+                    m.list.stream().filter(x -> x.id == u.messageId).forEach(x -> x.interactionInfo = u.interactionInfo);
+                }
+            }
+            case TdApi.UpdateMessageEdited u -> {
+                ChatMessages m = MESSAGES.get(u.chatId);
+                if (m != null) {
+                    m.list.stream().filter(x -> x.id == u.messageId).forEach(x -> x.editDate = u.editDate);
                 }
             }
             case TdApi.UpdateDeleteMessages u -> {
@@ -510,10 +522,210 @@ public final class Telegram {
     }
 
     public static void sendText(long chatId, String text) {
+        sendText(chatId, text, 0);
+    }
+
+    /** Текст; replyTo > 0 — ответ на это сообщение. */
+    public static void sendText(long chatId, String text, long replyTo) {
         TdApi.InputMessageText content = new TdApi.InputMessageText();
         content.text = new TdApi.FormattedText(text, new TdApi.TextEntity[0]);
         content.clearDraft = true;
-        sendContent(chatId, content);
+        sendContent(chatId, content, replyTo);
+    }
+
+    /**
+     * Фото из галереи: одно — обычным сообщением, несколько — одним альбомом (по 10 в альбоме, как в Telegram).
+     * Подпись — у первого фото.
+     */
+    public static void sendPhotos(long chatId, List<Path> photos, String caption, long replyTo) {
+        for (int start = 0; start < photos.size(); start += 10) {
+            List<Path> part = photos.subList(start, Math.min(photos.size(), start + 10));
+            TdApi.InputMessageContent[] contents = new TdApi.InputMessageContent[part.size()];
+            for (int i = 0; i < part.size(); i++) {
+                TdApi.InputPhoto photo = new TdApi.InputPhoto();
+                photo.photo = new TdApi.InputFileLocal(part.get(i).toAbsolutePath().toString());
+                photo.addedStickerFileIds = new int[0];
+                TdApi.InputMessagePhoto content = new TdApi.InputMessagePhoto();
+                content.photo = photo;
+                content.caption = new TdApi.FormattedText(start == 0 && i == 0 ? caption : "", new TdApi.TextEntity[0]);
+                contents[i] = content;
+            }
+            long reply = start == 0 ? replyTo : 0;
+            if (contents.length == 1) {
+                sendContent(chatId, contents[0], reply);
+            } else {
+                TdApi.SendMessageAlbum album = new TdApi.SendMessageAlbum();
+                album.chatId = chatId;
+                album.replyTo = replyTo(reply);
+                album.inputMessageContents = contents;
+                send(album, null);
+            }
+        }
+    }
+
+    /** Изменить текст своего сообщения. */
+    public static void editText(long chatId, long messageId, String text) {
+        TdApi.InputMessageText content = new TdApi.InputMessageText();
+        content.text = new TdApi.FormattedText(text, new TdApi.TextEntity[0]);
+        send(new TdApi.EditMessageText(chatId, messageId, null, content), null);
+    }
+
+    /** Удалить сообщения; revoke — у всех (свои), иначе только у себя. */
+    public static void deleteMessages(long chatId, long[] ids, boolean revoke) {
+        send(new TdApi.DeleteMessages(chatId, ids, revoke), null);
+    }
+
+    /** Поставить/снять реакцию-эмодзи. */
+    public static void toggleReaction(long chatId, long messageId, String emoji, boolean chosen) {
+        TdApi.ReactionType type = new TdApi.ReactionTypeEmoji(emoji);
+        if (chosen) {
+            send(new TdApi.RemoveMessageReaction(chatId, messageId, type), null);
+        } else {
+            send(new TdApi.AddMessageReaction(chatId, messageId, type, false, true), null);
+        }
+    }
+
+    private static final Map<String, TdApi.Message> EXTRA = new HashMap<>();
+    private static final Set<String> EXTRA_LOADING = new HashSet<>();
+
+    /** Сообщение по id: из загруженной истории, иначе — запросить (вернётся при следующей отрисовке). */
+    public static @Nullable TdApi.Message message(long chatId, long messageId) {
+        ChatMessages m = MESSAGES.get(chatId);
+        if (m != null) {
+            for (TdApi.Message x : m.list) {
+                if (x.id == messageId) {
+                    return x;
+                }
+            }
+        }
+        String key = chatId + ":" + messageId;
+        TdApi.Message cached = EXTRA.get(key);
+        if (cached == null && EXTRA_LOADING.add(key)) {
+            send(new TdApi.GetMessage(chatId, messageId), result -> {
+                if (result instanceof TdApi.Message found) {
+                    EXTRA.put(key, found);
+                }
+            });
+        }
+        return cached;
+    }
+
+    /**
+     * Для автоскриншотов: поддельный групповой чат (альбом, ответ, пересланное, реакции, правка) без TDLib.
+     * Запросы при этом никуда не уходят (клиента нет).
+     */
+    public static long debugInject(List<Path> pictures) {
+        status = Status.READY;
+        myId = 1;
+        USERS.put(1L, debugUser(1, "Я"));
+        USERS.put(2L, debugUser(2, "Алекс"));
+        USERS.put(3L, debugUser(3, "Стив"));
+        TdApi.Chat chat = new TdApi.Chat();
+        chat.id = 100;
+        chat.title = "Строители";
+        chat.type = new TdApi.ChatTypeBasicGroup();
+        CHATS.put(chat.id, chat);
+        ChatMessages m = new ChatMessages();
+        m.loaded = true;
+        m.hasMore = false;
+        MESSAGES.put(chat.id, m);
+        int t = (int) (System.currentTimeMillis() / 1000) - 3600;
+        m.list.add(debugMessage(1, 2, t, debugText("Привет! Смотрите, что мы построили за вечер")));
+        for (int i = 0; i < Math.min(3, pictures.size()); i++) {
+            TdApi.LocalFile local = new TdApi.LocalFile();
+            local.path = pictures.get(i).toAbsolutePath().toString();
+            local.isDownloadingCompleted = true;
+            TdApi.File file = new TdApi.File();
+            file.id = -1 - i;
+            file.local = local;
+            TdApi.MessagePhoto photo = new TdApi.MessagePhoto();
+            photo.photo = new TdApi.Photo();
+            photo.photo.sizes = new TdApi.PhotoSize[] {new TdApi.PhotoSize("x", file, 1280, 720, new int[0])};
+            photo.caption = new TdApi.FormattedText(i == 0 ? "Замок у реки" : "", new TdApi.TextEntity[0]);
+            TdApi.Message msg = debugMessage(2 + i, 3, t + 60, photo);
+            msg.mediaAlbumId = 77;
+            m.list.add(msg);
+        }
+        TdApi.MessageReactions reactions = new TdApi.MessageReactions();
+        reactions.reactions = new TdApi.MessageReaction[] {
+                new TdApi.MessageReaction(new TdApi.ReactionTypeEmoji("🔥"), 3, true, null, new TdApi.MessageSender[0]),
+                new TdApi.MessageReaction(new TdApi.ReactionTypeEmoji("👍"), 1, false, null, new TdApi.MessageSender[0])};
+        TdApi.MessageInteractionInfo info = new TdApi.MessageInteractionInfo();
+        info.reactions = reactions;
+        m.list.get(m.list.size() - 1).interactionInfo = info;
+        m.list.stream().filter(x -> !bodyEmpty(x)).findFirst().ifPresent(x -> x.interactionInfo = info);
+        TdApi.Message reply = debugMessage(10, 1, t + 120, debugText("Очень круто! Завтра доделаем башню"));
+        TdApi.MessageReplyToMessage to = new TdApi.MessageReplyToMessage();
+        to.chatId = chat.id;
+        to.messageId = 1;
+        reply.replyTo = to;
+        reply.isOutgoing = true;
+        m.list.add(reply);
+        TdApi.Message forwarded = debugMessage(11, 2, t + 180, debugText("Сбор у спавна в 20:00"));
+        forwarded.forwardInfo = new TdApi.MessageForwardInfo();
+        forwarded.forwardInfo.origin = new TdApi.MessageOriginHiddenUser("Новости сервера");
+        m.list.add(forwarded);
+        TdApi.Message edited = debugMessage(12, 1, t + 240, debugText("Буду!"));
+        edited.isOutgoing = true;
+        edited.editDate = t + 250;
+        m.list.add(edited);
+        return chat.id;
+    }
+
+    private static boolean bodyEmpty(TdApi.Message m) {
+        return !(m.content instanceof TdApi.MessagePhoto p) || p.caption.text.isEmpty();
+    }
+
+    private static TdApi.User debugUser(long id, String name) {
+        TdApi.User user = new TdApi.User();
+        user.id = id;
+        user.firstName = name;
+        user.lastName = "";
+        return user;
+    }
+
+    private static TdApi.FormattedText debugFormatted(String text) {
+        return new TdApi.FormattedText(text, new TdApi.TextEntity[0]);
+    }
+
+    private static TdApi.MessageText debugText(String text) {
+        TdApi.MessageText content = new TdApi.MessageText();
+        content.text = debugFormatted(text);
+        return content;
+    }
+
+    private static TdApi.Message debugMessage(long id, long sender, int date, TdApi.MessageContent content) {
+        TdApi.Message msg = new TdApi.Message();
+        msg.id = id;
+        msg.chatId = 100;
+        msg.senderId = new TdApi.MessageSenderUser(sender);
+        msg.date = date;
+        msg.content = content;
+        return msg;
+    }
+
+    /** Кто автор пересланного сообщения. */
+    public static String originName(TdApi.MessageOrigin origin) {
+        return switch (origin) {
+            case TdApi.MessageOriginUser u -> {
+                TdApi.User user = USERS.get(u.senderUserId);
+                yield user != null ? (user.firstName + " " + user.lastName).strip() : "?";
+            }
+            case TdApi.MessageOriginHiddenUser h -> h.senderName;
+            case TdApi.MessageOriginChat c -> {
+                TdApi.Chat chat = CHATS.get(c.senderChatId);
+                yield chat != null ? chat.title : "?";
+            }
+            case TdApi.MessageOriginChannel c -> {
+                TdApi.Chat chat = CHATS.get(c.chatId);
+                yield chat != null ? chat.title : "?";
+            }
+            default -> "?";
+        };
+    }
+
+    private static @Nullable TdApi.InputMessageReplyTo replyTo(long messageId) {
+        return messageId > 0 ? new TdApi.InputMessageReplyToMessage(messageId, null, 0, null) : null;
     }
 
     /** Отправить «кружочек» (MP4, квадрат length×length). */
@@ -528,8 +740,13 @@ public final class Telegram {
     }
 
     private static void sendContent(long chatId, TdApi.InputMessageContent content) {
+        sendContent(chatId, content, 0);
+    }
+
+    private static void sendContent(long chatId, TdApi.InputMessageContent content, long replyTo) {
         TdApi.SendMessage send = new TdApi.SendMessage();
         send.chatId = chatId;
+        send.replyTo = replyTo(replyTo);
         send.inputMessageContent = content;
         send(send, null);
     }
@@ -584,7 +801,14 @@ public final class Telegram {
 
     /** Текст сообщения или подпись вложения: «[Фото] подпись», «[Кружочек]»... */
     public static String text(TdApi.Message message) {
-        return switch (message.content) {
+        return text(message.content);
+    }
+
+    public static String text(@Nullable TdApi.MessageContent content) {
+        if (content == null) {
+            return "";
+        }
+        return switch (content) {
             case TdApi.MessageText t -> t.text.text;
             case TdApi.MessagePhoto p -> join("telegram.photo", p.caption);
             case TdApi.MessageVideo v -> join("telegram.video", v.caption);

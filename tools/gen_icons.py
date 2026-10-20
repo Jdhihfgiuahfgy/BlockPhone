@@ -514,6 +514,94 @@ def mod_icon():
     return img
 
 
+# ---------------- Реакции Telegram (цветные 32x32, textures/gui/reaction/) ----------------
+
+YELLOW = hex_rgb(0xFFC93C)
+YELLOW_EDGE = hex_rgb(0xE09A1E)
+DARK = hex_rgb(0x5A3A12)
+TEAR = hex_rgb(0x4FB3F6)
+
+
+def face():
+    img = Image.new("RGBA", (S, S), CLEAR)
+    d = ImageDraw.Draw(img)
+    d.ellipse([12, 12, S - 12, S - 12], fill=YELLOW_EDGE)
+    d.ellipse([22, 22, S - 22, S - 22], fill=YELLOW)
+    return img, d
+
+
+def reaction_laugh():
+    img, d = face()
+    for cx in (88, 168):
+        d.arc([cx - 26, 78, cx + 26, 128], 200, 340, fill=DARK, width=14)
+    d.chord([62, 120, 194, 214], 0, 180, fill=DARK)
+    d.chord([86, 170, 170, 214], 0, 180, fill=hex_rgb(0xE8505B))
+    for cx in (30, 226):
+        d.ellipse([cx - 20, 112, cx + 20, 160], fill=TEAR)
+    return img
+
+
+def reaction_wow():
+    img, d = face()
+    for cx in (92, 164):
+        d.ellipse([cx - 14, 76, cx + 14, 116], fill=DARK)
+    d.ellipse([100, 140, 156, 210], fill=DARK)
+    return img
+
+
+def reaction_sad():
+    img, d = face()
+    for cx in (92, 164):
+        d.ellipse([cx - 13, 86, cx + 13, 122], fill=DARK)
+    d.arc([80, 160, 176, 230], 200, 340, fill=DARK, width=14)
+    d.ellipse([150, 124, 182, 172], fill=TEAR)
+    d.polygon([(166, 108), (151, 140), (181, 140)], fill=TEAR)
+    return img
+
+
+def reaction_heart():
+    img = Image.new("RGBA", (S, S), CLEAR)
+    heart(ImageDraw.Draw(img), 128, 92, 56, hex_rgb(0xF0384F))
+    return img
+
+
+def reaction_fire():
+    img = Image.new("RGBA", (S, S), CLEAR)
+    d = ImageDraw.Draw(img)
+    d.ellipse([46, 92, 210, 244], fill=hex_rgb(0xFF6A1A))
+    d.polygon([(52, 160), (96, 10), (128, 90), (168, 30), (206, 160)], fill=hex_rgb(0xFF6A1A))
+    d.ellipse([86, 148, 170, 232], fill=hex_rgb(0xFFD43B))
+    d.polygon([(90, 186), (128, 96), (166, 186)], fill=hex_rgb(0xFFD43B))
+    return img
+
+
+def reaction_like():
+    img = Image.new("RGBA", (S, S), CLEAR)
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([24, 112, 76, 230], radius=10, fill=hex_rgb(0x3D7BD9))
+    d.rounded_rectangle([84, 104, 226, 230], radius=30, fill=YELLOW)
+    d.rounded_rectangle([96, 24, 150, 140], radius=26, fill=YELLOW)
+    for y in (136, 168, 200):
+        d.line([(170, y), (222, y)], fill=YELLOW_EDGE, width=8)
+    return img
+
+
+def reaction_dislike():
+    return reaction_like().transpose(Image.FLIP_TOP_BOTTOM)
+
+
+def reaction_party():
+    img = Image.new("RGBA", (S, S), CLEAR)
+    d = ImageDraw.Draw(img)
+    d.polygon([(20, 236), (70, 96), (160, 186)], fill=hex_rgb(0xFFB020))
+    d.line([(44, 170), (100, 216)], fill=hex_rgb(0xE8505B), width=14)
+    d.line([(60, 126), (128, 186)], fill=hex_rgb(0xE8505B), width=14)
+    for (x, y, c) in ((150, 40, 0x4FB3F6), (206, 90, 0x7BC862), (120, 90, 0xE8505B), (200, 160, 0xA695E7),
+                      (176, 22, 0xFFD43B), (230, 40, 0xE8505B)):
+        d.rounded_rectangle([x - 12, y - 12, x + 12, y + 12], radius=5, fill=hex_rgb(c))
+    return img
+
+
 if __name__ == "__main__":
     glyphs = {
         "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
@@ -544,6 +632,10 @@ if __name__ == "__main__":
     voice = {"mic": voice_mic, "call": voice_call, "hangup": voice_hangup}
     for name, fn in voice.items():
         save(fn(), os.path.join(ASSETS, "textures", "gui", "voice"), name, 32)
+    reactions = {"like": reaction_like, "heart": reaction_heart, "fire": reaction_fire, "laugh": reaction_laugh,
+                 "wow": reaction_wow, "sad": reaction_sad, "dislike": reaction_dislike, "party": reaction_party}
+    for name, fn in reactions.items():
+        save(fn(), os.path.join(ASSETS, "textures", "gui", "reaction"), name, 32)
     save(mod_icon(), ASSETS, "icon", 128)
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))
