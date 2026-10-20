@@ -89,5 +89,14 @@ final class PlayerView extends MusicView {
         PhoneDraw.tinted(g, VOLUME, 10, y - 4, 9, 9, 32, 32, PhoneTheme.secondaryText());
         bar(g, 24, y, w - 34, settings.musicVolume, true);
         slider(24, y, w - 34, 3, v -> settings.musicVolume = v);
+        y += 14;
+
+        // Текст песни: открыть в телефоне и вкл/выкл «в мире».
+        int half = (w - 26) / 2;
+        PhoneDraw.button(g, 10, y, half, 16, tr("music.lyrics"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
+        hit(10, y, half, 16, () -> app.push(new LyricsView(app)));
+        PhoneDraw.button(g, 16 + half, y, half, 16, tr(settings.lyricsWorld ? "music.lyrics.world_on" : "music.lyrics.world_off"),
+                mouseX, mouseY, settings.lyricsWorld ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+        hit(16 + half, y, half, 16, () -> settings.lyricsWorld = !settings.lyricsWorld);
     }
 }

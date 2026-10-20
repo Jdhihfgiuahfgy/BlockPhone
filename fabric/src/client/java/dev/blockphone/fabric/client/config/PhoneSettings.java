@@ -44,6 +44,22 @@ public final class PhoneSettings {
     public boolean lockScreen = true;
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
     public boolean compactPhone = false;
+    /** Текст песни в мире (если у трека есть текст). */
+    public boolean lyricsWorld = true;
+    /** "world" — строка остаётся там, где появилась; "view" — следует за взглядом. */
+    public String lyricsMode = "world";
+    /** Размер текста 1..4. */
+    public int lyricsSize = 2;
+    /** Расстояние до текста, блоков. */
+    public int lyricsDistance = 6;
+    /** Слова разного размера и чуть вразброс. */
+    public boolean lyricsScatter = true;
+    /** Последнее появившееся слово — акцентным цветом. */
+    public boolean lyricsAccentWord = true;
+    /** Сдвиг текста относительно музыки, мс (плюс — раньше). */
+    public int lyricsOffsetMs = 0;
+    /** Искать текст в интернете (LRCLIB), если его нет в файлах. */
+    public boolean lyricsOnline = true;
 
     public static PhoneSettings get() {
         if (instance == null) {

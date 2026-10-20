@@ -68,6 +68,11 @@ public final class MusicApp extends PhoneApp {
     }
 
     /** Открыть полный плеер (для автоскриншотов и мини-плеера). */
+    /** Открыть текст песни (кнопка «Текст» в плеере; DevShots). */
+    public void openLyrics() {
+        push(new LyricsView(this));
+    }
+
     public void openPlayer() {
         if (!(view() instanceof PlayerView)) {
             push(new PlayerView(this));

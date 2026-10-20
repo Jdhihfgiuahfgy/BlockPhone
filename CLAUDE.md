@@ -44,7 +44,8 @@
   пост, «Новый пост», профили, паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
   играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
-  в лог пишет позицию воспроизведения.
+  в лог пишет позицию воспроизведения. Пишет рядом с треками придуманный тестовый `.lrc` и снимает текст в телефоне
+  (`music_lyrics`), в мире (`music_lyrics_world`) и «перед глазами» (`music_lyrics_view`); поиск в сети на время выключен.
   Сценарий голоса: `BLOCKPHONE_DEV_SCENARIO=voice BLOCKPHONE_DEV_MESSENGER=1` — голосовое из тихого тестового сигнала
   (микрофон не трогается) → загрузка → пузырь → проигрывание; интерфейс звонка на поддельных состояниях (входящий, полоса, HUD);
   настоящий звонок в группу через SVC (в dev голосовой чат SVC выключен до первоначальной настройки — сервер отвечает ошибкой).
@@ -194,7 +195,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
-  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone).
+  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone,
+  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..12, lyricsScatter, lyricsAccentWord, lyricsOffsetMs, lyricsOnline).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -285,11 +287,20 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
     браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,
     команды play/pause/next/previous/seek/volume/shuffle/repeat (нужен Premium).
+  - `lyrics/Lyrics` — разбор текста: LRC (`[мм:сс.хх]`, несколько меток, `[offset:]`), расширенный LRC (`<мм:сс.хх>` у слов),
+    обычный текст (строки равномерно по треку); слова без времени — пропорционально длине (к 75 % строки); строка не дольше 8 с;
+    `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
+    (`TrackTags.Tags.lyrics`) → LRCLIB (`lrclib.net/api/get`, затем `/api/search`; кэш `blockphone/cache/lyrics/`, пустой файл — нет
+    текста; ошибка сети не кэшируется); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
+    `commandQueue().submitText`, полная яркость, обводка): строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
+    остаётся или следует за взглядом; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
+    гаснет и уплывает вверх. Прячется при F1 и остановке музыки.
   - `MusicHud` — виджет «сейчас играет» слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
 - `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
   `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
   поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
-  `QueueView`. Иконки `textures/gui/music/*` (gen_icons.py).
+  `QueueView`, `LyricsView` (текст в телефоне, текущая строка по центру; в заголовке — «В мире: вкл/выкл»; `MusicApp.openLyrics()`).
+  В плеере под громкостью — кнопки «Текст» и «В мире». Иконки `textures/gui/music/*` (gen_icons.py).
 - `camera/` — режим камеры:
   - `CameraMode` — вход/выход, такт (ЛКМ снимок, ПКМ следующий фильтр), клавиши (Esc, ←→↑↓, H, R, G), зум колесом,
     `renderOverlay` (видоискатель вместо HUD; тут же берётся кадр для снимка — мир уже нарисован, интерфейс ещё нет).
@@ -375,5 +386,6 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 
 Принятые доп. функции (✅ все сделаны, 0.7.1–0.7.4): BungeeCord, экран блокировки и уведомления, режим «на ходу», телефон в руке
 виден другим (выключатель `phoneInHandVisible`/`phone-in-hand.visible`, предмет в руке не меняется, работает и на Paper/прокси).
+Доп. после плана: текст песни в мире (0.7.5).
 Отклонено пока: геометки в чатах, команды для игроков без мода.
 Одиночная игра = только клиентские функции (мессенджер шлётся только с выделенного сервера).

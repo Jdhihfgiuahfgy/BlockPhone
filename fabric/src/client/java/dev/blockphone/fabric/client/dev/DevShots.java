@@ -409,11 +409,31 @@ public final class DevShots {
     // --- Музыка ---
 
     /** Музыка Minecraft (из ресурсов игры) копируется в blockphone/music; громкость почти нулевая, чтобы не шуметь. */
+    /** Придуманный тестовый текст (.lrc) для скопированных треков: строки около 1:00, куда перематывает сценарий. */
+    private static void writeTestLyrics() {
+        String lrc = String.join("\n",
+                "[00:01.00]BlockPhone играет в мире",
+                "[00:58.50]Свет фонаря над тихой рекой",
+                "[01:01.20]Камень за камнем <01:02.20>строим <01:02.80>наш <01:03.20>дом",
+                "[01:04.50]Ночь опустилась на сонный лес",
+                "[01:08.00]");
+        try (var files = java.nio.file.Files.list(LocalLibrary.dir())) {
+            for (Path track : files.filter(f -> f.toString().endsWith(".ogg")).toList()) {
+                String name = track.getFileName().toString();
+                java.nio.file.Files.writeString(track.resolveSibling(name.substring(0, name.length() - 4) + ".lrc"), lrc);
+            }
+        } catch (java.io.IOException e) {
+            BlockPhoneFabric.LOGGER.warn("[DevShots] lyrics: {}", e.toString());
+        }
+    }
+
     private void planMusic(PhoneSettings settings) {
         float originalVolume = settings.musicVolume;
         step(1, mc -> {
             settings.musicVolume = 0.05f;
             copyMinecraftMusic(mc);
+            writeTestLyrics();
+            settings.lyricsOnline = false;
             LocalLibrary.rescan();
             PhoneState.setCurrent(PhoneState.HOME);
             mc.setScreen(new PhoneScreen());
@@ -429,6 +449,9 @@ public final class DevShots {
         step(60, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] music state {} at {} ms of {} ms", MusicPlayer.state(),
                 MusicPlayer.positionMs(), MusicPlayer.durationMs()));
         shot(1, "music_player_seek");
+        step(1, mc -> music(MusicApp::openLyrics));
+        shot(30, "music_lyrics");
+        step(1, mc -> phone(mc, PhoneScreen::back));
         step(1, mc -> phone(mc, PhoneScreen::back));
         step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.YANDEX)));
         shot(40, "music_yandex_login");
@@ -441,6 +464,19 @@ public final class DevShots {
         shot(40, "music_local_dark");
         step(1, mc -> mc.setScreen(null));
         shot(60, "music_hud");
+        step(1, mc -> MusicPlayer.seek(61_000));
+        shot(50, "music_lyrics_world");
+        step(1, mc -> {
+            settings.lyricsMode = "view";
+            settings.lyricsScatter = false;
+            MusicPlayer.seek(64_600);
+        });
+        shot(40, "music_lyrics_view");
+        step(1, mc -> {
+            settings.lyricsMode = "world";
+            settings.lyricsScatter = true;
+            settings.lyricsOnline = true;
+        });
         step(1, mc -> {
             BlockPhoneFabric.LOGGER.info("[DevShots] music state {} at {} ms", MusicPlayer.state(), MusicPlayer.positionMs());
             MusicPlayer.stop();

@@ -175,6 +175,35 @@ public final class SettingsApp extends PhoneApp {
                 new Row(() -> PhoneLang.tr("settings.music_volume"),
                         () -> Math.round(s.musicVolume * 100) + "%",
                         dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false))));
+        result.add(new Section("settings.section.lyrics", List.of(
+                new Row(() -> PhoneLang.tr("settings.lyrics_world"),
+                        () -> PhoneLang.tr(s.lyricsWorld ? "settings.on" : "settings.off"),
+                        dir -> s.lyricsWorld = !s.lyricsWorld, null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_mode"),
+                        () -> PhoneLang.tr("settings.lyrics_mode." + s.lyricsMode),
+                        dir -> s.lyricsMode = cycle(List.of("world", "view"), s.lyricsMode, dir), null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_size"),
+                        () -> PhoneLang.tr("settings.lyrics_size." + s.lyricsSize),
+                        dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
+                        () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
+                        dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 10) + 3, null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_scatter"),
+                        () -> PhoneLang.tr(s.lyricsScatter ? "settings.on" : "settings.off"),
+                        dir -> s.lyricsScatter = !s.lyricsScatter, null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_accent"),
+                        () -> PhoneLang.tr(s.lyricsAccentWord ? "settings.on" : "settings.off"),
+                        dir -> s.lyricsAccentWord = !s.lyricsAccentWord, null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_offset"),
+                        () -> (s.lyricsOffsetMs > 0 ? "+" : "") + String.format(java.util.Locale.ROOT, "%.1f", s.lyricsOffsetMs / 1000f)
+                                + PhoneLang.tr("settings.lyrics_seconds"),
+                        dir -> s.lyricsOffsetMs = Math.max(-3000, Math.min(3000, s.lyricsOffsetMs + dir * 250)), null, false),
+                new Row(() -> PhoneLang.tr("settings.lyrics_online"),
+                        () -> PhoneLang.tr(s.lyricsOnline ? "settings.on" : "settings.off"),
+                        dir -> {
+                            s.lyricsOnline = !s.lyricsOnline;
+                            dev.blockphone.fabric.client.music.lyrics.LyricsService.reload();
+                        }, null, false))));
 
         ServerHelloPacket hello = ClientNetwork.serverHello();
         String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());

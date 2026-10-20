@@ -21,8 +21,9 @@ public final class TrackTags {
     private static final int MAX_TAG = 8 * 1024 * 1024;
 
     /** Теги; поля могут быть пустыми, cover — null. */
-    public record Tags(String title, String artist, String album, byte @Nullable [] cover) {
-        static final Tags EMPTY = new Tags("", "", "", null);
+    /** @param lyrics текст песни (USLT / LYRICS, может быть в формате LRC) или {@code null} */
+    public record Tags(String title, String artist, String album, byte @Nullable [] cover, @Nullable String lyrics) {
+        static final Tags EMPTY = new Tags("", "", "", null, null);
     }
 
     public static Tags read(Path file, boolean withCover) {
@@ -54,7 +55,7 @@ public final class TrackTags {
         if (v2 == null) {
             return v1;
         }
-        return new Tags(or(v2.title(), v1.title()), or(v2.artist(), v1.artist()), or(v2.album(), v1.album()), v2.cover());
+        return new Tags(or(v2.title(), v1.title()), or(v2.artist(), v1.artist()), or(v2.album(), v1.album()), v2.cover(), v2.lyrics());
     }
 
     static Tags parseId3v2(int version, int flags, byte[] tag, boolean withCover) {
@@ -62,6 +63,7 @@ public final class TrackTags {
         String artist = "";
         String album = "";
         byte[] cover = null;
+        String lyrics = null;
         int pos = 0;
         if ((flags & 0x40) != 0 && version >= 3 && tag.length >= 4) {
             // Расширенный заголовок — пропустить.
@@ -91,6 +93,13 @@ public final class TrackTags {
                 case "TIT2", "TT2" -> title = text(tag, start, size);
                 case "TPE1", "TP1" -> artist = text(tag, start, size);
                 case "TALB", "TAL" -> album = text(tag, start, size);
+                case "USLT", "ULT" -> {
+                    if (lyrics == null && size > 4) {
+                        // кодировка, язык (3 байта), описание до \0, текст
+                        String value = decode(tag, start + 4, size - 4, tag[start]);
+                        lyrics = value.substring(value.indexOf('\0') + 1).replace("\uFEFF", "").replace("\0", "").strip();
+                    }
+                }
                 case "APIC", "PIC" -> {
                     if (withCover && cover == null) {
                         cover = picture(tag, start, size, v22);
@@ -101,7 +110,7 @@ public final class TrackTags {
             }
             pos = start + size;
         }
-        return new Tags(title, artist, album, cover);
+        return new Tags(title, artist, album, cover, lyrics);
     }
 
     /** Текстовый кадр: байт кодировки + строка (возможно, несколько через \0 — берём первую). */
@@ -181,7 +190,7 @@ public final class TrackTags {
             if (tag[0] != 'T' || tag[1] != 'A' || tag[2] != 'G') {
                 return Tags.EMPTY;
             }
-            return new Tags(fixed(tag, 3, 30), fixed(tag, 33, 30), fixed(tag, 63, 30), null);
+            return new Tags(fixed(tag, 3, 30), fixed(tag, 33, 30), fixed(tag, 63, 30), null, null);
         }
     }
 
@@ -209,6 +218,7 @@ public final class TrackTags {
         String artist = "";
         String album = "";
         byte[] cover = null;
+        String lyrics = null;
         for (int i = 0; i < count && pos + 4 <= packet.length; i++) {
             int length = int32le(packet, pos);
             pos += 4;
@@ -227,6 +237,7 @@ public final class TrackTags {
                 case "TITLE" -> title = value;
                 case "ARTIST" -> artist = value;
                 case "ALBUM" -> album = value;
+                case "LYRICS", "UNSYNCEDLYRICS" -> lyrics = value;
                 case "METADATA_BLOCK_PICTURE" -> {
                     if (withCover && cover == null) {
                         cover = flacPicture(Base64.getDecoder().decode(value));
@@ -236,7 +247,7 @@ public final class TrackTags {
                 }
             }
         }
-        return new Tags(title, artist, album, cover);
+        return new Tags(title, artist, album, cover, lyrics);
     }
 
     /** Второй пакет Ogg-потока (комментарии), собранный из страниц. */
