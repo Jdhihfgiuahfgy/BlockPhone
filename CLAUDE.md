@@ -1,7 +1,8 @@
 # BlockPhone — заметки для разработки
 
 Мод-«смартфон» для Minecraft: телефон открывается поверх игры как интерфейс (не предмет).
-Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11; сеть серверов — плагин Velocity или BungeeCord.
+Клиент — Fabric 1.21.11 и 1.21.10 (две сборки из общих исходников); сервер — тот же Fabric-мод **или** Paper-плагин
+(один файл для 1.21.10 и 1.21.11); сеть серверов — плагин Velocity или BungeeCord.
 Дизайн — **свой стиль** (по образцу скриншота мода-плеера от пользователя): тёмно-синие панели с тонкой рамкой,
 скругление 4, плоские кнопки, акцентный цвет (игрок выбирает сам), тёмная основа по умолчанию + светлая.
 Отвергнуты: копия айфона и ванильный стиль Minecraft (последний лежит в `git stash`). Новые экраны — только через
@@ -13,7 +14,8 @@
 
 | Команда | Что делает |
 |---|---|
-| `./gradlew build` | Собирает всё. Jar-ы: `fabric/build/libs/BlockPhone-fabric-*.jar`, `paper/build/libs/BlockPhone-paper-*.jar` |
+| `./gradlew build` | Собирает всё. Jar-ы: `fabric/build/libs/BlockPhone-fabric-<версия>+mc1.21.11.jar`, `fabric-1.21.10/build/libs/BlockPhone-fabric-<версия>+mc1.21.10.jar`, `paper/build/libs/BlockPhone-paper-*.jar` |
+| `./gradlew :fabric-1.21.10:runClient` | Клиент Minecraft **1.21.10** с модом (папка `fabric-1.21.10/run/`; DevShots работают так же) |
 | `./gradlew :fabric:runClient` | Клиент Minecraft с модом (папка игры — `fabric/run/`) |
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
@@ -71,6 +73,7 @@
 ## Модули
 
 ```
+fabric-1.21.10/  тот же мод для Minecraft 1.21.10: своих исходников почти нет (см. «Две версии Minecraft»)
 common/    чистая Java без Minecraft: протокол, серверная логика (рукопожатие, мессенджер, лента, фото, SQL), тесты
 fabric/    мод: src/main = общий+серверный код, src/client = клиент (телефон)
 paper/     плагин Paper
@@ -423,6 +426,24 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Настройки — `plugins/BlockPhone/config.json` (как у Velocity). Права: модераторские — `hasPermission` (LuckPerms) или
   `moderators`; обычные — у всех (у BungeeCord нет «не задано»). Звонков нет. API `net.md-5:bungeecord-api` (+ репозиторий
   libraries.minecraft.net для brigadier). Не проверено на живом прокси.
+
+## Две версии Minecraft (1.21.11 и 1.21.10)
+
+- Пишем код только в `fabric/` (под 1.21.11). Модуль `fabric-1.21.10` при сборке копирует исходники `fabric/src/{main,client}/java`
+  в `fabric-1.21.10/build/ported/` и заменяет имена, которые в 1.21.11 переименовали (список `LEGACY_RENAMES` в
+  `fabric-1.21.10/build.gradle`: Identifier→ResourceLocation, `net.minecraft.util.Util`→`net.minecraft.Util`,
+  `model.player.PlayerModel`→`model.PlayerModel`, `RenderTypes`→`RenderType`, `.identifier()`→`.location()`,
+  `camera.yRot()`→`getYRot()`, `renderOutline`→`submitOutline`, `rightHandItemState`→`rightHandItem`,
+  `hasControlDownWithQuirk`→`hasControlDown`, пакет gamerules). Ресурсы — общие (fabric.mod.json: minecraft 1.21.10).
+- Если различие не сводится к переименованию — маленький класс-«переходник» в `fabric/`, а его вариант для 1.21.10 — по тому
+  же пути в `fabric-1.21.10/src/` (подменяет общий при сборке): `fabric/compat/Compat` (оператор: `permissions()` /
+  `hasPermissions(2)`), `client/photo/SmoothTexture` (линейный фильтр: `sampler` / `setFilter(true, false)`).
+- После правок в `fabric/` проверять обе: `./gradlew :fabric:compileClientJava :fabric-1.21.10:compileClientJava`. Миксины
+  проверяются только запуском (`:fabric-1.21.10:runClient`, сценарий DevShots `hand` — быстрый).
+- Сверка имён 1.21.10: `javap -cp <minecraft-clientOnly-…1.21.10…jar>;<minecraft-common-…jar> <класс>` (jar-ы — в
+  `.gradle/loom-cache/minecraftMaven/net/minecraft/`).
+- Paper: компиляция против API 1.21.10, `api-version: '1.21.10'` — один jar работает на 1.21.10 и 1.21.11. Velocity и
+  BungeeCord от версии Minecraft не зависят. Версии — `legacy_minecraft_version`, `legacy_fabric_version`, `paper_api_version`.
 
 ## Особенности API Minecraft 1.21.11 (Mojang mappings)
 - `ResourceLocation` переименован в **`Identifier`** (`Identifier.fromNamespaceAndPath(ns, path)`); у `ResourceKey` — `identifier()`.

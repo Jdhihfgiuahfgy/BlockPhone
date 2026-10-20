@@ -3,6 +3,8 @@ apply plugin: 'fabric-loom'
 base {
     archivesName = "${rootProject.mod_name}-fabric"
 }
+// В имени файла — версия Minecraft (есть ещё сборка для 1.21.10, модуль fabric-1.21.10).
+version = "${rootProject.mod_version}+mc${rootProject.minecraft_version}"
 
 loom {
     splitEnvironmentSourceSets()

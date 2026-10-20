@@ -1,0 +1,117 @@
+// Мод для Minecraft 1.21.10. Своих исходников почти нет: при сборке берутся исходники модуля fabric (под 1.21.11),
+// в них заменяются имена, которые в 1.21.11 переименовали (см. LEGACY_RENAMES), а файлы из src/ этого модуля
+// подменяют одноимённые общие (там, где различия не сводятся к переименованию).
+apply plugin: 'fabric-loom'
+
+base {
+    archivesName = "${rootProject.mod_name}-fabric"
+}
+version = "${rootProject.mod_version}+mc${rootProject.legacy_minecraft_version}"
+
+def shared = project(':fabric').file('src')
+def ported = layout.buildDirectory.dir('ported')
+
+// Переименования 1.21.11 → 1.21.10 (Mojang mappings). Порядок важен: длинные — раньше.
+def LEGACY_RENAMES = [
+        'net.minecraft.resources.Identifier'       : 'net.minecraft.resources.ResourceLocation',
+        'Identifier.fromNamespaceAndPath'          : 'ResourceLocation.fromNamespaceAndPath',
+        'Identifier.withDefaultNamespace'          : 'ResourceLocation.withDefaultNamespace',
+        'Identifier.parse'                         : 'ResourceLocation.parse',
+        'net.minecraft.util.Util'                  : 'net.minecraft.Util',
+        'net.minecraft.client.model.player.PlayerModel': 'net.minecraft.client.model.PlayerModel',
+        'net.minecraft.client.renderer.rendertype.RenderTypes': 'net.minecraft.client.renderer.RenderType',
+        'RenderTypes.'                             : 'RenderType.',
+        'net.minecraft.world.level.gamerules.GameRules': 'net.minecraft.world.level.GameRules',
+        '.identifier()'                            : '.location()',
+        'camera.yRot()'                            : 'camera.getYRot()',
+        'camera.xRot()'                            : 'camera.getXRot()',
+        'g.renderOutline('                         : 'g.submitOutline(',
+        'rightHandItemState'                       : 'rightHandItem',
+        'leftHandItemState'                        : 'leftHandItem',
+        'hasControlDownWithQuirk()'                : 'hasControlDown()',
+]
+
+def portTask = { String set ->
+    tasks.register("port${set.capitalize()}Sources", Sync) {
+        from("${shared}/${set}/java")
+        from(file("src/${set}/java"))   // свои файлы модуля — поверх общих
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        into(ported.map { it.dir("${set}/java") })
+        filteringCharset = 'UTF-8'
+        filter { String line ->
+            String out = line
+            LEGACY_RENAMES.each { from, to -> out = out.replace(from, to) }
+            // Тип Identifier в объявлениях и параметрах (после замены импорта).
+            out = out.replaceAll(/\bIdentifier\b/, 'ResourceLocation')
+            out
+        }
+    }
+}
+def portMain = portTask('main')
+def portClient = portTask('client')
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "${rootProject.mod_id}" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDirs = [ported.map { it.dir('main/java') }]
+        resources.srcDirs = ["${shared}/main/resources"]
+    }
+    client {
+        java.srcDirs = [ported.map { it.dir('client/java') }]
+        resources.srcDirs = ["${shared}/client/resources"]
+    }
+}
+compileJava.dependsOn portMain
+compileClientJava.dependsOn portClient
+
+repositories {
+    maven { url = 'https://api.modrinth.com/maven' }
+    maven { url = 'https://mvn.mchv.eu/repository/mchv/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${rootProject.legacy_minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.legacy_fabric_version}"
+
+    implementation project(':common')
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
+
+    include(implementation("com.h2database:h2:${rootProject.h2_version}") { transitive = false })
+    include(implementation("org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadb_version}") { transitive = false })
+    include(implementation("javazoom:jlayer:${rootProject.jlayer_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-java:${rootProject.tdlight_java_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-api:${rootProject.tdlight_api_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-natives:${rootProject.tdlight_natives_version}:windows_amd64") { transitive = false })
+    include(implementation("org.reactivestreams:reactive-streams:1.0.4"))
+    include(implementation("io.atlassian.util.concurrent:atlassian-util-concurrent:4.0.1") { transitive = false })
+    include(implementation("org.jcodec:jcodec:${rootProject.jcodec_version}") { transitive = false })
+}
+
+processResources {
+    def props = [
+            version          : project.version,
+            minecraft_version: rootProject.legacy_minecraft_version,
+            loader_version   : rootProject.loader_version
+    ]
+    inputs.properties props
+    filteringCharset 'UTF-8'
+    filesMatching('fabric.mod.json') {
+        expand props
+    }
+}
+
+jar {
+    from(project(':common').sourceSets.main.output)
+}

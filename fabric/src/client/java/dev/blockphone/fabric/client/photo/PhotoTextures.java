@@ -1,8 +1,6 @@
 package dev.blockphone.fabric.client.photo;
 
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.storage.ClientFiles;
@@ -22,14 +20,6 @@ import java.util.Set;
  * Файлы читаются и уменьшаются в фоне ({@link ClientFiles#IO}), текстуры создаются на потоке рендера.
  */
 public final class PhotoTextures {
-    /** Текстура с плавным масштабированием (фото при уменьшении не «рябят»). */
-    public static final class SmoothTexture extends DynamicTexture {
-        public SmoothTexture(String label, NativeImage image) {
-            super(() -> label, image);
-            this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        }
-    }
-
     /** Готовая текстура и её размер в пикселях. */
     public record Image(Identifier id, int width, int height) {
     }

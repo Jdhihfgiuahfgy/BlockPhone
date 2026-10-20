@@ -10,7 +10,6 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.permissions.Permissions;
 import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 
@@ -130,7 +129,7 @@ public final class FabricServerHandler {
                 return permission.defaultAllowed();
             }
             boolean fallback = permission.defaultAllowed()
-                    || target.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+                    || dev.blockphone.fabric.compat.Compat.isOperator(target);
             if (PERMISSIONS_CHECK != null) {
                 try {
                     return (boolean) PERMISSIONS_CHECK.invoke(null, target, permission.node(), fallback);
@@ -147,7 +146,7 @@ public final class FabricServerHandler {
             if (target == null) {
                 return defaultValue;
             }
-            boolean fallback = defaultValue || target.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+            boolean fallback = defaultValue || dev.blockphone.fabric.compat.Compat.isOperator(target);
             if (PERMISSIONS_CHECK != null) {
                 try {
                     return (boolean) PERMISSIONS_CHECK.invoke(null, target, node, fallback);
