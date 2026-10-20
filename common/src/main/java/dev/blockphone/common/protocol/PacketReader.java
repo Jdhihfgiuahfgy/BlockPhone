@@ -89,6 +89,31 @@ public final class PacketReader {
         return readBoolean() ? element.apply(this) : null;
     }
 
+    public int readInt() {
+        return readByte() << 24 | readByte() << 16 | readByte() << 8 | readByte();
+    }
+
+    /** Значение перечисления по порядковому номеру (VarInt). */
+    public <E extends Enum<E>> E readEnum(E[] values) {
+        int ordinal = readVarInt();
+        if (ordinal < 0 || ordinal >= values.length) {
+            throw new ProtocolException("Bad enum ordinal " + ordinal + " for " + values.getClass().getComponentType().getSimpleName());
+        }
+        return values[ordinal];
+    }
+
+    /** Массив байтов не длиннее max. */
+    public byte[] readBytes(int max) {
+        int length = readVarInt();
+        if (length < 0 || length > max || length > remaining()) {
+            throw new ProtocolException("Bad length: " + length);
+        }
+        byte[] result = new byte[length];
+        System.arraycopy(data, pos, result, 0, length);
+        pos += length;
+        return result;
+    }
+
     public int remaining() {
         return data.length - pos;
     }

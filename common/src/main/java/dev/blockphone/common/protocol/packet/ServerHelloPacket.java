@@ -12,17 +12,24 @@ import dev.blockphone.common.protocol.PacketWriter;
  * @param serverPlatform     "fabric" или "paper" (для отладки)
  * @param messengerEnabled   включён ли серверный мессенджер
  * @param phoneInHandVisible показывать ли другим игрокам телефон в руке
+ * @param socialEnabled      включена ли лента (посты, паблики, профили)
  */
 public record ServerHelloPacket(int protocolVersion, String serverPlatform, boolean messengerEnabled,
-                                boolean phoneInHandVisible) implements Packet {
+                                boolean phoneInHandVisible, boolean socialEnabled) implements Packet {
 
     public static ServerHelloPacket read(PacketReader reader) {
-        return new ServerHelloPacket(reader.readVarInt(), reader.readString(), reader.readBoolean(), reader.readBoolean());
+        int version = reader.readVarInt();
+        String platform = reader.readString();
+        boolean messenger = reader.readBoolean();
+        boolean phone = reader.readBoolean();
+        // У серверов со старым протоколом поля ленты нет.
+        boolean social = reader.remaining() > 0 && reader.readBoolean();
+        return new ServerHelloPacket(version, platform, messenger, phone, social);
     }
 
     @Override
     public void write(PacketWriter writer) {
         writer.writeVarInt(protocolVersion).writeString(serverPlatform)
-                .writeBoolean(messengerEnabled).writeBoolean(phoneInHandVisible);
+                .writeBoolean(messengerEnabled).writeBoolean(phoneInHandVisible).writeBoolean(socialEnabled);
     }
 }

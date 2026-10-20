@@ -33,6 +33,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.server.BlockPhoneServer;
 import dev.blockphone.fabric.client.apps.messenger.MessengerApp;
+import dev.blockphone.fabric.client.apps.social.SocialApp;
+import dev.blockphone.common.protocol.data.SocialData;
+import dev.blockphone.fabric.client.network.ClientSession;
+import dev.blockphone.fabric.client.photo.PhotoStore;
+import dev.blockphone.fabric.client.social.SocialClient;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
 import dev.blockphone.fabric.server.FabricServerHandler;
 
@@ -53,10 +58,11 @@ public final class DevShots {
     private record Step(int delayTicks, Predicate<Minecraft> ready, Consumer<Minecraft> action) {
     }
 
-    /** Сценарий: "all" (по умолчанию) или "messenger" (нужен ещё BLOCKPHONE_DEV_MESSENGER=1). */
+    /** Сценарий: "all" (по умолчанию), "design", "messenger" или "social" (два последних — с BLOCKPHONE_DEV_MESSENGER=1). */
     private final String scenario = System.getenv().getOrDefault("BLOCKPHONE_DEV_SCENARIO", "all");
     private final AtomicLong directChat = new AtomicLong(-1);
     private final AtomicLong groupChat = new AtomicLong(-1);
+    private final AtomicLong publicId = new AtomicLong(-1);
     private final Path dir;
     private final List<Step> steps = new ArrayList<>();
     private int index = -1;
@@ -104,7 +110,8 @@ public final class DevShots {
         step(1, mc -> mc.options.pauseOnLostFocus = false);
 
         // 1. Все приложения в главном меню.
-        for (boolean dark : scenario.equals("messenger") ? new boolean[0] : new boolean[]{true, false}) {
+        boolean server = scenario.equals("messenger") || scenario.equals("social");
+        for (boolean dark : server ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
                 settings.darkTheme = dark;
@@ -121,7 +128,7 @@ public final class DevShots {
         }
 
         // 1б. Другой акцент, страницы цвета и обоев.
-        if (!scenario.equals("messenger")) {
+        if (!server) {
             step(1, mc -> {
                 settings.darkTheme = true;
                 settings.language = "ru_ru";
@@ -175,6 +182,8 @@ public final class DevShots {
 
         if (scenario.equals("messenger")) {
             planMessenger(settings);
+        } else if (scenario.equals("social")) {
+            planSocial(settings);
         } else {
             planCameraGalleryNotes();
         }
@@ -274,6 +283,110 @@ public final class DevShots {
         shot(20, "msg_list_dark");
     }
 
+    // --- Лента (одиночная игра с BLOCKPHONE_DEV_MESSENGER=1) ---
+
+    private void planSocial(PhoneSettings settings) {
+        waitFor(mc -> MessengerClient.loaded() && ClientSession.get() != null);
+        step(5, this::seedMessenger);
+        waitFor(mc -> directChat.get() > 0 && MessengerClient.chat(directChat.get()) != null);
+        step(5, this::seedSocial);
+        waitFor(mc -> publicId.get() > 0);
+        // Снимок камерой: в сведениях окажется id сервера — подходит под политику «только с этого сервера».
+        step(10, mc -> CameraMode.enter(false));
+        step(40, mc -> CameraMode.shoot());
+        step(100, mc -> CameraMode.toggle());
+        step(20, mc -> {
+            SocialClient.feed(SocialData.FeedKind.ALL, null, 0);
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        shot(30, "social_home");
+        step(1, mc -> phone(mc, p -> p.openApp("feed")));
+        shot(40, "social_feed");
+        step(1, mc -> social(SocialApp::debugOpenFirstPost));
+        shot(40, "social_post");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        step(1, mc -> social(app -> app.debugCompose("Закат над морем с нового маяка Стива", newestPhoto())));
+        shot(80, "social_compose");
+        step(60, mc -> social(SocialApp::debugPublish));
+        shot(60, "social_feed_after_post");
+        step(1, mc -> social(app -> app.switchTab(SocialApp.Tab.PROFILE)));
+        shot(40, "social_profile_self");
+        step(1, mc -> social(app -> app.openProfile(STEVE)));
+        shot(40, "social_profile_steve");
+        step(1, mc -> social(app -> app.switchTab(SocialApp.Tab.PUBLICS)));
+        shot(40, "social_publics");
+        step(1, mc -> social(app -> app.openPublic(publicId.get())));
+        shot(40, "social_public");
+        step(1, mc -> social(app -> app.switchTab(SocialApp.Tab.MODERATION)));
+        shot(40, "social_moderation");
+        // Фото в мессенджере.
+        step(1, mc -> phone(mc, p -> p.openApp("messenger")));
+        step(1, mc -> messenger(app -> app.openChat(directChat.get())));
+        step(20, mc -> messenger(app -> app.debugAttach(newestPhoto())));
+        shot(80, "social_chat_attach");
+        step(1, mc -> messenger(MessengerApp::debugSubmit));
+        shot(80, "social_chat_photo");
+        step(1, mc -> {
+            settings.darkTheme = true;
+            phone(mc, p -> p.openApp("feed"));
+            social(app -> app.switchTab(SocialApp.Tab.FEED));
+        });
+        shot(40, "social_feed_dark");
+    }
+
+    private static PhotoStore.Photo newestPhoto() {
+        List<PhotoStore.Photo> photos = PhotoStore.list();
+        return photos.isEmpty() ? null : photos.get(0);
+    }
+
+    private static void social(Consumer<SocialApp> action) {
+        if (PhoneState.app("feed") instanceof SocialApp app) {
+            action.accept(app);
+        }
+    }
+
+    /** Подписки, паблик, посты, лайки, комментарии и жалоба — прямо в базе встроенного сервера. */
+    private void seedSocial(Minecraft mc) {
+        BlockPhoneServer core = FabricServerHandler.core();
+        if (core == null || core.social() == null || mc.player == null) {
+            BlockPhoneFabric.LOGGER.warn("[DevShots] feed is not running; set BLOCKPHONE_DEV_MESSENGER=1");
+            return;
+        }
+        UUID self = mc.player.getUUID();
+        core.social().runInThread(repo -> {
+            List<dev.blockphone.common.server.SocialRepository.PublicRow> existing = repo.searchPublics("Новости сервера", 1);
+            if (!existing.isEmpty()) {
+                publicId.set(existing.get(0).id());
+                return;
+            }
+            long now = System.currentTimeMillis();
+            long hour = 3600_000L;
+            repo.setBio(STEVE, "Строю замки и маяки. Пишите, если нужна помощь со стройкой!", now);
+            repo.setBio(self, "Снимаю закаты и стройки сервера", now);
+            repo.follow(self, STEVE, now - 48 * hour);
+            repo.follow(STEVE, self, now - 47 * hour);
+            repo.follow(ALEX, self, now - 30 * hour);
+            long pub = repo.createPublic("Новости сервера", "Официальные новости: обновления, ивенты и конкурсы построек.",
+                    0xFF4C8DF6, STEVE, now - 72 * hour);
+            repo.subscribe(pub, STEVE, now - 72 * hour);
+            repo.subscribe(pub, self, now - 50 * hour);
+            repo.subscribe(pub, ALEX, now - 40 * hour);
+            long news = repo.insertPost(STEVE, pub, "Сервер обновлён до 1.21.11! В субботу в 18:00 — конкурс построек у спавна. "
+                    + "Победитель получит редкий набор блоков.", 0, now - 5 * hour);
+            long lighthouse = repo.insertPost(STEVE, 0, "Закончил маяк на побережье. Заходите посмотреть — координаты 120 / 64 / -340",
+                    0, now - 2 * hour);
+            long spam = repo.insertPost(ALEX, 0, "Продаю алмазы дёшево!!! Пишите в ЛС", 0, now - hour);
+            repo.like(lighthouse, ALEX, now - 90 * 60_000L);
+            repo.like(news, ALEX, now - 4 * hour);
+            repo.like(news, self, now - 4 * hour);
+            repo.insertComment(lighthouse, ALEX, "Очень красиво! Можно в гости?", now - 80 * 60_000L);
+            repo.insertComment(lighthouse, STEVE, "Конечно, заходи вечером", now - 70 * 60_000L);
+            repo.insertReport(STEVE, SocialData.ReportTarget.POST, spam, ALEX, "spam", now - 30 * 60_000L);
+            publicId.set(pub);
+        });
+    }
+
     private static void settingsPage(String page) {
         if (PhoneState.app("settings") instanceof dev.blockphone.fabric.client.apps.settings.SettingsApp app) {
             app.openPage(page);
@@ -332,7 +445,7 @@ public final class DevShots {
             groupChat.set(group);
         });
         // Перечитать список чатов, как при входе.
-        core.messenger().onJoin(self, selfName);
+        core.backend().onJoin(self, selfName);
     }
 
     private void tick(Minecraft mc) {

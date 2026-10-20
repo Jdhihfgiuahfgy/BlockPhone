@@ -2,6 +2,7 @@ package dev.blockphone.fabric.server;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.server.ServerSettings;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import net.fabricmc.loader.api.FabricLoader;
@@ -11,6 +12,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Настройки сервера на Fabric: {@code config/blockphone/server.json}. Аналог config.yml Paper-плагина. */
 public final class FabricServerConfig {
@@ -20,8 +23,21 @@ public final class FabricServerConfig {
     public boolean messengerEnabled = true;
     /** Показывать другим игрокам телефон в руке. */
     public boolean phoneInHandVisible = true;
-    /** Хранилище переписки. */
+    /** Лента: посты, паблики, профили, фото. */
+    public Social social = new Social();
+    /** Ники или UUID игроков с полными правами модератора (если нет LuckPerms; операторы — модераторы и так). */
+    public List<String> moderators = new ArrayList<>();
+    /** Хранилище переписки, ленты и фото. */
     public Storage storage = new Storage();
+
+    public static final class Social {
+        public boolean enabled = true;
+        /** Фото в ленте и чатах: "any" — любые, "server" — только снятые на этом сервере, "none" — без фото. */
+        public String photos = "server";
+        public int maxPhotoKb = 600;
+        public int maxPhotoSide = 1280;
+        public int maxPublicsPerPlayer = 3;
+    }
 
     public static final class Storage {
         /** "h2" — файл в папке сервера (по умолчанию), "mysql" — MySQL/MariaDB. */
@@ -42,7 +58,9 @@ public final class FabricServerConfig {
         Path h2 = FabricLoader.getInstance().getGameDir().resolve("blockphone").resolve("messenger");
         ServerSettings.Storage s = new ServerSettings.Storage(storage.type, h2, storage.host, storage.port, storage.database,
                 storage.user, storage.password, storage.tablePrefix);
-        return new ServerSettings(messengerEnabled, phoneInHandVisible, s);
+        ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
+                social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
+        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators));
     }
 
     public static FabricServerConfig load() {
@@ -60,6 +78,12 @@ public final class FabricServerConfig {
         }
         if (config.storage == null) {
             config.storage = new Storage();
+        }
+        if (config.social == null) {
+            config.social = new Social();
+        }
+        if (config.moderators == null) {
+            config.moderators = new ArrayList<>();
         }
         // Перезаписываем файл, чтобы в нём появились новые поля после обновлений.
         try {

@@ -32,47 +32,6 @@ class MessengerServiceTest {
     private static final UUID STEVE = UUID.fromString("00000000-0000-0000-0000-00000000000b");
     private static final UUID NOTCH = UUID.fromString("00000000-0000-0000-0000-00000000000c");
 
-    /** Платформа-заглушка: складывает отправленные пакеты по игрокам. */
-    static final class FakePlatform implements ServerPlatform {
-        final Map<UUID, List<Packet>> inbox = new ConcurrentHashMap<>();
-
-        @Override
-        public String name() {
-            return "test";
-        }
-
-        @Override
-        public void send(UUID player, byte[] data) {
-            // Через кодирование/декодирование — заодно проверяем формат пакетов.
-            inbox.computeIfAbsent(player, k -> new CopyOnWriteArrayList<>()).add(Packets.decode(data));
-        }
-
-        @Override
-        public void info(String message) {
-        }
-
-        @Override
-        public void warn(String message, Throwable error) {
-            throw new AssertionError(message, error);
-        }
-
-        <T extends Packet> List<T> of(UUID player, Class<T> type) {
-            List<T> result = new ArrayList<>();
-            for (Packet p : inbox.getOrDefault(player, List.of())) {
-                if (type.isInstance(p)) {
-                    result.add(type.cast(p));
-                }
-            }
-            return result;
-        }
-
-        <T extends Packet> T last(UUID player, Class<T> type) {
-            List<T> all = of(player, type);
-            assertFalse(all.isEmpty(), "no " + type.getSimpleName() + " for " + player);
-            return all.get(all.size() - 1);
-        }
-    }
-
     @TempDir
     Path dir;
     FakePlatform platform;
@@ -125,7 +84,7 @@ class MessengerServiceTest {
         long chatId = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
         assertEquals(chatId, platform.last(STEVE, MessengerPackets.ChatUpdate.class).chat().id());
 
-        send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n1", "  Привет, Стив!  "));
+        send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n1", "  Привет, Стив!  ", 0));
         MessengerPackets.NewMessage forAlex = platform.last(ALEX, MessengerPackets.NewMessage.class);
         MessengerPackets.NewMessage forSteve = platform.last(STEVE, MessengerPackets.NewMessage.class);
         assertEquals("n1", forAlex.nonce());
@@ -183,7 +142,7 @@ class MessengerServiceTest {
         send(ALEX, "Alex", new MessengerPackets.OpenDirect(STEVE));
         long chatId = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
         for (int i = 0; i < 10; i++) {
-            send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n" + i, "spam " + i));
+            send(ALEX, "Alex", new MessengerPackets.SendMessage(chatId, "n" + i, "spam " + i, 0));
         }
         assertEquals(8, platform.of(STEVE, MessengerPackets.NewMessage.class).size());
         assertEquals("messenger.error.rate_limit", platform.last(ALEX, MessengerPackets.Failure.class).key());

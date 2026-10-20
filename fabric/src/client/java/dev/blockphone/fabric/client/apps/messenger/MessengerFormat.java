@@ -52,7 +52,7 @@ final class MessengerFormat {
         if (message == null) {
             return PhoneLang.tr("messenger.no_messages");
         }
-        String text = message.deleted() ? PhoneLang.tr("messenger.deleted") : message.text().replace('\n', ' ');
+        String text = message.deleted() ? PhoneLang.tr("messenger.deleted") : MessengerClient.previewText(message);
         if (MessengerClient.isSelf(message.sender().uuid())) {
             return PhoneLang.tr("messenger.you") + ": " + text;
         }

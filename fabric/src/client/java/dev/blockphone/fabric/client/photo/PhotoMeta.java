@@ -2,7 +2,7 @@ package dev.blockphone.fabric.client.photo;
 
 /**
  * Сведения о снимке, хранятся рядом с PNG в {@code <имя>.json}.
- * Пригодятся позже для политики «фото, сделанные на этом сервере».
+ * {@link #serverId} нужен для политики сервера «только фото, сделанные на этом сервере».
  */
 public final class PhotoMeta {
     /** Время съёмки, мс с эпохи. */
@@ -11,6 +11,8 @@ public final class PhotoMeta {
     public String server;
     /** Название мира в одиночной игре. */
     public String world;
+    /** Постоянный id сервера с BlockPhone, на котором сделан снимок (null — сервер без BlockPhone или одиночная игра). */
+    public String serverId;
     public String dimension;
     public double x;
     public double y;
@@ -38,6 +40,7 @@ public final class PhotoMeta {
         m.takenAt = takenAt;
         m.server = server;
         m.world = world;
+        m.serverId = serverId;
         m.dimension = dimension;
         m.x = x;
         m.y = y;

@@ -32,6 +32,18 @@ public final class PacketWriter {
         return this;
     }
 
+    public PacketWriter writeInt(int value) {
+        out.write(value >>> 24);
+        out.write(value >>> 16);
+        out.write(value >>> 8);
+        out.write(value);
+        return this;
+    }
+
+    public PacketWriter writeEnum(Enum<?> value) {
+        return writeVarInt(value.ordinal());
+    }
+
     public PacketWriter writeString(String value) {
         return writeBytes(value.getBytes(StandardCharsets.UTF_8));
     }

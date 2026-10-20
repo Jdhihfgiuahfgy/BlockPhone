@@ -193,6 +193,7 @@ public final class CameraMode {
         if (local != null) {
             meta.world = local.getWorldData().getLevelName();
         }
+        meta.serverId = dev.blockphone.fabric.client.network.ClientSession.serverId();
         meta.dimension = mc.level.dimension().identifier().toString();
         meta.x = mc.player.getX();
         meta.y = mc.player.getY();

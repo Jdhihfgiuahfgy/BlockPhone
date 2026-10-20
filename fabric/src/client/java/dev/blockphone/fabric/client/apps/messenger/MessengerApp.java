@@ -53,6 +53,20 @@ public final class MessengerApp extends PhoneApp {
         chat.onShown();
     }
 
+    /** Для автоскриншотов: прикрепить фото в открытом чате. */
+    public void debugAttach(dev.blockphone.fabric.client.photo.PhotoStore.Photo photo) {
+        if (view() instanceof ChatView chat) {
+            chat.attachForTest(photo);
+        }
+    }
+
+    /** Для автоскриншотов: отправить сообщение из поля ввода открытого чата. */
+    public void debugSubmit() {
+        if (view() instanceof ChatView chat) {
+            chat.submit();
+        }
+    }
+
     void showDialog(PhoneDialog dialog) {
         if (phone != null) {
             phone.showDialog(dialog);

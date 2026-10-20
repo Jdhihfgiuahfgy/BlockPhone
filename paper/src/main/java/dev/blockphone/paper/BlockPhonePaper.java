@@ -1,7 +1,9 @@
 package dev.blockphone.paper;
 
 import dev.blockphone.common.BlockPhone;
+import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.server.BlockPhoneServer;
+import dev.blockphone.common.server.Permission;
 import dev.blockphone.common.server.ServerPlatform;
 import dev.blockphone.common.server.ServerSettings;
 import org.bukkit.Bukkit;
@@ -12,9 +14,13 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRegisterChannelEvent;
+import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,6 +35,10 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        // Новые настройки после обновления плагина дописываются в config.yml.
+        getConfig().options().copyDefaults(true);
+        saveConfig();
+        registerPermissions();
         core = new BlockPhoneServer(this, readSettings(getConfig()));
         core.start();
         getServer().getMessenger().registerOutgoingPluginChannel(this, BlockPhone.CHANNEL);
@@ -55,7 +65,35 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
                 c.getString("storage.mysql.user", "root"),
                 c.getString("storage.mysql.password", ""),
                 c.getString("storage.table-prefix", "bp_"));
-        return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage);
+        ServerSettings.Social social = new ServerSettings.Social(c.getBoolean("social.enabled", true),
+                ImageRef.PhotoPolicy.parse(c.getString("social.photos", "server")),
+                c.getInt("social.max-photo-kb", 600) * 1024, c.getInt("social.max-photo-side", 1280),
+                c.getInt("social.max-publics-per-player", 3));
+        List<String> moderators = c.getStringList("moderators");
+        return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
+                social, moderators);
+    }
+
+    /**
+     * Узлы прав BlockPhone: обычные — у всех, модераторские — у операторов; blockphone.moderator включает все модераторские.
+     * LuckPerms и другие системы прав работают с ними как обычно.
+     */
+    private void registerPermissions() {
+        Map<String, Boolean> children = new HashMap<>();
+        for (Permission permission : Permission.values()) {
+            if (permission.moderator() && permission != Permission.MODERATOR) {
+                children.put(permission.node(), true);
+            }
+        }
+        for (Permission permission : Permission.values()) {
+            PermissionDefault def = permission.defaultAllowed() ? PermissionDefault.TRUE : PermissionDefault.OP;
+            org.bukkit.permissions.Permission bukkit = permission == Permission.MODERATOR
+                    ? new org.bukkit.permissions.Permission(permission.node(), permission.description(), def, children)
+                    : new org.bukkit.permissions.Permission(permission.node(), permission.description(), def);
+            if (getServer().getPluginManager().getPermission(permission.node()) == null) {
+                getServer().getPluginManager().addPermission(bukkit);
+            }
+        }
     }
 
     /** Клиент с модом объявил, что слушает наш канал — здороваемся (если он уже в игре). */
@@ -117,6 +155,13 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         } else if (isEnabled()) {
             Bukkit.getScheduler().runTask(this, task);
         }
+    }
+
+    /** Права Bukkit (LuckPerms и др.). Узлы зарегистрированы с нужными значениями по умолчанию. */
+    @Override
+    public boolean hasPermission(UUID player, Permission permission) {
+        Player target = Bukkit.getPlayer(player);
+        return target != null ? target.hasPermission(permission.node()) : permission.defaultAllowed();
     }
 
     @Override

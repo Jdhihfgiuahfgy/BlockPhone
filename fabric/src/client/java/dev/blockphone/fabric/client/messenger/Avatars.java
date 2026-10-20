@@ -37,6 +37,14 @@ public final class Avatars {
         PhoneDraw.centeredText(g, letter, x + size / 2f, y + size / 2f - 4 * scale, 0xFFFFFFFF, scale, true);
     }
 
+    /** Аватар паблика: квадрат его цвета с первой буквой названия. */
+    public static void drawPublic(GuiGraphics g, String title, int color, int x, int y, int size) {
+        PhoneDraw.roundedRect(g, x, y, x + size, y + size, size / 4, color | 0xFF000000);
+        String letter = title.isEmpty() ? "?" : title.substring(0, 1).toUpperCase();
+        float scale = size >= 28 ? 2f : size >= 20 ? 1.5f : size >= 14 ? 1f : 0.75f;
+        PhoneDraw.centeredText(g, letter, x + size / 2f, y + size / 2f - 4 * scale, 0xFFFFFFFF, scale, true);
+    }
+
     /** Онлайн-индикатор: зелёная точка в углу аватарки. */
     public static void drawOnlineDot(GuiGraphics g, int x, int y, int size, int background) {
         int d = Math.max(4, size / 4);

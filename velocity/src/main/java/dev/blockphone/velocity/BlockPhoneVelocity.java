@@ -9,13 +9,16 @@ import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
+import com.velocitypowered.api.permission.Tristate;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import dev.blockphone.common.BlockPhone;
+import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.server.BlockPhoneServer;
+import dev.blockphone.common.server.Permission;
 import dev.blockphone.common.server.ServerPlatform;
 import dev.blockphone.common.server.ServerSettings;
 import org.slf4j.Logger;
@@ -25,15 +28,18 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Плагин для прокси Velocity. В сети серверов мессенджер работает здесь: прокси сам обрабатывает канал
- * blockphone:main от клиентов и не пропускает его к серверам, поэтому чаты общие для всей сети.
+ * Плагин для прокси Velocity. В сети серверов мессенджер и лента работают здесь: прокси сам обрабатывает канал
+ * blockphone:main от клиентов и не пропускает его к серверам, поэтому чаты, посты и паблики общие для всей сети.
+ * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.3.1",
-        description = "Network-wide messenger for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.4.0",
+        description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
             MinecraftChannelIdentifier.create(BlockPhone.CHANNEL_NAMESPACE, BlockPhone.CHANNEL_PATH);
@@ -54,7 +60,19 @@ public final class BlockPhoneVelocity implements ServerPlatform {
     /** Настройки: plugins/blockphone/config.json. */
     static final class Config {
         boolean messengerEnabled = true;
+        Social social = new Social();
+        /** Ники или UUID игроков с полными правами модератора (у прокси нет операторов). */
+        List<String> moderators = new ArrayList<>();
         Storage storage = new Storage();
+
+        static final class Social {
+            boolean enabled = true;
+            /** "any" — любые фото, "server" — только снятые в этой сети, "none" — без фото. */
+            String photos = "server";
+            int maxPhotoKb = 600;
+            int maxPhotoSide = 1280;
+            int maxPublicsPerPlayer = 3;
+        }
 
         static final class Storage {
             String type = "h2";
@@ -73,7 +91,11 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         ServerSettings.Storage storage = new ServerSettings.Storage(config.storage.type, dataDir.resolve("messenger"),
                 config.storage.host, config.storage.port, config.storage.database, config.storage.user,
                 config.storage.password, config.storage.tablePrefix);
-        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage));
+        ServerSettings.Social social = new ServerSettings.Social(config.social.enabled,
+                ImageRef.PhotoPolicy.parse(config.social.photos), config.social.maxPhotoKb * 1024, config.social.maxPhotoSide,
+                config.social.maxPublicsPerPlayer);
+        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
+                List.copyOf(config.moderators)));
         core.start();
         proxy.getChannelRegistrar().register(CHANNEL);
     }
@@ -127,6 +149,12 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         if (config.storage == null) {
             config.storage = new Config.Storage();
         }
+        if (config.social == null) {
+            config.social = new Config.Social();
+        }
+        if (config.moderators == null) {
+            config.moderators = new ArrayList<>();
+        }
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {
@@ -145,6 +173,15 @@ public final class BlockPhoneVelocity implements ServerPlatform {
     @Override
     public void send(UUID player, byte[] data) {
         proxy.getPlayer(player).ifPresent(p -> p.sendPluginMessage(CHANNEL, data));
+    }
+
+    /** LuckPerms (или другая система прав Velocity); не задано — значение по умолчанию (модераторских нет). */
+    @Override
+    public boolean hasPermission(UUID player, Permission permission) {
+        return proxy.getPlayer(player).map(p -> {
+            Tristate value = p.getPermissionValue(permission.node());
+            return value == Tristate.UNDEFINED ? permission.defaultAllowed() : value.asBoolean();
+        }).orElse(permission.defaultAllowed());
     }
 
     @Override

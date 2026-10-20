@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.ChatType;
@@ -8,6 +9,13 @@ import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
 import dev.blockphone.fabric.client.network.ClientNetwork;
+import dev.blockphone.fabric.client.network.ClientSession;
+import dev.blockphone.fabric.client.photo.ImageUploads;
+import dev.blockphone.fabric.client.photo.PhotoStore;
+import dev.blockphone.fabric.client.photo.PhotoTextures;
+import dev.blockphone.fabric.client.ui.ImageViewer;
+import dev.blockphone.fabric.client.ui.Images;
+import dev.blockphone.fabric.client.ui.PhotoPicker;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -27,7 +35,8 @@ import java.util.Map;
 
 /**
  * Переписка: пузыри сообщений (свои справа, синие), разделители дней, подгрузка истории при прокрутке вверх,
- * поле ввода (Enter — отправить, Shift+Enter — новая строка), ПКМ по сообщению — меню (изменить/удалить/копировать).
+ * поле ввода (Enter — отправить, Shift+Enter — новая строка), ПКМ по сообщению — меню (изменить/удалить/копировать),
+ * фото: кнопка «+» слева от поля — выбрать из галереи (загружается сразу), клик по фото — просмотр.
  */
 final class ChatView extends MessengerView {
     private static final float TEXT_SCALE = 0.75f;
@@ -41,10 +50,17 @@ final class ChatView extends MessengerView {
     private static final int SEPARATOR_H = 14;
     private static final int[] NAME_COLORS = {0xFFE5534B, 0xFF2F81F7, 0xFF3FB950, 0xFFD29922, 0xFFA371F7, 0xFFDB61A2};
     private static final long TYPING_SEND_MS = 3000;
+    private static final int IMAGE_W = 100;
+    private static final int ATTACH_H = 24;
 
     /** Элемент ленты: сообщение (или неподтверждённое) либо разделитель дня. */
     private record Item(MessageInfo message, MessengerClient.Pending pending, String separator,
-                        List<FormattedCharSequence> lines, String name, String time, int width, int height, boolean own) {
+                        List<FormattedCharSequence> lines, String name, String time, ImageRef image, int imageH,
+                        int width, int height, boolean own) {
+    }
+
+    /** Фото на экране (клик — просмотр). */
+    private record ImageHit(int x, int y, int w, int h, ImageRef image) {
     }
 
     /** Область сообщения на экране (для ПКМ). */
@@ -58,6 +74,11 @@ final class ChatView extends MessengerView {
     private final TextArea input = new TextArea(true, TEXT_SCALE);
     private final Map<String, List<FormattedCharSequence>> wrapCache = new HashMap<>();
     private final List<Hit> hits = new ArrayList<>();
+    private final List<ImageHit> imageHits = new ArrayList<>();
+    private final PhotoPicker picker = new PhotoPicker(this::attach);
+    private final ImageViewer viewer = new ImageViewer();
+    /** Прикреплённое фото (загружается или загружено), null — нет. */
+    private ImageUploads.Upload attachment;
     private double scroll;
     private long editingId = -1;
     private long lastTypingSent;
@@ -132,7 +153,15 @@ final class ChatView extends MessengerView {
     }
 
     private int areaBottom() {
-        return inputTop() - (editingId >= 0 ? 14 : 4);
+        return inputTop() - (editingId >= 0 ? 14 : 4) - (attachment != null ? ATTACH_H : 0);
+    }
+
+    private boolean canAttach() {
+        return editingId < 0 && ClientSession.photosAllowed();
+    }
+
+    private int inputX() {
+        return canAttach() ? 28 : 6;
     }
 
     private int maxTextWidth() {
@@ -157,34 +186,42 @@ final class ChatView extends MessengerView {
             }
             boolean own = MessengerClient.isSelf(m.sender().uuid());
             String text = m.deleted() ? MessengerApp.tr("messenger.deleted") : m.text();
-            List<FormattedCharSequence> lines = wrap(m.id() + ":" + m.editedAt() + ":" + m.deleted(), text);
+            List<FormattedCharSequence> lines = text.isEmpty() ? List.of() : wrap(m.id() + ":" + m.editedAt() + ":" + m.deleted(), text);
             String senderKey = m.sender().uuid().toString();
             String name = group && !own && !senderKey.equals(prevSender) ? m.sender().name() : null;
             String time = (m.editedAt() > 0 && !m.deleted() ? MessengerApp.tr("messenger.edited") + " " : "") + MessengerFormat.time(m.sentAt());
-            items.add(bubble(m, null, lines, name, time, own));
+            items.add(bubble(m, null, lines, name, time, m.deleted() ? null : m.image(), own));
             prevTime = m.sentAt();
             prevSender = senderKey;
         }
         for (MessengerClient.Pending p : MessengerClient.pending(chatId)) {
-            items.add(bubble(null, p, wrap("p:" + p.nonce(), p.text()), null, "...", true));
+            List<FormattedCharSequence> lines = p.text().isEmpty() ? List.of() : wrap("p:" + p.nonce(), p.text());
+            items.add(bubble(null, p, lines, null, "...", p.image(), true));
         }
         return items;
     }
 
     private Item separator(String label) {
-        return new Item(null, null, label, List.of(), null, null, 0, SEPARATOR_H, false);
+        return new Item(null, null, label, List.of(), null, null, null, 0, 0, SEPARATOR_H, false);
     }
 
-    private Item bubble(MessageInfo m, MessengerClient.Pending p, List<FormattedCharSequence> lines, String name, String time, boolean own) {
+    private Item bubble(MessageInfo m, MessengerClient.Pending p, List<FormattedCharSequence> lines, String name, String time,
+                        ImageRef image, boolean own) {
         float textW = 0;
         for (FormattedCharSequence line : lines) {
             textW = Math.max(textW, PhoneDraw.font().width(line) * TEXT_SCALE);
         }
         float nameW = name != null ? PhoneDraw.width(name, SMALL) : 0;
         float timeW = PhoneDraw.width(time, SMALL);
-        int width = (int) Math.ceil(Math.max(textW, Math.max(nameW, timeW))) + PAD_X * 2;
-        int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0);
-        return new Item(m, p, null, lines, name, time, width, height, own);
+        float contentW = Math.max(textW, Math.max(nameW, timeW));
+        int imageH = 0;
+        if (image != null) {
+            contentW = Math.max(contentW, IMAGE_W);
+            imageH = Images.height(image, (int) Math.ceil(contentW));
+        }
+        int width = (int) Math.ceil(contentW) + PAD_X * 2;
+        int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0) + (image != null ? imageH + 3 : 0);
+        return new Item(m, p, null, lines, name, time, image, imageH, width, height, own);
     }
 
     private static int totalHeight(List<Item> items) {
@@ -213,6 +250,7 @@ final class ChatView extends MessengerView {
         }
 
         hits.clear();
+        imageHits.clear();
         g.enableScissor(0, areaTop, w, areaBottom);
         if (!data.loaded) {
             MessengerApp.centerHint(g, this, MessengerApp.tr("messenger.loading"), (areaTop + areaBottom) / 2 - 4);
@@ -232,6 +270,8 @@ final class ChatView extends MessengerView {
         if (menu != null) {
             renderMenu(g, mouseX, mouseY);
         }
+        picker.render(g, mouseX, mouseY, w, height());
+        viewer.render(g, w, height());
     }
 
     private void renderStatus(GuiGraphics g) {
@@ -289,6 +329,12 @@ final class ChatView extends MessengerView {
             PhoneDraw.text(g, item.name(), x + PAD_X, ty, color, SMALL, false);
             ty += 7;
         }
+        if (item.image() != null) {
+            int iw = item.width() - PAD_X * 2;
+            Images.draw(g, item.image(), x + PAD_X, ty + 1, iw, item.imageH(), Images.THUMB);
+            imageHits.add(new ImageHit(x + PAD_X, ty + 1, iw, item.imageH(), item.image()));
+            ty += item.imageH() + 3;
+        }
         for (FormattedCharSequence line : item.lines()) {
             g.pose().pushMatrix();
             g.pose().translate(x + PAD_X, ty);
@@ -310,17 +356,60 @@ final class ChatView extends MessengerView {
         if (editingId >= 0) {
             PhoneDraw.text(g, MessengerApp.tr("messenger.editing"), 10, top - 11, PhoneTheme.accent(), 0.6f, false);
         }
-        input.setBounds(6, top, w - 36, INPUT_H);
+        int ix = inputX();
+        input.setBounds(ix, top, w - 30 - ix, INPUT_H);
         input.setPlaceholder(MessengerApp.tr("messenger.message_placeholder"));
         input.render(g, mouseX, mouseY);
+        if (canAttach()) {
+            PhoneDraw.button(g, 6, top + 2, 18, 22, "+", mouseX, mouseY,
+                    attachment != null ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+        }
+        if (attachment != null) {
+            renderAttachment(g, mouseX, mouseY, top - ATTACH_H - 2);
+        }
 
-        boolean canSend = !input.text().isBlank();
+        boolean canSend = !input.text().isBlank() || (attachment != null && attachment.state() == ImageUploads.State.DONE);
         int bx = w - 26;
         int by = top + 2;
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, by, 22, 22);
         int color = canSend ? (hovered ? PhoneTheme.accentHover() : PhoneTheme.accent()) : PhoneTheme.separator();
         PhoneDraw.roundedRect(g, bx, by, bx + 22, by + 22, 11, color);
         PhoneDraw.centeredText(g, editingId >= 0 ? "✔" : "➤", bx + 11, by + 7, PhoneTheme.onAccent(), 1f, false);
+    }
+
+    /** Полоска над полем ввода: миниатюра прикреплённого фото, состояние загрузки, «×». */
+    private void renderAttachment(GuiGraphics g, int mouseX, int mouseY, int y) {
+        int w = width();
+        PhoneDraw.panel(g, 6, y, w - 6, y + ATTACH_H - 2, PhoneTheme.card());
+        PhotoTextures.Image thumb = PhotoTextures.thumbnail(attachment.photo);
+        if (thumb != null) {
+            PhoneDraw.texture(g, thumb.id(), 9, y + 2, 18, 18, thumb.width(), thumb.height());
+        }
+        String status = switch (attachment.state()) {
+            case PREPARING, UPLOADING -> MessengerApp.tr("photo.uploading");
+            case DONE -> MessengerApp.tr("photo.ready");
+            case FAILED -> MessengerApp.tr(attachment.error());
+        };
+        int color = attachment.state() == ImageUploads.State.FAILED ? PhoneTheme.danger() : PhoneTheme.secondaryText();
+        PhoneDraw.text(g, PhoneDraw.ellipsize(status, w - 60, 0.7f), 31, y + 8, color, 0.7f, false);
+        PhoneDraw.button(g, w - 24, y + 3, 15, 15, "×", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
+    }
+
+    private void attach(PhotoStore.Photo photo) {
+        ImageUploads.cancel(attachment);
+        attachment = ImageUploads.start(photo, ImageRef.Purpose.CHAT, upload -> {
+        });
+        input.setFocused(true);
+    }
+
+    /** Прикрепить фото из кода (для автоскриншотов). */
+    void attachForTest(PhotoStore.Photo photo) {
+        attach(photo);
+    }
+
+    private void clearAttachment() {
+        ImageUploads.cancel(attachment);
+        attachment = null;
     }
 
     private void renderMenu(GuiGraphics g, int mouseX, int mouseY) {
@@ -347,16 +436,24 @@ final class ChatView extends MessengerView {
 
     // --- Действия ---
 
-    private void submit() {
+    void submit() {
         String text = input.text().strip();
-        if (text.isEmpty()) {
+        ImageRef image = null;
+        if (attachment != null && editingId < 0) {
+            if (attachment.busy()) {
+                return; // Дождаться загрузки фото.
+            }
+            image = attachment.image();
+        }
+        if (text.isEmpty() && image == null) {
             return;
         }
         if (editingId >= 0) {
             ClientNetwork.send(new MessengerPackets.EditMessage(editingId, text));
             editingId = -1;
         } else {
-            MessengerClient.sendMessage(chatId, text);
+            MessengerClient.sendMessage(chatId, text, image);
+            attachment = null;
         }
         input.setText("");
         scroll = 0;
@@ -389,6 +486,20 @@ final class ChatView extends MessengerView {
 
     @Override
     boolean mouseClicked(double x, double y, int button) {
+        if (viewer.mouseClicked()) {
+            return true;
+        }
+        if (picker.isOpen()) {
+            return picker.mouseClicked(x, y, button);
+        }
+        if (canAttach() && PhoneDraw.inside(x, y, 6, inputTop() + 2, 18, 22)) {
+            picker.open();
+            return true;
+        }
+        if (attachment != null && PhoneDraw.inside(x, y, width() - 24, inputTop() - ATTACH_H + 1, 15, 15)) {
+            clearAttachment();
+            return true;
+        }
         if (menu != null) {
             int rowH = 14;
             for (int i = 0; i < menu.size(); i++) {
@@ -412,6 +523,14 @@ final class ChatView extends MessengerView {
         if (y < STATUS_H && chat() != null) {
             app.push(new ChatInfoView(app, chatId));
             return true;
+        }
+        if (button == 0) {
+            for (ImageHit hit : imageHits) {
+                if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    viewer.open(hit.image());
+                    return true;
+                }
+            }
         }
         if (button == 1) {
             for (Hit hit : hits) {
@@ -437,6 +556,9 @@ final class ChatView extends MessengerView {
 
     @Override
     boolean mouseScrolled(double x, double y, double amount) {
+        if (picker.mouseScrolled(amount) || viewer.isOpen()) {
+            return true;
+        }
         if (input.mouseScrolled(x, y, amount)) {
             return true;
         }
@@ -463,6 +585,14 @@ final class ChatView extends MessengerView {
 
     @Override
     boolean onBack() {
+        if (viewer.isOpen()) {
+            viewer.close();
+            return true;
+        }
+        if (picker.isOpen()) {
+            picker.close();
+            return true;
+        }
         if (menu != null) {
             menu = null;
             return true;

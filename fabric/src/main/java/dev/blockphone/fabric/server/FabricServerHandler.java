@@ -1,6 +1,7 @@
 package dev.blockphone.fabric.server;
 
 import dev.blockphone.common.server.BlockPhoneServer;
+import dev.blockphone.common.server.Permission;
 import dev.blockphone.common.server.ServerPlatform;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.network.RawPayload;
@@ -9,8 +10,11 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permissions;
+import net.minecraft.world.entity.Entity;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,6 +80,23 @@ public final class FabricServerHandler {
         return "1".equals(System.getenv("BLOCKPHONE_DEV_MESSENGER"));
     }
 
+    /**
+     * {@code me.lucko.fabric.api.permissions.v0.Permissions.check(Entity, String, boolean)} из fabric-permissions-api
+     * (его ставят вместе с LuckPerms). Вызывается через отражение, чтобы мод работал и без него.
+     */
+    private static final @Nullable Method PERMISSIONS_CHECK = findPermissionsApi();
+
+    private static @Nullable Method findPermissionsApi() {
+        try {
+            Class<?> api = Class.forName("me.lucko.fabric.api.permissions.v0.Permissions");
+            Method method = api.getMethod("check", Entity.class, String.class, boolean.class);
+            BlockPhoneFabric.LOGGER.info("BlockPhone: using fabric-permissions-api for permissions");
+            return method;
+        } catch (ReflectiveOperationException | LinkageError e) {
+            return null;
+        }
+    }
+
     /** Доставка пакетов на Fabric: в поток сервера, затем в соединение игрока. */
     private record FabricPlatform(MinecraftServer server) implements ServerPlatform {
         @Override
@@ -91,6 +112,25 @@ public final class FabricServerHandler {
                     ServerPlayNetworking.send(target, new RawPayload(data));
                 }
             });
+        }
+
+        /** fabric-permissions-api (LuckPerms), иначе: обычные права — у всех, модераторские — у операторов уровня 2+. */
+        @Override
+        public boolean hasPermission(UUID player, Permission permission) {
+            ServerPlayer target = PLAYERS.get(player);
+            if (target == null) {
+                return permission.defaultAllowed();
+            }
+            boolean fallback = permission.defaultAllowed()
+                    || target.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+            if (PERMISSIONS_CHECK != null) {
+                try {
+                    return (boolean) PERMISSIONS_CHECK.invoke(null, target, permission.node(), fallback);
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    BlockPhoneFabric.LOGGER.warn("Permission check failed for {}", permission.node(), e);
+                }
+            }
+            return fallback;
         }
 
         @Override

@@ -8,9 +8,11 @@ import dev.blockphone.fabric.client.apps.gallery.GalleryApp;
 import dev.blockphone.fabric.client.apps.messenger.MessengerApp;
 import dev.blockphone.fabric.client.apps.notes.NotesApp;
 import dev.blockphone.fabric.client.apps.settings.SettingsApp;
+import dev.blockphone.fabric.client.apps.social.SocialApp;
 import dev.blockphone.fabric.client.apps.weather.WeatherApp;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
 import dev.blockphone.fabric.client.network.ClientNetwork;
+import dev.blockphone.fabric.client.social.SocialClient;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.Identifier;
 
@@ -62,6 +64,7 @@ public final class AppRegistry {
 
     static {
         ENTRIES.add(new Entry("messenger", MessengerApp::new, ClientNetwork::messengerAvailable, MessengerClient::unreadTotal, 0xFF3FB97A));
+        ENTRIES.add(new Entry("feed", SocialApp::new, ClientNetwork::socialAvailable, SocialClient::badge, 0xFF2EC4D6));
         add("telegram", () -> new PlaceholderApp("telegram"), 0xFF2AABEE);
         add("camera", CameraApp::new, 0xFF9AA5B8);
         add("gallery", GalleryApp::new, 0xFFE0559B);

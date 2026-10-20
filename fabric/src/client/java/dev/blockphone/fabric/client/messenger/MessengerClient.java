@@ -36,8 +36,8 @@ public final class MessengerClient {
         public boolean loadingOlder;
     }
 
-    /** Отправленное, но ещё не подтверждённое сервером сообщение (показывается сразу, полупрозрачным). */
-    public record Pending(String nonce, long chatId, String text, long sentAt) {
+    /** Отправленное, но ещё не подтверждённое сервером сообщение (показывается сразу, полупрозрачным). image — фото или null. */
+    public record Pending(String nonce, long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image, long sentAt) {
     }
 
     private static final Map<Long, ChatInfo> CHATS = new LinkedHashMap<>();
@@ -179,9 +179,24 @@ public final class MessengerClient {
     }
 
     public static void sendMessage(long chatId, String text) {
+        sendMessage(chatId, text, null);
+    }
+
+    /** Сообщение с фото (image — уже загруженное на сервер, или null). */
+    public static void sendMessage(long chatId, String text, dev.blockphone.common.protocol.data.ImageRef image) {
         String nonce = "c" + (++nonceCounter) + "_" + System.nanoTime();
-        PENDING.put(nonce, new Pending(nonce, chatId, text, System.currentTimeMillis()));
-        ClientNetwork.send(new MessengerPackets.SendMessage(chatId, nonce, text));
+        PENDING.put(nonce, new Pending(nonce, chatId, text, image, System.currentTimeMillis()));
+        ClientNetwork.send(new MessengerPackets.SendMessage(chatId, nonce, text, image != null ? image.id() : 0));
+    }
+
+    /** Текст сообщения для превью и уведомлений: «[Фото] подпись». */
+    public static String previewText(MessageInfo message) {
+        String text = message.text().replace('\n', ' ');
+        if (message.image() == null) {
+            return text;
+        }
+        String photo = PhoneLang.tr("messenger.photo");
+        return text.isEmpty() ? photo : photo + " " + text;
     }
 
     public static void search(String query) {

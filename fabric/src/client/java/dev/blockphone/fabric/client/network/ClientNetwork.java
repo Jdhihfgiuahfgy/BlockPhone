@@ -5,9 +5,15 @@ import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.ProtocolException;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
+import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
+import dev.blockphone.common.protocol.packet.SessionPacket;
+import dev.blockphone.common.protocol.packet.SocialPackets;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
+import dev.blockphone.fabric.client.photo.ImageUploads;
+import dev.blockphone.fabric.client.photo.RemoteImages;
+import dev.blockphone.fabric.client.social.SocialClient;
 import dev.blockphone.fabric.client.phone.PhoneState;
 import dev.blockphone.fabric.network.RawPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -31,11 +37,12 @@ public final class ClientNetwork {
             handle(packet);
         });
 
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+        // Событие приходит из сетевого потока, а текстуры освобождать можно только в потоке рендера.
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
             serverHello = null;
             PhoneState.reset();
-            MessengerClient.reset();
-        });
+            resetServerState();
+        }));
     }
 
     private static void handle(Packet packet) {
@@ -48,11 +55,32 @@ public final class ClientNetwork {
                 return;
             }
             // Через прокси пакеты могут прийти повторно при переходе между серверами — начинаем заново.
-            MessengerClient.reset();
+            resetServerState();
             send(new ClientHelloPacket(BlockPhone.PROTOCOL_VERSION, BlockPhoneFabric.VERSION));
+            return;
+        }
+        Class<?> group = packet.getClass().getEnclosingClass();
+        if (packet instanceof SessionPacket session) {
+            ClientSession.set(session);
+            SocialClient.onSession();
+        } else if (group == SocialPackets.class) {
+            SocialClient.handle(packet);
+        } else if (packet instanceof ImagePackets.UploadResult result) {
+            ImageUploads.onResult(result);
+        } else if (packet instanceof ImagePackets.ImageData data) {
+            RemoteImages.onData(data);
         } else {
             MessengerClient.handle(packet);
         }
+    }
+
+    /** Всё, что относится к текущему серверу (чаты, лента, загрузки, сессия). */
+    private static void resetServerState() {
+        MessengerClient.reset();
+        SocialClient.reset();
+        ImageUploads.reset();
+        RemoteImages.reset();
+        ClientSession.reset();
     }
 
     /**
@@ -67,6 +95,12 @@ public final class ClientNetwork {
 
     public static @Nullable ServerHelloPacket serverHello() {
         return serverHello;
+    }
+
+    /** Сервер с совместимой версией BlockPhone и включённой лентой. */
+    public static boolean socialAvailable() {
+        return serverHello != null && serverHello.socialEnabled()
+                && serverHello.protocolVersion() == BlockPhone.PROTOCOL_VERSION;
     }
 
     /** Сервер с совместимой версией BlockPhone и включённым мессенджером. */

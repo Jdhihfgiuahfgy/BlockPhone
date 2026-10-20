@@ -13,42 +13,53 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Серверная часть BlockPhone, общая для всех платформ: рукопожатие, учёт игроков с модом
- * и передача пакетов мессенджеру. Платформа только сообщает о событиях и доставляет байты.
+ * и передача пакетов бэкенду (мессенджер, лента, фото). Платформа только сообщает о событиях и доставляет байты.
  *
  * <pre>
- * сервер: onChannelReady → ServerHello → клиент: ClientHello → onJoin мессенджера → ChatList
+ * сервер: onChannelReady → ServerHello → клиент: ClientHello → Backend.onJoin → Session, ChatList
  * </pre>
  */
 public final class BlockPhoneServer {
     private final ServerPlatform platform;
     private final ServerSettings settings;
-    private final MessengerService messenger;
+    private final Backend backend;
     /** Игроки, приславшие ClientHello с совместимой версией: UUID → ник. */
     private final Map<UUID, String> modded = new ConcurrentHashMap<>();
 
     public BlockPhoneServer(ServerPlatform platform, ServerSettings settings) {
         this.platform = platform;
         this.settings = settings;
-        this.messenger = settings.messengerEnabled() ? new MessengerService(platform, settings.storage()) : null;
+        this.backend = settings.backendEnabled() ? new Backend(platform, settings) : null;
     }
 
     public void start() {
-        if (messenger != null) {
-            messenger.start();
+        if (backend != null) {
+            backend.start();
         }
         platform.info("BlockPhone server started (" + platform.name() + ", protocol " + BlockPhone.PROTOCOL_VERSION
-                + ", messenger " + (messenger != null ? "on, storage " + settings.storage().type() : "off") + ")");
+                + ", messenger " + (settings.messengerEnabled() ? "on" : "off")
+                + ", feed " + (settings.social().enabled() ? "on, photos " + settings.social().photos() : "off")
+                + (backend != null ? ", storage " + settings.storage().type() : "") + ")");
     }
 
     public void stop() {
-        if (messenger != null) {
-            messenger.stop();
+        if (backend != null) {
+            backend.stop();
         }
         modded.clear();
     }
 
+    /** Бэкенд с базой данных (null — мессенджер и лента выключены). */
+    public Backend backend() {
+        return backend;
+    }
+
     public MessengerService messenger() {
-        return messenger;
+        return backend != null ? backend.messenger() : null;
+    }
+
+    public SocialService social() {
+        return backend != null ? backend.social() : null;
     }
 
     public ServerSettings settings() {
@@ -58,13 +69,13 @@ public final class BlockPhoneServer {
     /** Клиент может принимать наш канал — здороваемся. */
     public void onChannelReady(UUID player) {
         ServerHelloPacket hello = new ServerHelloPacket(BlockPhone.PROTOCOL_VERSION, platform.name(),
-                messenger != null, settings.phoneInHandVisible());
+                settings.messengerEnabled(), settings.phoneInHandVisible(), settings.social().enabled());
         platform.send(player, Packets.encode(hello));
     }
 
     public void onQuit(UUID player) {
-        if (modded.remove(player) != null && messenger != null) {
-            messenger.onQuit(player);
+        if (modded.remove(player) != null && backend != null) {
+            backend.onQuit(player);
         }
     }
 
@@ -91,13 +102,13 @@ public final class BlockPhoneServer {
             if (first) {
                 platform.info(name + " joined with BlockPhone " + hello.modVersion());
             }
-            if (messenger != null) {
-                messenger.onJoin(player, name);
+            if (backend != null) {
+                backend.onJoin(player, name);
             }
             return;
         }
-        if (messenger != null && modded.containsKey(player)) {
-            messenger.handle(player, packet);
+        if (backend != null && modded.containsKey(player)) {
+            backend.handle(player, packet);
         }
     }
 }

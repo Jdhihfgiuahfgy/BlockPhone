@@ -1,7 +1,7 @@
 package dev.blockphone.common.server;
 
 import dev.blockphone.common.protocol.Packet;
-import dev.blockphone.common.protocol.Packets;
+import dev.blockphone.common.protocol.data.ImageRef;
 import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.ChatType;
@@ -12,151 +12,79 @@ import dev.blockphone.common.server.MessengerRepository.ChatRow;
 import dev.blockphone.common.server.MessengerRepository.MessageRow;
 
 import java.sql.SQLException;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Серверный мессенджер: личные и групповые чаты. Вся работа — в одном фоновом потоке
- * (база данных и состояние без гонок). Платформа сообщает о входе/выходе игроков и передаёт пакеты.
+ * Серверный мессенджер: личные и групповые чаты, фото в сообщениях. Работает в фоновом потоке {@link Backend}
+ * (база данных и состояние без гонок); бэкенд сообщает о входе/выходе игроков и передаёт пакеты.
  */
 public final class MessengerService {
-    private static final int SEND_LIMIT = 8;
-    private static final long SEND_WINDOW_MS = 10_000;
     private static final long TYPING_INTERVAL_MS = 1_000;
     private static final int SEARCH_LIMIT = 30;
 
-    private final ServerPlatform platform;
-    private final Database database;
+    private final Backend backend;
     private final MessengerRepository repo;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "BlockPhone Messenger");
-        thread.setDaemon(true);
-        return thread;
-    });
-
-    /** Игроки с модом, которые сейчас онлайн (в сети серверов — во всей сети): UUID → ник. */
-    private final Map<UUID, String> online = new ConcurrentHashMap<>();
-    private final Map<UUID, Deque<Long>> sendTimes = new HashMap<>();
+    private final RateLimiter sendLimit = new RateLimiter(8, 10_000);
     private final Map<UUID, Long> lastTyping = new HashMap<>();
-    private volatile boolean available;
 
-    public MessengerService(ServerPlatform platform, ServerSettings.Storage storage) {
-        this.platform = platform;
-        this.database = new Database(storage);
-        this.repo = new MessengerRepository(database);
-    }
-
-    public void start() {
-        executor.execute(() -> {
-            try {
-                database.migrate();
-                available = true;
-                platform.info("Messenger storage ready");
-            } catch (Exception e) {
-                platform.warn("Messenger storage failed to start, messenger disabled", e);
-            }
-        });
-    }
-
-    public void stop() {
-        executor.execute(database::close);
-        executor.shutdown();
-        try {
-            executor.awaitTermination(5, TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
-        }
+    MessengerService(Backend backend) {
+        this.backend = backend;
+        this.repo = new MessengerRepository(backend.database(), backend.users());
     }
 
     public boolean available() {
-        return available;
+        return backend.available();
     }
 
-    // --- События платформы ---
-
-    public void onJoin(UUID uuid, String name) {
-        run(uuid, () -> {
-            long now = System.currentTimeMillis();
-            repo.upsertUser(uuid, name, now);
-            online.put(uuid, name);
-            List<ChatInfo> chats = new ArrayList<>();
-            for (ChatRow row : repo.chatsOf(uuid)) {
-                chats.add(chatInfo(row, uuid));
-            }
-            chats.sort(Comparator.comparingLong(ChatInfo::activity).reversed());
-            send(uuid, new MessengerPackets.ChatList(chats));
-            broadcastPresence(new UserInfo(uuid, name, true));
-        });
+    private Map<UUID, String> online() {
+        return backend.online();
     }
 
-    public void onQuit(UUID uuid) {
-        run(uuid, () -> {
-            String name = online.remove(uuid);
-            sendTimes.remove(uuid);
-            lastTyping.remove(uuid);
-            if (name != null) {
-                repo.touchUser(uuid, System.currentTimeMillis());
-                broadcastPresence(new UserInfo(uuid, name, false));
-            }
-        });
+    // --- События (уже в потоке бэкенда) ---
+
+    void join(UUID uuid, String name) throws SQLException {
+        List<ChatInfo> chats = new ArrayList<>();
+        for (ChatRow row : repo.chatsOf(uuid)) {
+            chats.add(chatInfo(row, uuid));
+        }
+        chats.sort(Comparator.comparingLong(ChatInfo::activity).reversed());
+        send(uuid, new MessengerPackets.ChatList(chats));
+        broadcastPresence(new UserInfo(uuid, name, true));
     }
 
-    /** Пакет мессенджера от игрока (уже декодированный). */
-    public void handle(UUID player, Packet packet) {
-        run(player, () -> {
-            if (!online.containsKey(player)) {
-                return; // Не поздоровался (нет мода или старая версия).
-            }
-            switch (packet) {
-                case MessengerPackets.RequestHistory p -> history(player, p);
-                case MessengerPackets.SendMessage p -> sendMessage(player, p);
-                case MessengerPackets.EditMessage p -> editMessage(player, p);
-                case MessengerPackets.DeleteMessage p -> deleteMessage(player, p);
-                case MessengerPackets.MarkRead p -> {
-                    if (repo.isMember(p.chatId(), player)) {
-                        repo.markRead(p.chatId(), player, p.messageId());
-                    }
-                }
-                case MessengerPackets.SearchUsers p -> searchUsers(player, p);
-                case MessengerPackets.OpenDirect p -> openDirect(player, p);
-                case MessengerPackets.CreateGroup p -> createGroup(player, p);
-                case MessengerPackets.GroupAction p -> groupAction(player, p);
-                case MessengerPackets.Typing p -> typing(player, p);
-                default -> {
+    void quit(UUID uuid, String name) {
+        sendLimit.forget(uuid);
+        lastTyping.remove(uuid);
+        broadcastPresence(new UserInfo(uuid, name, false));
+    }
+
+    /** Пакет мессенджера от игрока. */
+    void handle(UUID player, Packet packet) throws SQLException {
+        switch (packet) {
+            case MessengerPackets.RequestHistory p -> history(player, p);
+            case MessengerPackets.SendMessage p -> sendMessage(player, p);
+            case MessengerPackets.EditMessage p -> editMessage(player, p);
+            case MessengerPackets.DeleteMessage p -> deleteMessage(player, p);
+            case MessengerPackets.MarkRead p -> {
+                if (repo.isMember(p.chatId(), player)) {
+                    repo.markRead(p.chatId(), player, p.messageId());
                 }
             }
-        });
-    }
-
-    private void run(UUID player, SqlTask task) {
-        executor.execute(() -> {
-            if (!available) {
-                return;
+            case MessengerPackets.SearchUsers p -> searchUsers(player, p);
+            case MessengerPackets.OpenDirect p -> openDirect(player, p);
+            case MessengerPackets.CreateGroup p -> createGroup(player, p);
+            case MessengerPackets.GroupAction p -> groupAction(player, p);
+            case MessengerPackets.Typing p -> typing(player, p);
+            default -> {
             }
-            try {
-                task.run();
-            } catch (Exception e) {
-                platform.warn("Messenger error for " + player, e);
-                send(player, new MessengerPackets.Failure("messenger.error.internal", ""));
-            }
-        });
-    }
-
-    @FunctionalInterface
-    private interface SqlTask {
-        void run() throws SQLException;
+        }
     }
 
     // --- Обработчики ---
@@ -173,14 +101,12 @@ public final class MessengerService {
         }
         List<MessageRow> ordered = new ArrayList<>(rows);
         java.util.Collections.reverse(ordered);
-        Map<UUID, String> names = names(ordered.stream().map(MessageRow::sender).toList());
-        List<MessageInfo> messages = ordered.stream().map(m -> messageInfo(m, names)).toList();
-        send(player, new MessengerPackets.History(p.chatId(), messages, p.beforeId() > 0, hasMore));
+        send(player, new MessengerPackets.History(p.chatId(), messageInfos(ordered), p.beforeId() > 0, hasMore));
     }
 
     private void sendMessage(UUID player, MessengerPackets.SendMessage p) throws SQLException {
         String text = p.text().strip();
-        if (text.isEmpty()) {
+        if (text.isEmpty() && p.imageId() <= 0) {
             return;
         }
         if (text.length() > MessengerData.MAX_MESSAGE_LENGTH) {
@@ -191,38 +117,34 @@ public final class MessengerService {
             fail(player, "not_member");
             return;
         }
-        if (!allowSend(player)) {
+        if (!sendLimit.allow(player)) {
             fail(player, "rate_limit");
             return;
         }
+        ImageRef image = null;
+        if (p.imageId() > 0) {
+            String error = backend.images().checkAllowed(player, ImageRef.Purpose.CHAT);
+            image = error == null ? backend.images().claim(player, p.imageId(), ImageRepository.KIND_MESSAGE, p.chatId()) : null;
+            if (image == null) {
+                send(player, new MessengerPackets.Failure(error != null ? error : "photo.error.not_found", ""));
+                return;
+            }
+        }
         long now = System.currentTimeMillis();
-        long id = repo.insertMessage(p.chatId(), player, text, now);
+        long id = repo.insertMessage(p.chatId(), player, text, image != null ? image.id() : 0, now);
         repo.markRead(p.chatId(), player, id);
-        MessageInfo message = new MessageInfo(id, p.chatId(), user(player, online.get(player)), text, now, 0, false);
+        MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), text, image, now, 0, false);
         for (UUID member : repo.members(p.chatId())) {
-            if (online.containsKey(member)) {
+            if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
             }
         }
     }
 
-    private boolean allowSend(UUID player) {
-        long now = System.currentTimeMillis();
-        Deque<Long> times = sendTimes.computeIfAbsent(player, k -> new ArrayDeque<>());
-        while (!times.isEmpty() && now - times.peekFirst() > SEND_WINDOW_MS) {
-            times.pollFirst();
-        }
-        if (times.size() >= SEND_LIMIT) {
-            return false;
-        }
-        times.addLast(now);
-        return true;
-    }
-
     private void editMessage(UUID player, MessengerPackets.EditMessage p) throws SQLException {
         MessageRow row = repo.message(p.messageId());
         String text = p.text().strip();
-        if (row == null || row.deleted() || !row.sender().equals(player) || text.isEmpty()) {
+        if (row == null || row.deleted() || !row.sender().equals(player) || (text.isEmpty() && row.imageId() <= 0)) {
             return;
         }
         if (text.length() > MessengerData.MAX_MESSAGE_LENGTH) {
@@ -231,7 +153,7 @@ public final class MessengerService {
         }
         long now = System.currentTimeMillis();
         repo.editMessage(row.id(), text, now);
-        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), text, row.sentAt(), now, false));
+        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), text, row.imageId(), row.sentAt(), now, false));
     }
 
     private void deleteMessage(UUID player, MessengerPackets.DeleteMessage p) throws SQLException {
@@ -240,13 +162,14 @@ public final class MessengerService {
             return;
         }
         repo.deleteMessage(row.id());
-        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), "", row.sentAt(), row.editedAt(), true));
+        backend.imageRepo().delete(row.imageId());
+        broadcastUpdated(new MessageRow(row.id(), row.chatId(), row.sender(), "", 0, row.sentAt(), row.editedAt(), true));
     }
 
     private void broadcastUpdated(MessageRow row) throws SQLException {
-        MessageInfo info = messageInfo(row, names(List.of(row.sender())));
+        MessageInfo info = messageInfos(List.of(row)).get(0);
         for (UUID member : repo.members(row.chatId())) {
-            if (online.containsKey(member)) {
+            if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.MessageUpdated(info));
             }
         }
@@ -256,7 +179,7 @@ public final class MessengerService {
         String query = p.query().strip();
         List<UserInfo> result = new ArrayList<>();
         if (query.isEmpty()) {
-            online.forEach((uuid, name) -> {
+            online().forEach((uuid, name) -> {
                 if (!uuid.equals(player)) {
                     result.add(new UserInfo(uuid, name, true));
                 }
@@ -265,7 +188,7 @@ public final class MessengerService {
         } else {
             repo.searchUsers(query, SEARCH_LIMIT + 1).forEach((uuid, name) -> {
                 if (!uuid.equals(player) && result.size() < SEARCH_LIMIT) {
-                    result.add(user(uuid, name));
+                    result.add(backend.user(uuid, name));
                 }
             });
         }
@@ -292,7 +215,7 @@ public final class MessengerService {
         send(player, new MessengerPackets.ChatOpened(chatId));
     }
 
-    private static String directKey(UUID a, UUID b) {
+    static String directKey(UUID a, UUID b) {
         String sa = a.toString();
         String sb = b.toString();
         return sa.compareTo(sb) < 0 ? sa + ":" + sb : sb + ":" + sa;
@@ -398,9 +321,9 @@ public final class MessengerService {
         if (!repo.isMember(p.chatId(), player)) {
             return;
         }
-        UserInfo user = new UserInfo(player, online.get(player), true);
+        UserInfo user = new UserInfo(player, online().get(player), true);
         for (UUID member : repo.members(p.chatId())) {
-            if (!member.equals(player) && online.containsKey(member)) {
+            if (!member.equals(player) && backend.isOnline(member)) {
                 send(member, new MessengerPackets.TypingState(p.chatId(), user));
             }
         }
@@ -411,7 +334,7 @@ public final class MessengerService {
     /** Отправить актуальную карточку чата перечисленным участникам (каждому — со своими непрочитанными). */
     private void pushChat(ChatRow chat, List<UUID> recipients) throws SQLException {
         for (UUID uuid : recipients) {
-            if (online.containsKey(uuid)) {
+            if (backend.isOnline(uuid)) {
                 send(uuid, new MessengerPackets.ChatUpdate(chatInfo(chat, uuid)));
             }
         }
@@ -420,13 +343,9 @@ public final class MessengerService {
     private ChatInfo chatInfo(ChatRow row, UUID viewer) throws SQLException {
         List<UUID> memberIds = repo.members(row.id());
         MessageRow last = repo.lastMessage(row.id());
-        List<UUID> nameIds = new ArrayList<>(memberIds);
-        if (last != null) {
-            nameIds.add(last.sender());
-        }
-        Map<UUID, String> names = names(nameIds);
-        List<UserInfo> members = memberIds.stream().map(u -> user(u, names.get(u))).toList();
-        MessageInfo lastInfo = last == null ? null : messageInfo(last, names);
+        Map<UUID, String> names = names(memberIds);
+        List<UserInfo> members = memberIds.stream().map(u -> backend.user(u, names.get(u))).toList();
+        MessageInfo lastInfo = last == null ? null : messageInfos(List.of(last)).get(0);
         return new ChatInfo(row.id(), row.type(), row.title(), row.owner(), members, lastInfo, repo.unread(row.id(), viewer),
                 row.createdAt());
     }
@@ -435,18 +354,20 @@ public final class MessengerService {
         return repo.userNames(new LinkedHashSet<>(uuids));
     }
 
-    private MessageInfo messageInfo(MessageRow row, Map<UUID, String> names) {
-        return new MessageInfo(row.id(), row.chatId(), user(row.sender(), names.get(row.sender())), row.text(), row.sentAt(),
-                row.editedAt(), row.deleted());
-    }
-
-    private UserInfo user(UUID uuid, String name) {
-        String resolved = name != null ? name : online.getOrDefault(uuid, "?");
-        return new UserInfo(uuid, resolved, online.containsKey(uuid));
+    /** Сообщения для пакетов: ники отправителей и размеры фото одним запросом. */
+    private List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
+        Map<UUID, String> names = names(rows.stream().map(MessageRow::sender).toList());
+        Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(MessageRow::imageId).toList());
+        List<MessageInfo> result = new ArrayList<>(rows.size());
+        for (MessageRow row : rows) {
+            result.add(new MessageInfo(row.id(), row.chatId(), backend.user(row.sender(), names.get(row.sender())), row.text(),
+                    images.get(row.imageId()), row.sentAt(), row.editedAt(), row.deleted()));
+        }
+        return result;
     }
 
     private void broadcastPresence(UserInfo user) {
-        for (UUID uuid : online.keySet()) {
+        for (UUID uuid : online().keySet()) {
             if (!uuid.equals(user.uuid())) {
                 send(uuid, new MessengerPackets.Presence(user));
             }
@@ -458,20 +379,14 @@ public final class MessengerService {
     }
 
     private void send(UUID player, Packet packet) {
-        platform.send(player, Packets.encode(packet));
+        backend.send(player, packet);
     }
 
     // --- Для отладки и тестов ---
 
-    /** Выполнить действие в потоке мессенджера (например, добавить тестового игрока). */
+    /** Выполнить действие в фоновом потоке (например, добавить тестового игрока). */
     public void runInThread(SqlRunnable action) {
-        executor.execute(() -> {
-            try {
-                action.run(repo);
-            } catch (Exception e) {
-                platform.warn("Messenger task failed", e);
-            }
-        });
+        backend.execute(() -> action.run(repo));
     }
 
     @FunctionalInterface
@@ -481,19 +396,15 @@ public final class MessengerService {
 
     /** Сообщение «от имени» игрока, который может быть и не онлайн (для отладки). */
     public void injectMessage(UUID sender, String senderName, long chatId, String text) {
-        executor.execute(() -> {
-            try {
-                long now = System.currentTimeMillis();
-                long id = repo.insertMessage(chatId, sender, text, now);
-                MessageInfo message = new MessageInfo(id, chatId, new UserInfo(sender, senderName, online.containsKey(sender)),
-                        text, now, 0, false);
-                for (UUID member : repo.members(chatId)) {
-                    if (online.containsKey(member)) {
-                        send(member, new MessengerPackets.NewMessage(message, ""));
-                    }
+        backend.execute(() -> {
+            long now = System.currentTimeMillis();
+            long id = repo.insertMessage(chatId, sender, text, now);
+            MessageInfo message = new MessageInfo(id, chatId, new UserInfo(sender, senderName, backend.isOnline(sender)),
+                    text, null, now, 0, false);
+            for (UUID member : repo.members(chatId)) {
+                if (backend.isOnline(member)) {
+                    send(member, new MessengerPackets.NewMessage(message, ""));
                 }
-            } catch (Exception e) {
-                platform.warn("Inject failed", e);
             }
         });
     }

@@ -258,6 +258,61 @@ def glyph_settings():
     return img
 
 
+def glyph_feed():
+    img, d = glyph_canvas()
+    # Лента: карточка поста с фото и строками текста, сверху сердечко.
+    d.rounded_rectangle([40, 40, 216, 216], radius=26, outline=WHITE, width=16)
+    d.rounded_rectangle([68, 68, 188, 132], radius=10, fill=WHITE)
+    d.line([(70, 160), (186, 160)], fill=WHITE, width=14)
+    d.line([(70, 188), (146, 188)], fill=WHITE, width=14)
+    return img
+
+
+def heart(d, cx, cy, r, fill):
+    """Сердечко: два круга и треугольник, ширина ~4r."""
+    d.ellipse([cx - 2 * r, cy - r, cx, cy + r], fill=fill)
+    d.ellipse([cx, cy - r, cx + 2 * r, cy + r], fill=fill)
+    d.polygon([(cx - 2 * r + r * 0.12, cy + r * 0.35), (cx + 2 * r - r * 0.12, cy + r * 0.35), (cx, cy + 2.3 * r)], fill=fill)
+
+
+CLEAR = (0, 0, 0, 0)
+
+
+def social_like():
+    img, d = glyph_canvas()
+    heart(d, 128, 100, 50, WHITE)
+    heart(d, 128, 104, 32, CLEAR)
+    return img
+
+
+def social_liked():
+    img, d = glyph_canvas()
+    heart(d, 128, 100, 50, WHITE)
+    return img
+
+
+def social_comment():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([36, 48, 220, 180], radius=44, outline=WHITE, width=20)
+    d.polygon([(70, 170), (56, 222), (122, 174)], fill=WHITE)
+    return img
+
+
+def social_more():
+    img, d = glyph_canvas()
+    for x in (64, 128, 192):
+        d.ellipse([x - 20, 108, x + 20, 148], fill=WHITE)
+    return img
+
+
+def social_photo():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([30, 52, 226, 204], radius=22, outline=WHITE, width=18)
+    d.polygon([(50, 188), (110, 112), (150, 160), (176, 132), (208, 188)], fill=WHITE)
+    d.ellipse([150, 74, 184, 108], fill=WHITE)
+    return img
+
+
 # ---------------- Погода (прозрачный фон) ----------------
 
 def blank():
@@ -343,6 +398,7 @@ if __name__ == "__main__":
         "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
         "gallery": glyph_gallery, "music": glyph_music, "notes": glyph_notes,
         "calculator": glyph_calculator, "weather": glyph_weather, "settings": glyph_settings,
+        "feed": glyph_feed,
     }
     for name, fn in glyphs.items():
         save(fn(), GLYPH_DIR, name)
@@ -355,6 +411,10 @@ if __name__ == "__main__":
                "thunder": weather_thunder, "snow": weather_snow}
     for name, fn in weather.items():
         save(fn(), WEATHER_DIR, name)
+    social = {"like": social_like, "liked": social_liked, "comment": social_comment, "more": social_more,
+              "photo": social_photo}
+    for name, fn in social.items():
+        save(fn(), os.path.join(ASSETS, "textures", "gui", "social"), name, 32)
     save(mod_icon(), ASSETS, "icon", 128)
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))

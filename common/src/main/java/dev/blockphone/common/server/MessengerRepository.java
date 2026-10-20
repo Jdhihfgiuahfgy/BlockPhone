@@ -9,9 +9,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,18 +18,20 @@ public final class MessengerRepository {
     public record ChatRow(long id, ChatType type, String title, UUID owner, long createdAt) {
     }
 
-    public record MessageRow(long id, long chatId, UUID sender, String text, long sentAt, long editedAt, boolean deleted) {
+    /** imageId = 0 — без фото. */
+    public record MessageRow(long id, long chatId, UUID sender, String text, long imageId, long sentAt, long editedAt,
+                             boolean deleted) {
     }
 
     private final Database db;
-    private final String users;
+    private final UserRepository userRepo;
     private final String chats;
     private final String members;
     private final String messages;
 
-    public MessengerRepository(Database db) {
+    public MessengerRepository(Database db, UserRepository userRepo) {
         this.db = db;
-        this.users = db.table("users");
+        this.userRepo = userRepo;
         this.chats = db.table("chats");
         this.members = db.table("members");
         this.messages = db.table("messages");
@@ -41,67 +41,22 @@ public final class MessengerRepository {
         return db.connection();
     }
 
-    // --- Игроки ---
+    // --- Игроки (для совместимости: отладка и тесты обращаются через репозиторий мессенджера) ---
 
     public void upsertUser(UUID uuid, String name, long now) throws SQLException {
-        try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + users + " (uuid, name, name_lower, last_seen) VALUES (?, ?, ?, ?) "
-                + "ON DUPLICATE KEY UPDATE name = VALUES(name), name_lower = VALUES(name_lower), last_seen = VALUES(last_seen)")) {
-            ps.setString(1, uuid.toString());
-            ps.setString(2, name);
-            ps.setString(3, name.toLowerCase(Locale.ROOT));
-            ps.setLong(4, now);
-            ps.executeUpdate();
-        }
-    }
-
-    public void touchUser(UUID uuid, long now) throws SQLException {
-        try (PreparedStatement ps = c().prepareStatement("UPDATE " + users + " SET last_seen = ? WHERE uuid = ?")) {
-            ps.setLong(1, now);
-            ps.setString(2, uuid.toString());
-            ps.executeUpdate();
-        }
+        userRepo.upsertUser(uuid, name, now);
     }
 
     public boolean userExists(UUID uuid) throws SQLException {
-        return !userNames(List.of(uuid)).isEmpty();
+        return userRepo.userExists(uuid);
     }
 
-    /** Ники по UUID (неизвестные пропускаются). */
     public Map<UUID, String> userNames(Collection<UUID> uuids) throws SQLException {
-        Map<UUID, String> result = new HashMap<>();
-        if (uuids.isEmpty()) {
-            return result;
-        }
-        String marks = String.join(",", java.util.Collections.nCopies(uuids.size(), "?"));
-        try (PreparedStatement ps = c().prepareStatement("SELECT uuid, name FROM " + users + " WHERE uuid IN (" + marks + ")")) {
-            int i = 1;
-            for (UUID uuid : uuids) {
-                ps.setString(i++, uuid.toString());
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.put(UUID.fromString(rs.getString(1)), rs.getString(2));
-                }
-            }
-        }
-        return result;
+        return userRepo.userNames(uuids);
     }
 
-    /** Игроки, чей ник начинается с prefix (без учёта регистра), недавно заходившие — первыми. */
     public Map<UUID, String> searchUsers(String prefix, int limit) throws SQLException {
-        Map<UUID, String> result = new java.util.LinkedHashMap<>();
-        String escaped = prefix.toLowerCase(Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-        try (PreparedStatement ps = c().prepareStatement("SELECT uuid, name FROM " + users
-                + " WHERE name_lower LIKE ? ORDER BY last_seen DESC LIMIT ?")) {
-            ps.setString(1, escaped + "%");
-            ps.setInt(2, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.put(UUID.fromString(rs.getString(1)), rs.getString(2));
-                }
-            }
-        }
-        return result;
+        return userRepo.searchUsers(prefix, limit);
     }
 
     // --- Чаты ---
@@ -161,9 +116,10 @@ public final class MessengerRepository {
         }
     }
 
-    /** Удаляет чат вместе с участниками и сообщениями. */
+    /** Удаляет чат вместе с участниками, сообщениями и их фото. */
     public void deleteChat(long chatId) throws SQLException {
         for (String sql : new String[]{
+                "DELETE FROM " + db.table("images") + " WHERE kind = " + ImageRepository.KIND_MESSAGE + " AND ref_id = ?",
                 "DELETE FROM " + messages + " WHERE chat_id = ?",
                 "DELETE FROM " + members + " WHERE chat_id = ?",
                 "DELETE FROM " + chats + " WHERE id = ?"}) {
@@ -259,16 +215,21 @@ public final class MessengerRepository {
 
     private static MessageRow messageRow(ResultSet rs) throws SQLException {
         return new MessageRow(rs.getLong("id"), rs.getLong("chat_id"), UUID.fromString(rs.getString("sender")),
-                rs.getString("text"), rs.getLong("sent_at"), rs.getLong("edited_at"), rs.getBoolean("deleted"));
+                rs.getString("text"), rs.getLong("image_id"), rs.getLong("sent_at"), rs.getLong("edited_at"), rs.getBoolean("deleted"));
     }
 
     public long insertMessage(long chatId, UUID sender, String text, long now) throws SQLException {
-        try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + messages + " (chat_id, sender, text, sent_at) VALUES (?, ?, ?, ?)",
-                Statement.RETURN_GENERATED_KEYS)) {
+        return insertMessage(chatId, sender, text, 0, now);
+    }
+
+    public long insertMessage(long chatId, UUID sender, String text, long imageId, long now) throws SQLException {
+        try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + messages
+                + " (chat_id, sender, text, image_id, sent_at) VALUES (?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, chatId);
             ps.setString(2, sender.toString());
             ps.setString(3, text);
-            ps.setLong(4, now);
+            ps.setLong(4, imageId);
+            ps.setLong(5, now);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 keys.next();
@@ -321,7 +282,7 @@ public final class MessengerRepository {
     }
 
     public void deleteMessage(long id) throws SQLException {
-        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET text = '', deleted = TRUE WHERE id = ?")) {
+        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET text = '', image_id = 0, deleted = TRUE WHERE id = ?")) {
             ps.setLong(1, id);
             ps.executeUpdate();
         }

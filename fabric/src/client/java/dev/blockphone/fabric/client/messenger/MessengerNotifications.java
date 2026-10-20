@@ -62,7 +62,7 @@ public final class MessengerNotifications {
             g.fill(1, 1, 3, height() - 1, PhoneTheme.accent());
             Avatars.drawUser(g, message.sender(), 7, 7, 18);
             PhoneDraw.text(g, PhoneDraw.ellipsize(title, width() - 36, 1f), 31, 7, 0xFFFFFFFF, 1f, false);
-            PhoneDraw.text(g, PhoneDraw.ellipsize(message.text().replace('\n', ' '), width() - 36, 1f), 31, 18,
+            PhoneDraw.text(g, PhoneDraw.ellipsize(MessengerClient.previewText(message), width() - 36, 1f), 31, 18,
                     0xFFB0B0B8, 1f, false);
         }
     }

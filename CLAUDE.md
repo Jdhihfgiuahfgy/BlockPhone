@@ -37,21 +37,27 @@
   Сценарий мессенджера: `BLOCKPHONE_DEV_SCENARIO=messenger BLOCKPHONE_DEV_MESSENGER=1` (+ SHOTS) — мессенджер запускается на
   встроенном сервере одиночной игры, создаются тестовые Steve/Alex, личный чат и группа «Строители», снимаются уведомление,
   значок, список, переписка, отправка, группа, инфо, новый чат, тёмная тема.
+  Сценарий ленты: `BLOCKPHONE_DEV_SCENARIO=social BLOCKPHONE_DEV_MESSENGER=1` — паблик «Новости сервера», посты, лайки,
+  комментарии и жалоба прямо в базе; снимок камерой (с id сервера) → пост с фото через настоящую загрузку; снимаются лента,
+  пост, «Новый пост», профили, паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
-- `BLOCKPHONE_DEV_MESSENGER=1` — включить мессенджер в одиночной игре (только для разработки; база в `fabric/run/blockphone/`).
+- `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
+  база в `fabric/run/blockphone/`). Dev-игрок в мире с читами — оператор, поэтому у него права модератора.
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
-  галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`.
-- Длинные heredoc в Bash-инструменте иногда ломаются — правки больших текстов лучше делать скриптом из файла или Edit.
+  галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`;
+  кэш фото с серверов `blockphone/cache/<id сервера>/<id>.img`.
+- Длинные heredoc в Bash-инструменте иногда ломаются, а `\n` внутри heredoc превращается в настоящий перевод строки —
+  правки больших текстов делать скриптом, записанным через Write, или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
 
 ## Модули
 
 ```
-common/    чистая Java без Minecraft: протокол, серверная логика (рукопожатие, мессенджер, SQL), тесты
+common/    чистая Java без Minecraft: протокол, серверная логика (рукопожатие, мессенджер, лента, фото, SQL), тесты
 fabric/    мод: src/main = общий+серверный код, src/client = клиент (телефон)
 paper/     плагин Paper
-velocity/  плагин Velocity (мессенджер на прокси для всей сети)
+velocity/  плагин Velocity (мессенджер и лента на прокси для всей сети)
 tools/     скрипты (генерация иконок и фильтров)
 ```
 Классы `common` копируются внутрь jar-ов fabric, paper и velocity (`jar { from(project(':common')...) }`).
@@ -64,28 +70,61 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 ### common (`dev.blockphone.common`)
 - `BlockPhone` — константы: `MOD_ID`, `CHANNEL = "blockphone:main"`, `PROTOCOL_VERSION`.
 - `protocol/Packets` — реестр пакетов (id ↔ класс). Формат сообщения: `VarInt id` + тело.
-- `protocol/PacketWriter`/`PacketReader` — VarInt, long, boolean, String (UTF-8), byte[]; reader бросает `ProtocolException`.
+- `protocol/PacketWriter`/`PacketReader` — VarInt, int, long, boolean, String (UTF-8), byte[], enum (`writeEnum/readEnum`);
+  reader бросает `ProtocolException`.
 - `protocol/packet/*` — пакеты-record'ы с `read(PacketReader)` и `write(PacketWriter)`.
-  - `ServerHelloPacket` (S→C, id 0): protocolVersion, serverPlatform, messengerEnabled, phoneInHandVisible.
+  - `ServerHelloPacket` (S→C, id 0): protocolVersion, serverPlatform, messengerEnabled, phoneInHandVisible, socialEnabled.
   - `ClientHelloPacket` (C→S, id 1): protocolVersion, modVersion.
   - `MessengerPackets.*` (id 2–22): S→C ChatList, ChatUpdate, ChatRemoved, History, NewMessage, MessageUpdated, UserList,
     ChatOpened, TypingState, Presence, Failure(ключ messenger.error.*); C→S RequestHistory, SendMessage(nonce), EditMessage,
     DeleteMessage, MarkRead, SearchUsers, OpenDirect, CreateGroup, GroupAction(RENAME/ADD/REMOVE/LEAVE), Typing.
+    SendMessage несёт imageId (0 — без фото), MessageInfo — `ImageRef image` (null — без фото).
+  - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
+    maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports. Приходит после рукопожатия.
+  - `ImagePackets.*` (id 25–29): UploadBegin(uploadId, size, purpose POST/CHAT, serverId снимка) → UploadChunk × N (по 30 000 байт)
+    → UploadResult(ImageRef | ключ ошибки photo.error.*); RequestImage → ImageData × N (total = 0 — нет доступа).
+  - `SocialPackets.*` (id 30–65): S→C FeedPage, PostUpdated(post, nonce), PostRemoved, Comments, CommentAdded/Removed, Profile,
+    PublicData, PublicRemoved, PublicList, UserList, SearchResults, Reports, Notice(LIKE/COMMENT/FOLLOW/NEW_POST/REPORT),
+    Failure(social.error.*), Done(social.done.*); C→S RequestFeed(FOLLOWING/ALL/USER/PUBLIC, beforeId), CreatePost(nonce, publicId,
+    text, imageId), DeletePost, LikePost, RequestComments, AddComment, DeleteComment, RequestProfile, UpdateBio, Follow,
+    RequestFollows, RequestPublic, CreatePublic, PublicAction(EDIT/SUBSCRIBE/UNSUBSCRIBE/ADD_ADMIN/REMOVE_ADMIN/DELETE),
+    RequestPublics(SUBSCRIBED/MANAGED/POPULAR), Search, Report, RequestReports, ResolveReport(DISMISS/DELETE/DELETE_AND_MUTE), Mute.
 - `protocol/data/MessengerData` — UserInfo, MessageInfo, ChatInfo, ChatType и ограничения (1000 символов, 32 на название,
   50 участников, страница истории 40).
+- `protocol/data/ImageRef` — фото на сервере (id, ширина, высота), `PhotoPolicy` (ANY/SERVER/NONE), `Purpose` (POST/CHAT), CHUNK.
+- `protocol/data/SocialData` — PostInfo, CommentInfo, ProfileInfo, PublicInfo (role получателя), PublicRef, ReportInfo, перечисления
+  FeedKind/Role/ReportTarget/NoticeType, `Rights` (биты прав), лимиты (пост 2000, комментарий 500, «о себе» 200, паблик 32/300,
+  страница ленты 12, комментариев 30, 10 админов), `PUBLIC_COLORS`.
 - `PacketWriter/Reader` также: UUID, списки (`writeList/readList` с лимитом), `writeNullable/readNullable`, `readString(max)`.
 - `server/` — серверная логика для всех платформ:
-  - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → мессенджер.onJoin,
-    остальное → мессенджер); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно, info/warn).
-  - `ServerSettings` (+ `Storage`: h2 | mysql, путь H2, MySQL-параметры, префикс таблиц).
+  - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → `Backend.onJoin`,
+    остальное → `Backend.handle`); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно,
+    `hasPermission(uuid, Permission)`, info/warn).
+  - `Backend` — один фоновый поток «BlockPhone Server» + одно подключение к базе для мессенджера, ленты и фото; игроки онлайн;
+    serverId (таблица meta); права `has(uuid, Permission)` (узел, плюс `blockphone.moderator`, плюс список `moderators` в настройках),
+    `rights()` → маска для клиента; `sendSession`. Пакеты раскладывает по группе (`getEnclosingClass`): MessengerPackets → мессенджер,
+    SocialPackets → лента, ImagePackets → фото. Ошибка в обработчике → Failure соответствующей группы. `execute` — для тестов/отладки.
+  - `Permission` — узлы: `blockphone.post`, `.photo`, `.public.create` (у всех); `blockphone.moderate.posts/.publics/.mute/.reports`
+    и `blockphone.moderator` (все сразу) — по умолчанию у операторов.
+  - `ServerSettings` (+ `Storage`: h2 | mysql; `Social`: enabled, photos any|server|none, maxPhotoBytes, maxPhotoSide,
+    maxPublicsPerPlayer; `moderators` — ники/UUID). Старый конструктор (3 параметра) — для тестов, с настройками ленты по умолчанию.
   - `Database` — одно JDBC-соединение, драйвер создаётся напрямую (без DriverManager); SQL в диалекте MySQL, H2 в `MODE=MySQL`.
-    Таблицы `<prefix>users/chats/members/messages`.
-  - `MessengerRepository` — все SQL-запросы. `MessengerService` — логика в одном фоновом потоке: онлайн-игроки, лимит 8 сообщений/10 с,
-    личные чаты (direct_key = два UUID по порядку), группы (владелец; при выходе владельца — следующему; пустая группа удаляется),
-    непрочитанные (members.last_read), поиск по началу ника, «печатает», присутствие. `runInThread`/`injectMessage` — для отладки.
+    Таблицы `<prefix>users/chats/members/messages(+image_id)/meta/images(MEDIUMBLOB)/profiles/follows/publics/public_admins/
+    subscriptions/posts/likes/comments/reports/mutes/modlog`. Новые колонки — `column()` (ADD COLUMN, «уже есть» игнорируется).
+  - `UserRepository` (users), `ImageRepository` (фото: kind 0 — не прикреплено (удаляется через сутки), 1 — пост, 2 — сообщение),
+    `MessengerRepository`, `SocialRepository` (помощники `list/one/update/insert` с параметрами-объектами).
+  - `MessengerService` — чаты, лимит 8 сообщений/10 с, личные (direct_key), группы, непрочитанные, поиск, «печатает», присутствие,
+    фото в сообщениях. `runInThread`/`injectMessage` — для отладки.
+  - `SocialService` — лента (подписки: свои посты + на кого подписан + паблики), посты (лимит 5/мин), лайки, комментарии (10/мин;
+    открытый пост «смотрят» — им приходят новые комментарии), профили и подписки, паблики (владелец, до 10 админов, уникальное
+    название, лимит на игрока), жалобы (5 за 10 мин) и модерация (удаление, заглушение, журнал modlog + лог сервера).
+  - `ImageService` — приём загрузок (политика сервера, право PHOTO, заглушение для постов, размер, 10/мин; формат и размер по
+    заголовку — `ImageHeader`, без ImageIO), `claim` (прикрепить), выдача кусками с проверкой доступа (пост — всем, сообщение — участникам).
+  - `RateLimiter` — «не больше N за окно» по игроку.
 
 **Как добавить пакет:** record в `protocol/packet` → `register(<следующий id>, …)` в `Packets` →
-обработка в `ClientNetwork.handle` (клиент), `FabricServerHandler` (Fabric-сервер) и `BlockPhonePaper.onPluginMessageReceived` (Paper).
+обработка на клиенте (`ClientNetwork.handle` → `MessengerClient`/`SocialClient`/…) и на сервере (`Backend.handle` → сервис;
+пакет попадает в сервис по классу-группе, в котором он объявлен). Платформы пакеты не разбирают.
 При несовместимом изменении — увеличить `PROTOCOL_VERSION`.
 
 ### fabric — общий/серверный код (`fabric/src/main`, `dev.blockphone.fabric`)
@@ -93,14 +132,23 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 - `network/RawPayload` — `CustomPacketPayload` с сырыми байтами канала (тот же формат, что plugin message у Paper).
 - `server/FabricServerHandler` — адаптер `BlockPhoneServer` (только выделенный сервер или dev-флаг). Держит ссылки на игроков
   с события JOIN (в JOIN игрок ещё не в списке игроков сервера — отправка через `getPlayerList()` теряла приветствие).
-- `server/FabricServerConfig` — `config/blockphone/server.json`: messengerEnabled, phoneInHandVisible, storage{type,host,port,...}.
+- `server/FabricServerHandler` — права: fabric-permissions-api (LuckPerms) через отражение, иначе обычные — у всех,
+  модераторские — у операторов уровня 2+ (`player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)`).
+- `server/FabricServerConfig` — `config/blockphone/server.json`: messengerEnabled, phoneInHandVisible, social{enabled, photos,
+  maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], storage{type,host,port,...}.
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
 - `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`) и `cameraKey`
   (камера сразу, по умолчанию не назначена); `CameraMode.init()`.
-- `network/ClientNetwork` — приём пакетов (мессенджер → `MessengerClient.handle`); `serverHello()`, `messengerAvailable()`;
-  при выходе с сервера сбрасывает `PhoneState` и `MessengerClient`. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
+- `network/ClientNetwork` — приём пакетов (Session → `ClientSession`, SocialPackets → `SocialClient`, фото → `ImageUploads`/
+  `RemoteImages`, остальное → `MessengerClient`); `serverHello()`, `messengerAvailable()`, `socialAvailable()`; при выходе с сервера
+  (в потоке рендера!) сбрасывает всё серверное состояние. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
+- `network/ClientSession` — сведения о сессии: `serverId()` (камера пишет его в `PhotoMeta.serverId`), `has(right)`,
+  `photosAllowed()`, `photoAllowed(meta)` (политика сервера), `mutedUntil()`, `openReports()`.
+- `social/` — клиент ленты: `SocialClient` (ленты по ключу, посты, комментарии, профили, паблики, поиск, жалобы, новые посты для
+  значка, nonce своего поста, сообщения сервера), `SocialNotifications` (тосты: лайк, комментарий, подписка, жалоба модераторам),
+  `SocialFormat` («5 мин», даты, 1.2K).
 - `messenger/` — клиент мессенджера: `MessengerClient` (состояние: чаты, сообщения, неподтверждённые по nonce, онлайн, «печатает»,
   результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
@@ -127,6 +175,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   - `Wallpapers` — обои: градиент или своя картинка из `blockphone/wallpapers/` (обрезка по центру, через `PhotoTextures`);
     `setCustom(name)`, `importAndSet(path)` (из галереи), `list()`.
   - `PhoneClock` — время (реальное/игровое, 12/24ч) и дата с локалью телефона.
+- `ui/PhotoPicker` (выбор фото из галереи поверх приложения; неподходящие под политику — затемнены), `ui/ImageViewer`
+  (просмотр фото на весь экран), `ui/Images` (фото с сервера: `draw` с обрезкой, `drawFit`, `height`), `ui/PopupMenu` (меню-пункты).
 - `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
@@ -135,6 +185,13 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
   (создать группу / добавить участников), `ChatView` (пузыри, разделители дней, подгрузка истории, Enter — отправить,
   Shift+Enter — перенос, ПКМ — меню изменить/копировать/удалить), `ChatInfoView` (участники, переименование, исключение, выход),
   `UserRows`, `MessengerFormat`. `AppRegistry.Entry.badge` — число на значке иконки (мессенджер — непрочитанные).
+  Фото в чате: «+» слева от поля → `PhotoPicker` → загрузка сразу (полоска над полем) → отправка с imageId; клик по фото — просмотр.
+- `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
+  общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
+  прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`
+  (комментарии), `ComposeView` (от себя/от паблика, текст, фото), `ProfileView` («о себе», подписчики, подписка, «Написать»,
+  заглушение), `UserListView`, `UserPickView`, `PublicsView` (поиск, мои/подписки/популярные), `PublicView`, `CreatePublicView`,
+  `PublicManageView` (название, админы, удаление), `ModerationView` (жалобы), `Rows`. `debug*`-методы — для DevShots.
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `PlaceholderApp` (заглушка «скоро»),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
   `settings/SettingsApp` (страницы MAIN / ACCENT — готовые цвета + HEX / WALLPAPER — градиенты + свои картинки; `openPage(name)`),
@@ -145,7 +202,9 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 - `photo/` — фото: `Picture` (ARGB-пиксели), `ImageOps` (фильтр, экспозиция в линейном пространстве, шум, поворот, кадр,
   уменьшение, чтение/запись PNG через ImageIO, `toNativeImage`), `CameraFilter` (enum; параметры читаются из `post_effect/filter_<id>.json`),
   `PhotoMeta` (сведения о снимке), `PhotoStore` (список/сохранение/удаление; `version()` растёт при изменениях),
-  `PhotoTextures` (миниатюры и превью как `DynamicTexture` с линейной фильтрацией, LRU на 120, `invalidate`).
+  `PhotoTextures` (миниатюры и превью как `DynamicTexture` с линейной фильтрацией, LRU на 120, `invalidate`),
+  `ImageUploads` (загрузка на сервер: уменьшение до maxPhotoSide, JPEG с подбором качества до maxPhotoBytes, куски),
+  `RemoteImages` (фото с сервера: скачивание кусками, кэш на диске, текстуры нужного размера, LRU на 80).
 - `camera/` — режим камеры:
   - `CameraMode` — вход/выход, такт (ЛКМ снимок, ПКМ следующий фильтр), клавиши (Esc, ←→↑↓, H, R, G), зум колесом,
     `renderOverlay` (видоискатель вместо HUD; тут же берётся кадр для снимка — мир уже нарисован, интерфейс ещё нет).
@@ -163,12 +222,17 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 ### paper (`dev.blockphone.paper`)
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
   (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
-- `config.yml`: `messenger.enabled`, `phone-in-hand.visible`, `storage.type` (h2/mysql), `storage.table-prefix`, `storage.mysql.*`.
+- `config.yml`: `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
+  max-publics-per-player), `moderators`, `storage.type` (h2/mysql), `storage.table-prefix`, `storage.mysql.*`.
+  Новые ключи дописываются в существующий config.yml (`copyDefaults`). Права регистрируются из `Permission`
+  (обычные — default true, модераторские — op; `blockphone.moderator` — родитель всех модераторских).
 
 ### velocity (`dev.blockphone.velocity`)
 - `BlockPhoneVelocity` — `@Plugin`: регистрирует канал, на `ServerPostConnectEvent` (каждый переход между серверами) — приветствие,
   `PluginMessageEvent` на нашем канале обрабатывает сам и **не пропускает** ни к серверам, ни от серверов к клиенту.
-  Настройки: `plugins/blockphone/config.json` (messengerEnabled, storage). BungeeCord пока не поддержан.
+  Настройки: `plugins/blockphone/config.json` (messengerEnabled, social, moderators, storage). Права — LuckPerms Velocity
+  (`getPermissionValue`; не задано → по умолчанию, у прокси нет операторов — модераторов задавать в `moderators`).
+  BungeeCord пока не поддержан.
 
 ## Особенности API Minecraft 1.21.11 (Mojang mappings)
 - `ResourceLocation` переименован в **`Identifier`** (`Identifier.fromNamespaceAndPath(ns, path)`); у `ResourceKey` — `identifier()`.
@@ -199,8 +263,10 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 2. ✅ Заметки, камера (фильтры, зум, ISO/выдержка/EV, таймер, сетка, длинная выдержка), галерея (просмотр, редактор, удаление).
    Не сделано из камеры: глубина резкости (диафрагма) — нужен буфер глубины; можно добавить позже.
 3. ✅ Серверный мессенджер: личные и групповые чаты (Fabric + Paper + Velocity, H2/MySQL), уведомления, значок непрочитанных.
-   Не сделано: BungeeCord-адаптер, фото в чатах (этап 4).
-4. Посты, лента, паблики, профили; фото с политикой админа (скриншоты этого сервера / любые / никакие); модерация, права (LuckPerms / fabric-permissions-api).
+   Не сделано: BungeeCord-адаптер.
+4. ✅ Лента: посты (от себя и от пабликов), лайки, комментарии, профили, подписки, паблики; фото в постах и чатах с политикой
+   админа (только снятые на этом сервере / любые / никакие); жалобы, модерация, заглушение, права (LuckPerms / fabric-permissions-api).
+   Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.
 5. Музыка: локальные файлы, виджет на HUD, Яндекс Музыка (неоф. API), управление Spotify.
 6. Simple Voice Chat: голосовые сообщения, групповые звонки.
 7. Telegram через TDLib (только Windows), кружочки из кадров игры.
