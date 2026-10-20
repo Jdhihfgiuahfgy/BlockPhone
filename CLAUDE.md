@@ -1,7 +1,7 @@
 # BlockPhone — заметки для разработки
 
 Мод-«смартфон» для Minecraft: телефон открывается поверх игры как интерфейс (не предмет).
-Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11; сеть серверов — плагин Velocity.
+Клиент — Fabric 1.21.11; сервер — тот же Fabric-мод **или** Paper-плагин 1.21.11; сеть серверов — плагин Velocity или BungeeCord.
 Дизайн — **свой стиль** (по образцу скриншота мода-плеера от пользователя): тёмно-синие панели с тонкой рамкой,
 скругление 4, плоские кнопки, акцентный цвет (игрок выбирает сам), тёмная основа по умолчанию + светлая.
 Отвергнуты: копия айфона и ванильный стиль Minecraft (последний лежит в `git stash`). Новые экраны — только через
@@ -18,6 +18,7 @@
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
 | `./gradlew :paper:runServer` | Paper-сервер с плагином (папка `paper/run/`; EULA и online-mode — принимает/меняет пользователь) |
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
+| `./gradlew :bungee:build` | Плагин BungeeCord/Waterfall: `bungee/build/libs/BlockPhone-bungee-*.jar` |
 | `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
 | `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка» |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
@@ -70,10 +71,11 @@ common/    чистая Java без Minecraft: протокол, серверн�
 fabric/    мод: src/main = общий+серверный код, src/client = клиент (телефон)
 paper/     плагин Paper
 velocity/  плагин Velocity (мессенджер и лента на прокси для всей сети)
+bungee/    плагин BungeeCord/Waterfall (то же, что velocity)
 tools/     скрипты (генерация иконок и фильтров)
 ```
-Классы `common` копируются внутрь jar-ов fabric, paper и velocity (`jar { from(project(':common')...) }`).
-JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без транзитивных), в Velocity — встраиваются (`shade`),
+Классы `common` копируются внутрь jar-ов fabric, paper, velocity и bungee (`jar { from(project(':common')...) }`).
+JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без транзитивных), в Velocity и BungeeCord — встраиваются (`shade`),
 Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
 Декодер MP3 JLayer (`javazoom:jlayer`, LGPL) — jar-in-jar в Fabric (`jlayer_version`); OGG — stb_vorbis из LWJGL (есть в игре).
 Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
@@ -82,7 +84,7 @@ TDLib — Boost) и JCodec (`org.jcodec:jcodec`, BSD) — jar-in-jar; мод и�
 Версии — `tdlight_*_version`, `jcodec_version` в gradle.properties. Обновлять TDLight целиком (java, api и natives из одного BOM).
 API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозиторий maven.maxhenkel.de) — `compileOnly` в common, fabric и paper;
 сам SVC ставит игрок/админ. Классы с типами SVC (`SvcPlugin`, `SvcBridge`, `PaperVoicechat`) загружаются только при наличии SVC.
-**При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity).
+**При смене версии мода:** `mod_version` в gradle.properties и `version` в `@Plugin` (BlockPhoneVelocity); bungee.yml берёт версию сам.
 
 Пакет: `dev.blockphone`. Mod id: `blockphone`.
 
@@ -308,6 +310,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (`getPermissionValue`; не задано → по умолчанию, у прокси нет операторов — модераторов задавать в `moderators`).
   BungeeCord пока не поддержан.
 
+### bungee (`dev.blockphone.bungee`)
+- `BlockPhoneBungee` — `Plugin` + `Listener` + `ServerPlatform`: канал `blockphone:main`, приветствие на `ServerSwitchEvent`
+  (вход и каждый переход), `PluginMessageEvent` на нашем канале обрабатывает сам и отменяет (дальше не идёт).
+  Настройки — `plugins/BlockPhone/config.json` (как у Velocity). Права: модераторские — `hasPermission` (LuckPerms) или
+  `moderators`; обычные — у всех (у BungeeCord нет «не задано»). Звонков нет. API `net.md-5:bungeecord-api` (+ репозиторий
+  libraries.minecraft.net для brigadier). Не проверено на живом прокси.
+
 ## Особенности API Minecraft 1.21.11 (Mojang mappings)
 - `ResourceLocation` переименован в **`Identifier`** (`Identifier.fromNamespaceAndPath(ns, path)`); у `ResourceKey` — `identifier()`.
 - Клавиши: `new KeyMapping(name, InputConstants.Type.KEYSYM, key, KeyMapping.Category)`; категория — `KeyMapping.Category.register(Identifier)`, перевод `key.category.<ns>.<path>`.
@@ -337,7 +346,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 2. ✅ Заметки, камера (фильтры, зум, ISO/выдержка/EV, таймер, сетка, длинная выдержка), галерея (просмотр, редактор, удаление).
    Не сделано из камеры: глубина резкости (диафрагма) — нужен буфер глубины; можно добавить позже.
 3. ✅ Серверный мессенджер: личные и групповые чаты (Fabric + Paper + Velocity, H2/MySQL), уведомления, значок непрочитанных.
-   Не сделано: BungeeCord-адаптер.
+   BungeeCord-адаптер — модуль `bungee` (0.7.1).
 4. ✅ Лента: посты (от себя и от пабликов), лайки, комментарии, профили, подписки, паблики; фото в постах и чатах с политикой
    админа (только снятые на этом сервере / любые / никакие); жалобы, модерация, заглушение, права (LuckPerms / fabric-permissions-api).
    Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.

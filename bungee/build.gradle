@@ -1,0 +1,39 @@
+// Плагин для прокси BungeeCord (и Waterfall): мессенджер и лента, общие для всей сети серверов.
+base {
+    archivesName = "${rootProject.mod_name}-bungee"
+}
+
+repositories {
+    // brigadier — зависимость API BungeeCord.
+    maven { url = 'https://libraries.minecraft.net' }
+}
+
+configurations {
+    // Библиотеки, которые кладутся внутрь jar (BungeeCord не скачивает их сам).
+    shade
+    implementation.extendsFrom shade
+}
+
+dependencies {
+    compileOnly "net.md-5:bungeecord-api:${rootProject.bungeecord_api_version}"
+    implementation project(':common')
+    shade("com.h2database:h2:${rootProject.h2_version}") { transitive = false }
+    shade("org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadb_version}") { transitive = false }
+}
+
+processResources {
+    def props = [version: project.version]
+    inputs.properties props
+    filteringCharset 'UTF-8'
+    filesMatching('bungee.yml') {
+        expand props
+    }
+}
+
+jar {
+    from(project(':common').sourceSets.main.output)
+    from({ configurations.shade.collect { it.isDirectory() ? it : zipTree(it) } }) {
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/versions/*/module-info.class', 'module-info.class'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

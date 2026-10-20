@@ -1,0 +1,5 @@
+name: BlockPhone
+main: dev.blockphone.bungee.BlockPhoneBungee
+version: '${version}'
+author: Jdhihfgiuahfgy
+description: Network-wide messenger and feed for the BlockPhone mod
