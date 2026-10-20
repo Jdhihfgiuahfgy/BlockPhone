@@ -1,0 +1,44 @@
+{
+  "id": "bank",
+  "name": {"ru_ru": "Банк", "en_us": "Bank"},
+  "version": "1.0",
+  "author": "Пример BlockPhone",
+  "color": "#2E9E5B",
+  "permissions": ["server"],
+  "start": "main",
+  "pages": {
+    "main": {
+      "title": {"ru_ru": "Банк", "en_us": "Bank"},
+      "server": true,
+      "elements": [
+        {"type": "card", "elements": [
+          {"type": "text", "text": {"ru_ru": "Баланс", "en_us": "Balance"}, "color": "secondary", "size": "small"},
+          {"type": "text", "text": "{balance}", "size": "huge", "color": "accent"},
+          {"type": "text", "text": "{player}", "size": "small", "color": "secondary"}
+        ]},
+        {"type": "button", "label": {"ru_ru": "Перевести деньги", "en_us": "Send money"}, "style": "primary",
+         "action": {"open": "transfer"}},
+        {"type": "button", "label": {"ru_ru": "Обновить", "en_us": "Refresh"}, "action": {"refresh": true}},
+        {"type": "divider"},
+        {"type": "text", "text": {"ru_ru": "Самые богатые", "en_us": "Richest players"}, "size": "small", "color": "secondary"},
+        {"type": "list", "items": [
+          {"title": "{top1_name}", "value": "{top1_money}", "if": "{top1_name}"},
+          {"title": "{top2_name}", "value": "{top2_money}", "if": "{top2_name}"},
+          {"title": "{top3_name}", "value": "{top3_money}", "if": "{top3_name}"}
+        ]}
+      ]
+    },
+    "transfer": {
+      "title": {"ru_ru": "Перевод", "en_us": "Transfer"},
+      "server": true,
+      "elements": [
+        {"type": "row", "label": {"ru_ru": "Доступно", "en_us": "Available"}, "value": "{balance}"},
+        {"type": "input", "id": "to", "label": {"ru_ru": "Кому (ник)", "en_us": "To (nickname)"}, "kind": "player", "required": true},
+        {"type": "input", "id": "amount", "label": {"ru_ru": "Сумма", "en_us": "Amount"}, "kind": "number", "min": 1, "required": true},
+        {"type": "button", "label": {"ru_ru": "Отправить", "en_us": "Send"}, "style": "primary",
+         "action": {"server": "transfer",
+                    "confirm": {"ru_ru": "Перевести {amount} игроку {to}?", "en_us": "Send {amount} to {to}?"}}}
+      ]
+    }
+  }
+}

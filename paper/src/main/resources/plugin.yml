@@ -3,7 +3,7 @@ version: '${version}'
 main: dev.blockphone.paper.BlockPhonePaper
 api-version: '1.21.11'
 # Simple Voice Chat (звонки) — если установлен, грузится раньше.
-softdepend: [voicechat]
+softdepend: [voicechat, PlaceholderAPI]
 description: Server side of the BlockPhone mod (messenger, posts, moderation)
 # Драйверы баз данных — Paper скачает их из Maven Central при первом запуске.
 libraries:

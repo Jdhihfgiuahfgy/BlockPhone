@@ -80,6 +80,12 @@ public final class ClientNetwork {
             VoiceMessages.onChunk(chunk);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.PrivacyPackets.State state) {
             dev.blockphone.fabric.client.social.PrivacyClient.onState(state);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Policy policy) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onPolicy(policy);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Variables variables) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onVariables(variables);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.CallResult result) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onCallResult(result);
         } else if (packet instanceof PhoneUsePackets.State state) {
             PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {
@@ -100,6 +106,7 @@ public final class ClientNetwork {
         ClientSession.reset();
         PhoneHolders.reset();
         dev.blockphone.fabric.client.social.PrivacyClient.reset();
+        dev.blockphone.fabric.client.apps.custom.CustomApps.reset();
     }
 
     /**

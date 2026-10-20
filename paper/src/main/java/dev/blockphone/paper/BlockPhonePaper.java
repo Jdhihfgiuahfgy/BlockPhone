@@ -44,6 +44,7 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
             PaperVoicechat.register(this);
         }
         core = new BlockPhoneServer(this, readSettings(getConfig()));
+        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
         core.start();
         getServer().getMessenger().registerOutgoingPluginChannel(this, BlockPhone.CHANNEL);
         getServer().getMessenger().registerIncomingPluginChannel(this, BlockPhone.CHANNEL, this);
@@ -77,7 +78,15 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
                 c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators, voice, readFilter(c));
+                social, moderators, voice, readFilter(c), readApps(c));
+    }
+
+    private static dev.blockphone.common.apps.AppsSettings readApps(FileConfiguration c) {
+        dev.blockphone.common.apps.AppsSettings a = new dev.blockphone.common.apps.AppsSettings();
+        a.mode = c.getString("apps.mode", a.mode);
+        a.blacklist = c.getStringList("apps.blacklist");
+        a.whitelist = c.getStringList("apps.whitelist");
+        return a.fixNulls();
     }
 
     private static dev.blockphone.common.server.filter.FilterSettings readFilter(FileConfiguration c) {
@@ -202,6 +211,55 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
     public boolean hasPermission(UUID player, Permission permission) {
         Player target = Bukkit.getPlayer(player);
         return target != null ? target.hasPermission(permission.node()) : permission.defaultAllowed();
+    }
+
+    @Override
+    public boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+        Player target = Bukkit.getPlayer(player);
+        if (target == null) {
+            return defaultValue;
+        }
+        return target.isPermissionSet(node) ? target.hasPermission(node) : defaultValue || target.isOp();
+    }
+
+    @Override
+    public boolean runCommand(UUID player, String command, boolean console) {
+        Player target = Bukkit.getPlayer(player);
+        if (target == null) {
+            return false;
+        }
+        return Bukkit.dispatchCommand(console ? Bukkit.getConsoleSender() : target, command);
+    }
+
+    private java.lang.reflect.Method papi;
+    private boolean papiChecked;
+
+    /** PlaceholderAPI (%vault_eco_balance% и т. п.), если установлен. */
+    @Override
+    public String placeholders(UUID player, String text) {
+        if (text.indexOf('%') < 0) {
+            return text;
+        }
+        if (!papiChecked) {
+            papiChecked = true;
+            if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+                try {
+                    papi = Class.forName("me.clip.placeholderapi.PlaceholderAPI")
+                            .getMethod("setPlaceholders", org.bukkit.OfflinePlayer.class, String.class);
+                } catch (ReflectiveOperationException e) {
+                    getLogger().warning("PlaceholderAPI found but not usable: " + e);
+                }
+            }
+        }
+        Player target = Bukkit.getPlayer(player);
+        if (papi == null || target == null) {
+            return text;
+        }
+        try {
+            return (String) papi.invoke(null, target, text);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return text;
+        }
     }
 
     @Override

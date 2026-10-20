@@ -106,6 +106,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `SessionPacket` (S→C, id 23; C→S `Refresh` id 24): serverId (постоянный, из таблицы meta), socialEnabled, photoPolicy,
     maxPhotoBytes, maxPhotoSide, rights (битовая маска `SocialData.Rights`), mutedUntil, openReports, maxVoiceSeconds (0 — голосовых нет),
     callsAvailable. Приходит после рукопожатия.
+  - `AppPackets` (id 82–86): S→C `Policy`(mode, blacklist, whitelist, serverApps — у каких приложений есть серверная часть;
+    после рукопожатия и при изменении), C→S `RequestVariables`(app, page) → S→C `Variables`, C→S `Call`(app, function, page,
+    inputs) → S→C `CallResult`(toast, error, navigate, values). Телефон не сообщает серверу список своих приложений.
   - `PrivacyPackets` (id 77–80, обрабатывает `PrivacyService`): C→S Request, Update(Privacy), ListAction(user, blockList, add);
     S→C State(privacy, allowed, blocked). `SocialPackets.UpdateLook` (id 81): avatarType, pose, background, bannerStyle,
     bannerImageId (0 — без фото, −1 — оставить, иначе — загруженное фото, Purpose POST). ProfileInfo несёт `ProfileLook look`,
@@ -135,6 +138,16 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   FeedKind/Role/ReportTarget/NoticeType, `Rights` (биты прав), лимиты (пост 2000, комментарий 500, «о себе» 200, паблик 32/300,
   страница ленты 12, комментариев 30, 10 админов), `PUBLIC_COLORS`.
 - `PacketWriter/Reader` также: UUID, списки (`writeList/readList` с лимитом), `writeNullable/readNullable`, `readString(max)`.
+- `apps/` — свои приложения (инструкция для авторов — **docs/CUSTOM_APPS.md**, копируется в jar и в папки apps):
+  - `AppLoader` → `AppDefinition` — клиентское приложение (папка с app.json + icon.png или `<имя>.json`): id, name (перевод),
+    permissions (`AppPermission`: storage, links, clipboard, commands, server — действие без разрешения = ошибка загрузки),
+    pages, действия (у элемента "_a" = «страница:n»), поля ввода, sha256 файла. `AppText` — переводы `{"ru_ru":…}` и
+    подстановки `{имя}` / `{имя|по умолчанию}`. `InputRules` — проверка полей (text/number/player, required, min, max).
+  - `ServerPart` — серверная часть (`<id>.json` или `<id>/server.json` в папке apps сервера): permission, variables (шаблоны
+    с {player}, {uuid}, {online}, %placeholderapi%), functions (inputs — проверка на сервере, command(s), as player|console,
+    toast, error, then). `BlockPhoneApps` — Java-API: `handler(appId, AppHandler{variables, call})`, `register(json)`.
+  - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки id или «sha256:…»; `allowed(...)` — общая для
+    клиента и сервера. `AppResult` — итог функции (toast, error, navigate).
 - `server/` — серверная логика для всех платформ:
   - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → `Backend.onJoin`,
     остальное → `Backend.handle`); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно,
@@ -165,6 +178,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     приходит вызов; принявшие входят в группу; не ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён.
     Тик каждые 5 с (планировщик бэкенда). Вышел из группы через меню SVC — `leftGroup`.
   - `RateLimiter` — «не больше N за окно» по игроку.
+  - `AppService` (в `BlockPhoneServer`, без базы) — серверные части из папки apps (`setAppsDirectory` до start; проверка папки
+    каждые 5 с, README.txt + CUSTOM_APPS.md при создании) и из `BlockPhoneApps`; политика `settings.apps()`; переменные и
+    функции — в главном потоке (`platform.runOnMain`), лимит 12 вызовов / 6 с, команды пишутся в лог `[apps]`.
+    `ServerPlatform`: `hasPermissionNode(uuid, node, default)`, `runCommand(uuid, command, console)`, `placeholders(uuid, text)`
+    (PlaceholderAPI на Paper через отражение; softdepend).
   - `PrivacyService` — таблицы `privacy` и `privacy_lists` (kind 0 — «всегда можно», 1 — заблокирован; игрок только в одном списке);
     `allows(owner, other, Kind)`: списки важнее настроек, FOLLOWING/MUTUAL — по таблице follows. Проверки: новая личка
     (OpenDirect), сообщение/фото/голосовое в личном чате (`MessengerService.directAllowed`), приглашения в группу при создании и
@@ -196,7 +214,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   с события JOIN (в JOIN игрок ещё не в списке игроков сервера — отправка через `getPlayerList()` теряла приветствие).
 - `server/FabricServerHandler` — права: fabric-permissions-api (LuckPerms) через отражение, иначе обычные — у всех,
   модераторские — у операторов уровня 2+ (`player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)`).
-- `server/FabricServerConfig` — `config/blockphone/server.json`: filter{...} (как FilterSettings), messengerEnabled, phoneInHandVisible, social{enabled, photos,
+- `server/FabricServerConfig` — `config/blockphone/server.json`: apps{mode, blacklist, whitelist}, filter{...} (как FilterSettings), messengerEnabled, phoneInHandVisible, social{enabled, photos,
   maxPhotoKb, maxPhotoSide, maxPublicsPerPlayer}, moderators[], voice{messages, maxSeconds, calls, callGroupType}, storage{type,host,port,...}.
 - Simple Voice Chat: точка входа `voicechat` в fabric.mod.json → `SvcPlugin` (из common); главный поток для SVC — `server::execute`.
   База H2: `<папка сервера>/blockphone/messenger.mv.db`.
@@ -353,12 +371,21 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `phone/PhoneInHandLayer` (слой игрока через `LivingEntityFeatureRendererRegistrationCallback`; флаг в состоянии отрисовки —
   `RenderStateDataKey`; модель-коробка 3×6×0,5 пикс., текстура `textures/entity/phone_in_hand.png` из gen_icons.py),
   миксины `AvatarRendererMixin` (флаг, предмет главной руки не рисуется) и `HumanoidModelMixin` (рука поднята) — действуют всегда.
-- `dev/DevShots` — автоскриншоты (см. выше). Сценарий `hand` — только общая часть с миром (снимок `world_phone_in_hand`). Экран блокировки на время сценариев выключается (снимок — `lock_screen` в design).
+- `apps/custom/` — клиентские приложения: `CustomApps` (папка `blockphone/apps/`, перечитывается при изменении, не чаще раза
+  в 2 с; политика сервера; иконки как DynamicTexture; id на телефоне `app.<id>`), `CustomApp` (страницы и элементы: text, title,
+  card, row, button, buttons, input, list, progress, divider, spacer; "if"/"unless"; действия open/back/refresh/close/toast/
+  confirm/then, set/add (хранилище), copy, url и command — всегда с подтверждением, command не чаще 1/с, server → Call),
+  `AppStorage` (`blockphone/appdata/<id>.json`, 200 значений, 64 КБ). Защита: приложению видны только свои страницы,
+  хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
+  ленты/музыки/Telegram. `AppRegistry.visible()` добавляет их на рабочий стол (Entry.custom, `label()`); «Настройки →
+  Свои приложения» (страница APPS: разрешения, статус на сервере, хэш — копируется, ошибки, «Открыть папку»).
+- `dev/DevShots` — автоскриншоты (см. выше). Сценарий `apps` (+ BLOCKPHONE_DEV_MESSENGER=1): «Кликер», «Банк» из docs/examples
+  с Java-обработчиком на встроенном сервере, подтверждения, отключённое приложение, страница настроек. Сценарий `hand` — только общая часть с миром (снимок `world_phone_in_hand`). Экран блокировки на время сценариев выключается (снимок — `lock_screen` в design).
 
 ### paper (`dev.blockphone.paper`)
 - `BlockPhonePaper` — `JavaPlugin` + `ServerPlatform`: канал `blockphone:main`; приветствие один раз — на `PlayerJoinEvent`
   (если канал уже объявлен) или на `PlayerRegisterChannelEvent`; отправка в главный поток через планировщик.
-- `config.yml`: `filter.*` (автомодерация, с комментариями), `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
+- `config.yml`: `apps.*` (mode, blacklist, whitelist), `filter.*` (автомодерация, с комментариями), `messenger.enabled`, `phone-in-hand.visible`, `social.*` (enabled, photos, max-photo-kb, max-photo-side,
   max-publics-per-player), `voice.*` (messages, max-seconds, calls, call-group-type), `moderators`, `storage.type` (h2/mysql),
   `storage.table-prefix`, `storage.mysql.*`. Simple Voice Chat: `softdepend: [voicechat]`, регистрация через `PaperVoicechat`
   (`BukkitVoicechatService`); главный поток для SVC — планировщик Bukkit (`runOnMain`).
@@ -422,6 +449,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 
 Принятые доп. функции (✅ все сделаны, 0.7.1–0.7.4): BungeeCord, экран блокировки и уведомления, режим «на ходу», телефон в руке
 виден другим (выключатель `phoneInHandVisible`/`phone-in-hand.visible`, предмет в руке не меняется, работает и на Paper/прокси).
-Доп. после плана: текст песни в мире (0.7.5).
+Доп. после плана: текст песни в мире (0.7.5), оформления виджета музыки (0.7.6), автомодерация (0.7.7), приватность и
+личная страница (0.7.8), свои приложения с серверными частями (0.8.0, docs/CUSTOM_APPS.md).
 Отклонено пока: геометки в чатах, команды для игроков без мода.
 Одиночная игра = только клиентские функции (мессенджер шлётся только с выделенного сервера).

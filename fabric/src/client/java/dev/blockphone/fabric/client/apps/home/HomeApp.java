@@ -62,7 +62,7 @@ public final class HomeApp extends PhoneApp {
                 PhoneDraw.roundedRect(g, bx, y - 3, (int) (bx + bw), y + 6, 4, PhoneTheme.danger());
                 PhoneDraw.centeredText(g, count, bx + bw / 2f, y - 1, 0xFFFFFFFF, 0.6f, false);
             }
-            String label = PhoneDraw.ellipsize(PhoneLang.tr("app." + entry.id()), CELL_W, 0.6f);
+            String label = PhoneDraw.ellipsize(entry.label(), CELL_W, 0.6f);
             PhoneDraw.centeredText(g, label, x + ICON / 2f, y + ICON + 3, 0xFFFFFFFF, 0.6f, true);
         }
     }

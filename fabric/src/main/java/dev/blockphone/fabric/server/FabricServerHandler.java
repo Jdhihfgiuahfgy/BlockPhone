@@ -41,6 +41,7 @@ public final class FabricServerHandler {
             // Simple Voice Chat: действия с группами — в потоке сервера.
             dev.blockphone.common.voice.VoiceBridges.setMainThread(server::execute);
             core = new BlockPhoneServer(new FabricPlatform(server), config.toSettings());
+            core.setAppsDirectory(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("blockphone").resolve("apps"));
             core.start();
         });
 
@@ -138,6 +139,35 @@ public final class FabricServerHandler {
                 }
             }
             return fallback;
+        }
+
+        @Override
+        public boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+            ServerPlayer target = PLAYERS.get(player);
+            if (target == null) {
+                return defaultValue;
+            }
+            boolean fallback = defaultValue || target.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
+            if (PERMISSIONS_CHECK != null) {
+                try {
+                    return (boolean) PERMISSIONS_CHECK.invoke(null, target, node, fallback);
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    BlockPhoneFabric.LOGGER.warn("Permission check failed for {}", node, e);
+                }
+            }
+            return fallback;
+        }
+
+        /** Команда как из чата игрока (его права) или из консоли сервера. */
+        @Override
+        public boolean runCommand(UUID player, String command, boolean console) {
+            ServerPlayer target = PLAYERS.get(player);
+            if (target == null || target.hasDisconnected()) {
+                return false;
+            }
+            server.getCommands().performPrefixedCommand(console ? server.createCommandSourceStack() : target.createCommandSourceStack(),
+                    command);
+            return true;
         }
 
         @Override

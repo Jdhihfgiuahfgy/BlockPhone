@@ -4,6 +4,9 @@
 dependencies {
     // Интеграция с Simple Voice Chat (группы для звонков) — только интерфейсы, сам мод ставит игрок/админ.
     compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
+    // Свои приложения (JSON): Gson есть во всех платформах (Minecraft, Paper, Velocity, BungeeCord).
+    compileOnly "com.google.code.gson:gson:${rootProject.gson_version}"
+    testImplementation "com.google.code.gson:gson:${rootProject.gson_version}"
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
     testRuntimeOnly "com.h2database:h2:${rootProject.h2_version}"
@@ -11,4 +14,11 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+// Инструкция по своим приложениям кладётся в jar — сервер копирует её в папку apps при первом запуске.
+processResources {
+    from(rootProject.file('docs/CUSTOM_APPS.md')) {
+        into 'blockphone/apps'
+    }
 }

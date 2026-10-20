@@ -3,6 +3,7 @@ package dev.blockphone.common.protocol;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
 import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
+import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.PrivacyPackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
@@ -115,6 +116,12 @@ public final class Packets {
         register(79, PrivacyPackets.Update.class, PrivacyPackets.Update::read);
         register(80, PrivacyPackets.ListAction.class, PrivacyPackets.ListAction::read);
         register(81, SocialPackets.UpdateLook.class, SocialPackets.UpdateLook::read);
+        // Свои приложения
+        register(82, AppPackets.Policy.class, AppPackets.Policy::read);
+        register(83, AppPackets.RequestVariables.class, AppPackets.RequestVariables::read);
+        register(84, AppPackets.Variables.class, AppPackets.Variables::read);
+        register(85, AppPackets.Call.class, AppPackets.Call::read);
+        register(86, AppPackets.CallResult.class, AppPackets.CallResult::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

@@ -22,6 +22,24 @@ public interface ServerPlatform {
         return permission.defaultAllowed();
     }
 
+    /** Право по произвольному узлу (свои приложения: "permission"). defaultValue — если система прав узел не знает. */
+    default boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+        return defaultValue;
+    }
+
+    /**
+     * Выполнить команду (без «/») от имени игрока или консоли. Вызывается в главном потоке.
+     * false — платформа не умеет или игрока нет.
+     */
+    default boolean runCommand(UUID player, String command, boolean console) {
+        return false;
+    }
+
+    /** Подставить плейсхолдеры платформы (PlaceholderAPI на Paper). Вызывается в главном потоке. */
+    default String placeholders(UUID player, String text) {
+        return text;
+    }
+
     /** Выполнить в главном потоке сервера (для Simple Voice Chat). По умолчанию — сразу. */
     default void runOnMain(Runnable task) {
         task.run();

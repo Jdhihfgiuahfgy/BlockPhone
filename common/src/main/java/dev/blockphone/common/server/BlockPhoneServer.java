@@ -5,6 +5,7 @@ import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.ProtocolException;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
+import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 
@@ -28,6 +29,8 @@ public final class BlockPhoneServer {
     private final Map<UUID, String> modded = new ConcurrentHashMap<>();
     /** Кто сейчас с телефоном в руках (для «телефона в руке» у других). */
     private final java.util.Set<UUID> phoneUsers = ConcurrentHashMap.newKeySet();
+    private final AppService apps;
+    private java.nio.file.Path appsDir;
 
     public BlockPhoneServer(ServerPlatform platform, ServerSettings settings) {
         this(platform, settings, dev.blockphone.common.voice.VoiceBridges::current);
@@ -39,12 +42,23 @@ public final class BlockPhoneServer {
         this.platform = platform;
         this.settings = settings;
         this.backend = settings.backendEnabled() ? new Backend(platform, settings, bridges) : null;
+        this.apps = new AppService(platform, settings.apps(), modded);
+    }
+
+    /** Папка своих приложений (вызвать до {@link #start()}; null — только приложения плагинов). */
+    public void setAppsDirectory(java.nio.file.Path dir) {
+        this.appsDir = dir;
+    }
+
+    public AppService apps() {
+        return apps;
     }
 
     public void start() {
         if (backend != null) {
             backend.start();
         }
+        apps.start(appsDir);
         platform.info("BlockPhone server started (" + platform.name() + ", protocol " + BlockPhone.PROTOCOL_VERSION
                 + ", messenger " + (settings.messengerEnabled() ? "on" : "off")
                 + ", feed " + (settings.social().enabled() ? "on, photos " + settings.social().photos() : "off")
@@ -52,6 +66,7 @@ public final class BlockPhoneServer {
     }
 
     public void stop() {
+        apps.stop();
         if (backend != null) {
             backend.stop();
         }
@@ -121,6 +136,13 @@ public final class BlockPhoneServer {
             }
             if (backend != null) {
                 backend.onJoin(player, name);
+            }
+            apps.sendPolicy(player);
+            return;
+        }
+        if (packet.getClass().getEnclosingClass() == AppPackets.class) {
+            if (modded.containsKey(player)) {
+                apps.handle(player, packet);
             }
             return;
         }

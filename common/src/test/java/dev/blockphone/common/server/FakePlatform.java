@@ -32,6 +32,25 @@ final class FakePlatform implements ServerPlatform {
         inbox.computeIfAbsent(player, k -> new CopyOnWriteArrayList<>()).add(Packets.decode(data));
     }
 
+    /** Команды, выполненные приложениями: «player /…» или «console /…». */
+    final List<String> commands = new CopyOnWriteArrayList<>();
+
+    @Override
+    public boolean runCommand(UUID player, String command, boolean console) {
+        commands.add((console ? "console /" : "player /") + command);
+        return !command.startsWith("fail");
+    }
+
+    @Override
+    public String placeholders(UUID player, String text) {
+        return text.replace("%test_balance%", "500");
+    }
+
+    @Override
+    public boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+        return !node.equals("test.denied") && defaultValue | node.equals("test.allowed");
+    }
+
     @Override
     public boolean hasPermission(UUID player, Permission permission) {
         if (denied.getOrDefault(player, Set.of()).contains(permission)) {

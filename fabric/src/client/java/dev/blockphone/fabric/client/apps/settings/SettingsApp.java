@@ -40,7 +40,7 @@ public final class SettingsApp extends PhoneApp {
     private static final int ROW_H = 20;
     private static final int MARGIN = 6;
 
-    private enum Page { MAIN, ACCENT, WALLPAPER, HUD }
+    private enum Page { MAIN, ACCENT, WALLPAPER, HUD, APPS }
 
     /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. */
     private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
@@ -73,6 +73,7 @@ public final class SettingsApp extends PhoneApp {
             case ACCENT -> PhoneLang.tr("settings.accent");
             case WALLPAPER -> PhoneLang.tr("settings.wallpaper");
             case HUD -> PhoneLang.tr("settings.music_hud");
+            case APPS -> PhoneLang.tr("settings.apps");
         };
     }
 
@@ -110,6 +111,10 @@ public final class SettingsApp extends PhoneApp {
         }
         if (next == Page.WALLPAPER) {
             refreshWallpapers();
+        }
+        if (next == Page.APPS) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.ensureFolder();
+            dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
         }
     }
 
@@ -209,6 +214,10 @@ public final class SettingsApp extends PhoneApp {
 
         ServerHelloPacket hello = ClientNetwork.serverHello();
         String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());
+        result.add(new Section("settings.section.apps", List.of(
+                new Row(() -> PhoneLang.tr("settings.apps"),
+                        () -> String.valueOf(dev.blockphone.fabric.client.apps.custom.CustomApps.all().size()),
+                        dir -> open(Page.APPS), null, true))));
         result.add(new Section("settings.section.about", List.of(
                 new Row(() -> PhoneLang.tr("settings.version"), () -> BlockPhoneFabric.VERSION, null, null, false),
                 new Row(() -> PhoneLang.tr("settings.server"), () -> server, null, null, false),
@@ -238,6 +247,7 @@ public final class SettingsApp extends PhoneApp {
             case ACCENT -> renderAccent(g, mouseX, mouseY);
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
             case HUD -> renderHud(g, mouseX, mouseY);
+            case APPS -> renderApps(g, mouseX, mouseY);
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
@@ -531,6 +541,79 @@ public final class SettingsApp extends PhoneApp {
             PhoneDraw.rawRoundedRect(g, x - 2, y - 2, x + w + 2, y + h + 2, 3, PhoneTheme.accent());
         } else if (hovered) {
             PhoneDraw.rawRoundedRect(g, x - 1, y - 1, x + w + 1, y + h + 1, 2, PhoneTheme.border());
+        }
+    }
+
+    // --- Свои приложения ---
+
+    private int renderApps(GuiGraphics g, int mouseX, int mouseY) {
+        int w = contentWidth();
+        int y = 6 - (int) scroll;
+        PhoneDraw.wrapped(g, PhoneLang.tr("settings.apps.intro"), MARGIN + 2, y, w - 2 * MARGIN - 4, PhoneTheme.secondaryText(), 0.6f,
+                false);
+        y += PhoneDraw.wrappedHeight(PhoneLang.tr("settings.apps.intro"), w - 2 * MARGIN - 4, 0.6f) + 6;
+        PhoneDraw.button(g, MARGIN, y, w - 2 * MARGIN, 18, PhoneLang.tr("settings.apps.folder"), mouseX, mouseY,
+                PhoneDraw.ButtonStyle.PRIMARY);
+        hits.add(new Hit(MARGIN, y, w - 2 * MARGIN, 18, dir -> openAppsFolder()));
+        y += 26;
+        List<dev.blockphone.common.apps.AppDefinition> apps = dev.blockphone.fabric.client.apps.custom.CustomApps.all();
+        if (apps.isEmpty()) {
+            PhoneDraw.centeredText(g, PhoneLang.tr("settings.apps.none"), w / 2f, y + 4, PhoneTheme.secondaryText(), 0.7f, false);
+            y += 20;
+        }
+        for (dev.blockphone.common.apps.AppDefinition app : apps) {
+            int top = y;
+            int h = 62;
+            PhoneDraw.card(g, MARGIN, top, w - MARGIN, top + h, false);
+            dev.blockphone.fabric.client.phone.AppRegistry.Entry entry = dev.blockphone.fabric.client.phone.AppRegistry.get(dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX + app.id());
+            if (entry != null) {
+                entry.drawIcon(g, MARGIN + 6, top + 6, 22);
+            }
+            int tx = MARGIN + 34;
+            int tw = w - MARGIN - 6 - tx;
+            String title = dev.blockphone.fabric.client.apps.custom.CustomApps.name(app) + "  " + app.version();
+            PhoneDraw.text(g, PhoneDraw.ellipsize(title, tw, 0.75f), tx, top + 6, PhoneTheme.text(), 0.75f, false);
+            String by = app.author().isEmpty() ? app.id() : app.id() + " · " + app.author();
+            PhoneDraw.text(g, PhoneDraw.ellipsize(by, tw, 0.55f), tx, top + 16, PhoneTheme.secondaryText(), 0.55f, false);
+            boolean allowed = dev.blockphone.fabric.client.apps.custom.CustomApps.allowedHere(app);
+            String status = PhoneLang.tr(allowed ? "settings.apps.allowed" : "settings.apps.blocked")
+                    + (dev.blockphone.fabric.client.apps.custom.CustomApps.serverPart(app.id()) ? " · " + PhoneLang.tr("settings.apps.server") : "");
+            PhoneDraw.text(g, PhoneDraw.ellipsize(status, tw, 0.55f), tx, top + 25, allowed ? PhoneTheme.online() : PhoneTheme.danger(),
+                    0.55f, false);
+            List<String> perms = new java.util.ArrayList<>();
+            for (dev.blockphone.common.apps.AppPermission p : app.permissions()) {
+                perms.add(PhoneLang.tr("app.perm." + p.key()));
+            }
+            String permText = perms.isEmpty() ? PhoneLang.tr("settings.apps.no_permissions") : String.join(", ", perms);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(PhoneLang.tr("settings.apps.permissions", permText), w - 2 * MARGIN - 12, 0.55f),
+                    MARGIN + 6, top + 36, PhoneTheme.text(), 0.55f, false);
+            String hash = "sha256:" + app.sha256();
+            boolean hover = PhoneDraw.inside(mouseX, mouseY, MARGIN, top + 44, w - 2 * MARGIN, 16);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(hash, w - 2 * MARGIN - 12, 0.5f), MARGIN + 6, top + 48,
+                    hover ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.5f, false);
+            hits.add(new Hit(MARGIN, top + 44, w - 2 * MARGIN, 16, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(hash)));
+            y += h + 6;
+        }
+        List<String> errors = dev.blockphone.fabric.client.apps.custom.CustomApps.errors();
+        if (!errors.isEmpty()) {
+            PhoneDraw.text(g, PhoneLang.tr("settings.apps.errors").toUpperCase(PhoneClock.locale()), MARGIN + 2, y + 3,
+                    PhoneTheme.secondaryText(), 0.6f, false);
+            y += 13;
+            for (String error : errors) {
+                PhoneDraw.wrapped(g, error, MARGIN + 2, y, w - 2 * MARGIN - 4, PhoneTheme.danger(), 0.55f, false);
+                y += PhoneDraw.wrappedHeight(error, w - 2 * MARGIN - 4, 0.55f) + 4;
+            }
+        }
+        return y + 6;
+    }
+
+    private static void openAppsFolder() {
+        try {
+            Files.createDirectories(dev.blockphone.fabric.client.apps.custom.CustomApps.folder());
+            dev.blockphone.fabric.client.apps.custom.CustomApps.ensureFolder();
+            Util.getPlatform().openPath(dev.blockphone.fabric.client.apps.custom.CustomApps.folder());
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("Failed to open apps folder", e);
         }
     }
 

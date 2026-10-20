@@ -54,6 +54,11 @@ public final class PhoneState {
         return created;
     }
 
+    /** Уже созданное приложение (без создания нового); null — не открывалось. */
+    public static PhoneApp existing(String id) {
+        return APPS.get(id);
+    }
+
     /** Телефон закрыли (для экрана блокировки). */
     public static void markClosed() {
         closedAt = System.currentTimeMillis();

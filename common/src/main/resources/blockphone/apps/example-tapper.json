@@ -1,0 +1,39 @@
+{
+  "id": "tapper",
+  "name": {"ru_ru": "Кликер", "en_us": "Tapper"},
+  "version": "1.0",
+  "author": "BlockPhone",
+  "color": "#F29544",
+  "permissions": ["storage"],
+  "start": "main",
+  "pages": {
+    "main": {
+      "title": {"ru_ru": "Кликер", "en_us": "Tapper"},
+      "elements": [
+        {"type": "card", "elements": [
+          {"type": "text", "text": {"ru_ru": "Нажатий", "en_us": "Taps"}, "align": "center", "color": "secondary", "size": "small"},
+          {"type": "text", "text": "{taps|0}", "align": "center", "size": "huge", "color": "accent"},
+          {"type": "progress", "label": {"ru_ru": "До цели 100", "en_us": "Goal: 100"}, "value": "{taps|0}", "max": "100"}
+        ]},
+        {"type": "button", "label": {"ru_ru": "Нажать!", "en_us": "Tap!"}, "style": "primary",
+         "action": {"add": {"taps": 1}}},
+        {"type": "buttons", "items": [
+          {"type": "button", "label": {"ru_ru": "Сбросить", "en_us": "Reset"}, "style": "danger",
+           "action": {"set": {"taps": "0"}, "confirm": {"ru_ru": "Сбросить счётчик?", "en_us": "Reset the counter?"},
+                      "toast": {"ru_ru": "Сброшено", "en_us": "Reset"}}},
+          {"type": "button", "label": {"ru_ru": "О приложении", "en_us": "About"}, "action": {"open": "about"}}
+        ]}
+      ]
+    },
+    "about": {
+      "title": {"ru_ru": "О приложении", "en_us": "About"},
+      "elements": [
+        {"type": "text", "text": {"ru_ru": "Пример приложения BlockPhone. Откройте этот файл в блокноте — по нему легко сделать своё.",
+                                  "en_us": "A sample BlockPhone app. Open this file in a text editor and make your own."}},
+        {"type": "row", "label": {"ru_ru": "Игрок", "en_us": "Player"}, "value": "{player}"},
+        {"type": "row", "label": {"ru_ru": "Сейчас", "en_us": "Now"}, "value": "{date} {time}"},
+        {"type": "button", "label": {"ru_ru": "Назад", "en_us": "Back"}, "action": {"back": true}}
+      ]
+    }
+  }
+}

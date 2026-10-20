@@ -31,6 +31,8 @@ public final class FabricServerConfig {
     public Voice voice = new Voice();
     /** Автомодерация слов и ссылок (описание полей — в FilterSettings и CLAUDE.md). */
     public dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
+    /** Какие клиентские приложения игроков работают на сервере (mode: blacklist | whitelist | none). */
+    public dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
     /** Хранилище переписки, ленты и фото. */
     public Storage storage = new Storage();
 
@@ -73,7 +75,7 @@ public final class FabricServerConfig {
         ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
                 social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
         ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType);
-        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter);
+        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps);
     }
 
     public static FabricServerConfig load() {
@@ -102,6 +104,10 @@ public final class FabricServerConfig {
             config.filter = new dev.blockphone.common.server.filter.FilterSettings();
         }
         config.filter.fixNulls();
+        if (config.apps == null) {
+            config.apps = new dev.blockphone.common.apps.AppsSettings();
+        }
+        config.apps.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }

@@ -46,6 +46,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         List<String> moderators = new ArrayList<>();
         /** Автомодерация слов и ссылок для всей сети. */
         dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
+        /** Какие клиентские приложения игроков работают в сети (mode: blacklist | whitelist | none). */
+        dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         Storage storage = new Storage();
 
         static final class Social {
@@ -83,7 +85,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter));
+                List.copyOf(config.moderators), voice, config.filter, config.apps));
+        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
         core.start();
         getProxy().registerChannel(BlockPhone.CHANNEL);
         getProxy().getPluginManager().registerListener(this, this);
@@ -150,6 +153,10 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             config.filter = new dev.blockphone.common.server.filter.FilterSettings();
         }
         config.filter.fixNulls();
+        if (config.apps == null) {
+            config.apps = new dev.blockphone.common.apps.AppsSettings();
+        }
+        config.apps.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }
@@ -183,6 +190,22 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         }
         ProxiedPlayer target = getProxy().getPlayer(player);
         return target != null && target.hasPermission(permission.node());
+    }
+
+    @Override
+    public boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+        ProxiedPlayer target = getProxy().getPlayer(player);
+        return target != null ? defaultValue || target.hasPermission(node) : defaultValue;
+    }
+
+    /** Команда BungeeCord от игрока или консоли. */
+    @Override
+    public boolean runCommand(UUID player, String command, boolean console) {
+        ProxiedPlayer target = getProxy().getPlayer(player);
+        if (target == null) {
+            return false;
+        }
+        return getProxy().getPluginManager().dispatchCommand(console ? getProxy().getConsole() : target, command);
     }
 
     @Override

@@ -32,7 +32,18 @@ public final class AppRegistry {
      * @param color цвет приложения (оттенок плитки и символа)
      * @param badge число на красном значке иконки (0 — без значка)
      */
-    public record Entry(String id, Supplier<PhoneApp> factory, BooleanSupplier visible, IntSupplier badge, int color) {
+    public record Entry(String id, Supplier<PhoneApp> factory, BooleanSupplier visible, IntSupplier badge, int color,
+                        dev.blockphone.common.apps.AppDefinition custom) {
+        public Entry(String id, Supplier<PhoneApp> factory, BooleanSupplier visible, IntSupplier badge, int color) {
+            this(id, factory, visible, badge, color, null);
+        }
+
+        /** Подпись под иконкой. */
+        public String label() {
+            return custom != null ? dev.blockphone.fabric.client.apps.custom.CustomApps.name(custom)
+                    : dev.blockphone.fabric.client.i18n.PhoneLang.tr("app." + id);
+        }
+
         public Identifier glyph() {
             return Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/glyph/" + id + ".png");
         }
@@ -48,6 +59,22 @@ public final class AppRegistry {
                 int rowColor = PhoneTheme.mix(top, bottom, i / (float) Math.max(1, inner - 1));
                 int inset = i < r - 1 ? cornerInset(r - 1, i) : (i >= inner - (r - 1) ? cornerInset(r - 1, inner - 1 - i) : 0);
                 g.fill(x + 1 + inset, y + 1 + i, x + size - 1 - inset, y + 2 + i, rowColor);
+            }
+            if (custom != null) {
+                // Своё приложение: картинка иконки (PNG) или первая буква названия.
+                Identifier icon = dev.blockphone.fabric.client.apps.custom.CustomApps.icon(custom);
+                if (icon != null) {
+                    int pad = Math.max(2, size / 8);
+                    g.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, icon, x + pad, y + pad, 0, 0, size - 2 * pad,
+                            size - 2 * pad, 1, 1, 1, 1);
+                } else {
+                    String name = dev.blockphone.fabric.client.apps.custom.CustomApps.name(custom);
+                    String letter = name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase();
+                    float scale = size / 16f;
+                    PhoneDraw.centeredText(g, letter, x + size / 2f, y + size / 2f - 4 * scale, PhoneTheme.mix(color, PhoneTheme.WHITE, 0.3f),
+                            scale, false);
+                }
+                return;
             }
             int glyph = Math.round(size * 0.6f);
             int offset = (size - glyph) / 2;
@@ -81,7 +108,11 @@ public final class AppRegistry {
     }
 
     public static List<Entry> visible() {
-        return ENTRIES.stream().filter(e -> e.visible().getAsBoolean()).toList();
+        List<Entry> result = new ArrayList<>(ENTRIES.stream().filter(e -> e.visible().getAsBoolean()).toList());
+        for (dev.blockphone.common.apps.AppDefinition app : dev.blockphone.fabric.client.apps.custom.CustomApps.all()) {
+            result.add(custom(app));
+        }
+        return result;
     }
 
     public static Entry get(String id) {
@@ -90,7 +121,18 @@ public final class AppRegistry {
                 return entry;
             }
         }
+        if (id.startsWith(dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX)) {
+            dev.blockphone.common.apps.AppDefinition app = dev.blockphone.fabric.client.apps.custom.CustomApps.get(
+                    id.substring(dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX.length()));
+            return app != null ? custom(app) : null;
+        }
         return null;
+    }
+
+    /** Клиентское приложение из папки игрока. */
+    private static Entry custom(dev.blockphone.common.apps.AppDefinition app) {
+        String id = dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX + app.id();
+        return new Entry(id, () -> new dev.blockphone.fabric.client.apps.custom.CustomApp(id), () -> true, () -> 0, app.color(), app);
     }
 
     private AppRegistry() {

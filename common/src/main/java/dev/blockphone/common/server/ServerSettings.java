@@ -15,7 +15,13 @@ import java.util.List;
  * @param moderators         ники или UUID игроков с полными правами модератора (на случай, если нет LuckPerms)
  */
 public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social,
-                             List<String> moderators, Voice voice, dev.blockphone.common.server.filter.FilterSettings filter) {
+                             List<String> moderators, Voice voice, dev.blockphone.common.server.filter.FilterSettings filter,
+                             dev.blockphone.common.apps.AppsSettings apps) {
+
+    public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social, List<String> moderators,
+                          Voice voice, dev.blockphone.common.server.filter.FilterSettings filter) {
+        this(messengerEnabled, phoneInHandVisible, storage, social, moderators, voice, filter, new dev.blockphone.common.apps.AppsSettings());
+    }
 
     public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage, Social social, List<String> moderators,
                           Voice voice) {
@@ -24,6 +30,7 @@ public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisibl
 
     public ServerSettings {
         filter = (filter == null ? new dev.blockphone.common.server.filter.FilterSettings() : filter).fixNulls();
+        apps = (apps == null ? new dev.blockphone.common.apps.AppsSettings() : apps).fixNulls();
     }
 
     public ServerSettings(boolean messengerEnabled, boolean phoneInHandVisible, Storage storage) {

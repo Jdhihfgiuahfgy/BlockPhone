@@ -145,6 +145,11 @@ public class PhoneScreen extends Screen {
         }
     }
 
+    /** Закрыть открытый диалог (как «Отмена»). */
+    public void closeDialog() {
+        dialog = null;
+    }
+
     private void show(PhoneApp next) {
         if (app != null && app != next) {
             app.onHidden();

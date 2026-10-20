@@ -102,6 +102,89 @@ public final class DevShots {
         step(delay, mc -> shot(mc, name));
     }
 
+    /**
+     * Свои приложения: «Кликер» из примера, «Банк» из docs/examples с серверной частью на Java (встроенный сервер,
+     * нужен BLOCKPHONE_DEV_MESSENGER=1), подтверждение, отключённое сервером приложение, «Настройки → Свои приложения».
+     */
+    private void planApps() {
+        step(1, mc -> {
+            try {
+                Path apps = dev.blockphone.fabric.client.apps.custom.CustomApps.folder();
+                Files.createDirectories(apps.resolve("bank"));
+                try (var in = DevShots.class.getResourceAsStream("/blockphone/apps/example-tapper.json")) {
+                    Files.write(apps.resolve("tapper.json"), in.readAllBytes());
+                }
+                Path docs = Path.of("..", "..", "docs", "examples", "bank-client", "bank", "app.json");
+                Files.copy(docs, apps.resolve("bank").resolve("app.json"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.writeString(apps.resolve("broken.json"), "{\"pages\": {\"main\": {\"elements\": [{\"type\": \"button\", "
+                        + "\"action\": {\"command\": \"spawn\"}}]}}}");
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] apps: {}", e.toString());
+            }
+            // Серверная часть банка на Java (как в docs/examples/bank-plugin), деньги — в памяти.
+            java.util.Map<UUID, java.math.BigDecimal> money = new java.util.concurrent.ConcurrentHashMap<>();
+            dev.blockphone.common.apps.BlockPhoneApps.handler("bank", new dev.blockphone.common.apps.BlockPhoneApps.AppHandler() {
+                @Override
+                public java.util.Map<String, String> variables(UUID player, String page) {
+                    return java.util.Map.of("balance", money.computeIfAbsent(player, k -> new java.math.BigDecimal("1250")).toPlainString() + " $",
+                            "top1_name", "Notch", "top1_money", "99 000 $", "top2_name", "Alex", "top2_money", "4 200 $");
+                }
+
+                @Override
+                public dev.blockphone.common.apps.AppResult call(UUID player, String function, java.util.Map<String, String> inputs) {
+                    java.math.BigDecimal amount = new java.math.BigDecimal(inputs.get("amount").replace(',', '.'));
+                    money.merge(player, amount.negate(), java.math.BigDecimal::add);
+                    return dev.blockphone.common.apps.AppResult.ok("Отправлено " + amount.toPlainString() + " $ игроку " + inputs.get("to"))
+                            .then("main");
+                }
+            });
+            dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        shot(40, "apps_home");
+        step(1, mc -> phone(mc, p -> p.openApp("app.tapper")));
+        for (int i = 0; i < 7; i++) {
+            step(2, mc -> customApp("tapper", a -> a.debugAct("main:0")));
+        }
+        shot(20, "apps_tapper");
+        step(1, mc -> customApp("tapper", a -> a.debugAct("main:1")));
+        shot(20, "apps_confirm");
+        step(1, mc -> phone(mc, p -> p.goHome()));
+        step(1, mc -> phone(mc, p -> p.openApp("app.bank")));
+        waitFor(mc -> dev.blockphone.fabric.client.network.ClientNetwork.serverHello() != null);
+        shot(60, "apps_bank");
+        step(1, mc -> customApp("bank", a -> a.debugAct("main:0")));
+        step(30, mc -> customApp("bank", a -> {
+            a.debugInput("to", "Alex");
+            a.debugInput("amount", "250");
+        }));
+        shot(20, "apps_bank_transfer");
+        step(1, mc -> customApp("bank", a -> a.debugAct("transfer:0")));
+        shot(20, "apps_bank_confirm");
+        step(1, mc -> phone(mc, p -> {
+            p.closeDialog();
+        }));
+        step(1, mc -> {
+            // Как будто сервер запретил «Кликер».
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onPolicy(new dev.blockphone.common.protocol.packet.AppPackets.Policy(
+                    "blacklist", List.of("tapper"), List.of(), List.of("bank")));
+            phone(mc, p -> p.openApp("app.tapper"));
+        });
+        shot(30, "apps_blocked");
+        step(1, mc -> phone(mc, p -> {
+            p.openApp("settings");
+            settingsPage("apps");
+        }));
+        shot(40, "apps_settings");
+    }
+
+    private static void customApp(String id, Consumer<dev.blockphone.fabric.client.apps.custom.CustomApp> action) {
+        if (PhoneState.existing("app." + id) instanceof dev.blockphone.fabric.client.apps.custom.CustomApp app) {
+            action.accept(app);
+        }
+    }
+
     private static void phone(Minecraft mc, Consumer<PhoneScreen> action) {
         if (mc.screen instanceof PhoneScreen phone) {
             action.accept(phone);
@@ -252,6 +335,8 @@ public final class DevShots {
             planVoice(settings);
         } else if (scenario.equals("telegram")) {
             planTelegram();
+        } else if (scenario.equals("apps")) {
+            planApps();
         } else if (scenario.equals("hand")) {
             // только общая часть (мир, телефон, «на ходу», телефон в руке)
         } else {

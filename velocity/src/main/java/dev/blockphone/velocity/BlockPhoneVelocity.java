@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.7.8",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.8.0",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -67,6 +67,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         List<String> moderators = new ArrayList<>();
         /** Автомодерация слов и ссылок для всей сети. */
         dev.blockphone.common.server.filter.FilterSettings filter = new dev.blockphone.common.server.filter.FilterSettings();
+        /** Какие клиентские приложения игроков работают в сети (mode: blacklist | whitelist | none). */
+        dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         Storage storage = new Storage();
 
         static final class Voice {
@@ -105,7 +107,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
                 config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter));
+                List.copyOf(config.moderators), voice, config.filter, config.apps));
+        core.setAppsDirectory(dataDir.resolve("apps"));
         core.start();
         proxy.getChannelRegistrar().register(CHANNEL);
     }
@@ -172,6 +175,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             config.filter = new dev.blockphone.common.server.filter.FilterSettings();
         }
         config.filter.fixNulls();
+        if (config.apps == null) {
+            config.apps = new dev.blockphone.common.apps.AppsSettings();
+        }
+        config.apps.fixNulls();
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {
@@ -199,6 +206,23 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             Tristate value = p.getPermissionValue(permission.node());
             return value == Tristate.UNDEFINED ? permission.defaultAllowed() : value.asBoolean();
         }).orElse(permission.defaultAllowed());
+    }
+
+    @Override
+    public boolean hasPermissionNode(UUID player, String node, boolean defaultValue) {
+        return proxy.getPlayer(player).map(p -> {
+            Tristate value = p.getPermissionValue(node);
+            return value == Tristate.UNDEFINED ? defaultValue : value.asBoolean();
+        }).orElse(defaultValue);
+    }
+
+    /** Команда прокси (Velocity и плагины прокси) от игрока или консоли. */
+    @Override
+    public boolean runCommand(UUID player, String command, boolean console) {
+        return proxy.getPlayer(player).map(p -> {
+            proxy.getCommandManager().executeAsync(console ? proxy.getConsoleCommandSource() : p, command);
+            return true;
+        }).orElse(false);
     }
 
     @Override

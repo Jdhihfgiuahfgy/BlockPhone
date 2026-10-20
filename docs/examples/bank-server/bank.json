@@ -1,0 +1,26 @@
+{
+  "id": "bank",
+  "permission": "",
+  "variables": {
+    "balance": "%vault_eco_balance_formatted%",
+    "top1_name": "%essentials_baltop_player_1%",
+    "top1_money": "%essentials_baltop_balance_formatted_1%",
+    "top2_name": "%essentials_baltop_player_2%",
+    "top2_money": "%essentials_baltop_balance_formatted_2%",
+    "top3_name": "%essentials_baltop_player_3%",
+    "top3_money": "%essentials_baltop_balance_formatted_3%"
+  },
+  "functions": {
+    "transfer": {
+      "inputs": {
+        "to": {"kind": "player", "required": true},
+        "amount": {"kind": "number", "min": 1, "max": 1000000, "required": true}
+      },
+      "command": "pay {to} {amount}",
+      "as": "player",
+      "toast": {"ru_ru": "Перевод {amount} игроку {to} отправлен", "en_us": "Sent {amount} to {to}"},
+      "error": {"ru_ru": "Перевод не выполнен", "en_us": "Transfer failed"},
+      "then": "main"
+    }
+  }
+}
