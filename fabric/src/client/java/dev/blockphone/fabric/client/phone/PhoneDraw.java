@@ -56,6 +56,17 @@ public final class PhoneDraw {
     }
 
     /** Панель-карточка в цветах темы (под курсором — светлее). */
+    /**
+     * Контур в 1 пиксель четырьмя заливками — учитывает сдвиг и масштаб телефона. (Встроенный контур Minecraft в 1.21.10
+     * рисуется отдельно и без масштаба — оказывался в углу экрана.)
+     */
+    public static void outline(GuiGraphics g, int x, int y, int w, int h, int color) {
+        g.fill(x, y, x + w, y + 1, color);
+        g.fill(x, y + h - 1, x + w, y + h, color);
+        g.fill(x, y + 1, x + 1, y + h - 1, color);
+        g.fill(x + w - 1, y + 1, x + w, y + h - 1, color);
+    }
+
     public static void card(GuiGraphics g, int x1, int y1, int x2, int y2, boolean hovered) {
         panel(g, x1, y1, x2, y2, hovered ? PhoneTheme.cardHover() : PhoneTheme.card());
     }

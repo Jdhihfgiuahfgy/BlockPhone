@@ -343,7 +343,7 @@ public class PhoneScreen extends Screen {
         }
         // Батарейка.
         int bx = SCREEN_W - 22;
-        g.renderOutline(bx, 4, 13, 7, color);
+        PhoneDraw.outline(g, bx, 4, 13, 7, color);
         g.fill(bx + 13, 6, bx + 14, 9, color);
         g.fill(bx + 2, 6, bx + 11, 9, PhoneTheme.accent());
     }
@@ -382,7 +382,7 @@ public class PhoneScreen extends Screen {
         }
         // «Домой» — квадратик с рамкой.
         int hx = homeX + NAV_BUTTON_W / 2 - 3;
-        g.renderOutline(hx, cy - 3, 7, 7, color);
+        PhoneDraw.outline(g, hx, cy - 3, 7, 7, color);
     }
 
     // --- Ввод ---

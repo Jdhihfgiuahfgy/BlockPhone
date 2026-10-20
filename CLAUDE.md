@@ -454,7 +454,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   в `fabric-1.21.10/build/ported/` и заменяет имена, которые в 1.21.11 переименовали (список `LEGACY_RENAMES` в
   `fabric-1.21.10/build.gradle`: Identifier→ResourceLocation, `net.minecraft.util.Util`→`net.minecraft.Util`,
   `model.player.PlayerModel`→`model.PlayerModel`, `RenderTypes`→`RenderType`, `.identifier()`→`.location()`,
-  `camera.yRot()`→`getYRot()`, `renderOutline`→`submitOutline`, `rightHandItemState`→`rightHandItem`,
+  `camera.yRot()`→`getYRot()`, `renderOutline`→`submitOutline` (не использовать: в 1.21.10 рисуется без матрицы — только
+  `PhoneDraw.outline`), `rightHandItemState`→`rightHandItem`,
   `hasControlDownWithQuirk`→`hasControlDown`, пакет gamerules). Ресурсы — общие (fabric.mod.json: minecraft 1.21.10).
 - Если различие не сводится к переименованию — маленький класс-«переходник» в `fabric/`, а его вариант для 1.21.10 — по тому
   же пути в `fabric-1.21.10/src/` (подменяет общий при сборке): `fabric/compat/Compat` (оператор: `permissions()` /
