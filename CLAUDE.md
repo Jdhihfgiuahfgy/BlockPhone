@@ -380,8 +380,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
     (`TrackTags.Tags.lyrics`) → LRCLIB: `/api/get-cached` → `/api/search` по полям → `/api/search?q=` → `/api/get` (медленный,
     внешние источники); название чистится (`cleanTitle`), исполнитель — первый (`mainArtist`); текст с временем строк и длиной ±4 с
-    (`bestSynced`), иначе обычный; кэш `blockphone/cache/lyrics/<sha1>.v3.lrc`, пустой файл — нет текста; ошибка сети не
-    кэшируется, повторы через 3/8/20 с; свой пул потоков «BlockPhone Lyrics»; следующий трек очереди — заранее; `seekTo(line)`); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
+    (`bestSynced`), иначе обычный; кэш `blockphone/cache/lyrics/<sha1>.v3.lrc`, пустой файл — нет текста; кэшируется, только если есть время строк или
+    ответили все запросы; «не нашли» и текст без времени ищутся заново через 12 ч; ошибка сети — повторы 3/8/20/45 с, обычный текст
+    виден сразу; треки Яндекса — сначала текст самого Яндекса: `YandexApi.lyrics` (`/tracks/<id>/lyrics?format=LRC`, подпись
+    HMAC-SHA256 «id+ts» ключом из yandex-music-api; кэш `yandex_<id>.v1.lrc`); свой пул потоков «BlockPhone Lyrics»; следующий трек очереди — заранее; `seekTo(line)`); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
     `commandQueue().submitText`, полная яркость, обводка): место — `place()`: от `lyricsDistance` ближе по 0,5 блока и выше
     (`LIFTS`), пока прямоугольник текста свободен от блоков с хитбоксом (`free`) и виден (`clip`); масштаб — по фактическому
     расстоянию; строка шире 190 px — в два ряда (`layout`); строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и

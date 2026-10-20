@@ -313,6 +313,15 @@ public final class YandexMusic {
     /** Файл трека (скачивается при первом проигрывании). Вызывается из потока воспроизведения. */
     public static Path download(Track track) throws TrackSourceException {
         String id = track.remoteId() != null ? track.remoteId().split(":")[0] : track.key().substring("yandex:".length());
+        // Один трек качается один раз: второй поток (предзагрузка/повтор) ждёт и берёт готовый файл.
+        synchronized (DOWNLOAD_LOCKS.computeIfAbsent(id, k -> new Object())) {
+            return downloadLocked(id);
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<String, Object> DOWNLOAD_LOCKS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Path downloadLocked(String id) throws TrackSourceException {
         Path dir = ClientFiles.root().resolve("cache").resolve("music");
         Path file = dir.resolve("yandex_" + id.replaceAll("[^0-9A-Za-z]", "_") + ".mp3");
         if (Files.isRegularFile(file)) {

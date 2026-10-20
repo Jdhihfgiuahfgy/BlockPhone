@@ -58,6 +58,44 @@ public final class YandexApi {
                 "Accept-Language", "ru", "User-Agent", "Yandex-Music-API");
     }
 
+    /** Ключ подписи запроса текста песни (тот же, что в открытой библиотеке yandex-music-api). */
+    private static final String LYRICS_SIGN_KEY = "p93jhgh689SBReK6ghtw62";
+
+    /**
+     * Текст песни из Яндекса в формате LRC (с временем строк); «» — у трека текста нет (или он недоступен аккаунту).
+     * Ошибка сети — исключение.
+     */
+    public String lyrics(String trackId) throws IOException {
+        long ts = System.currentTimeMillis() / 1000;
+        String path = "/tracks/" + trackId + "/lyrics?format=LRC&timeStamp=" + ts + "&sign=" + Http.encode(lyricsSign(trackId + ts));
+        Http.Response response = Http.request("GET", API + path, headers(), null);
+        if (response.code() >= 500) {
+            throw new IOException("HTTP " + response.code());
+        }
+        if (!response.ok()) {
+            return ""; // 400/403/404 — текста нет или нужна подписка
+        }
+        JsonObject result = JsonParser.parseString(response.body()).getAsJsonObject().getAsJsonObject("result");
+        if (result == null || !result.has("downloadUrl") || result.get("downloadUrl").isJsonNull()) {
+            return "";
+        }
+        Http.Response file = Http.get(result.get("downloadUrl").getAsString(), Map.of(), 5_000, 10_000);
+        if (!file.ok()) {
+            throw new IOException("HTTP " + file.code());
+        }
+        return file.body();
+    }
+
+    static String lyricsSign(String message) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(LYRICS_SIGN_KEY.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return java.util.Base64.getEncoder().encodeToString(mac.doFinal(message.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     private JsonObject get(String path) throws IOException {
         return check(Http.request("GET", API + path, headers(), null));
     }

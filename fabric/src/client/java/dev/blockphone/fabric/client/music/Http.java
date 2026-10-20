@@ -116,26 +116,37 @@ public final class Http {
                     return new Download(code, 0, type, current);
                 }
                 Files.createDirectories(target.getParent());
-                Path tmp = target.resolveSibling(target.getFileName() + ".part");
+                // Своё имя у каждой загрузки: один трек могут качать сразу два потока (проигрывание и предзагрузка).
+                Path tmp = target.resolveSibling(target.getFileName() + "." + Thread.currentThread().threadId() + "-"
+                        + System.nanoTime() + ".part");
                 long total = 0;
                 // Сервер может прислать сжатое (gzip), хотя мы не просили — распаковываем.
                 boolean gzip = "gzip".equalsIgnoreCase(c.getContentEncoding());
-                try (InputStream raw = c.getInputStream();
-                     InputStream in = gzip ? new java.util.zip.GZIPInputStream(raw) : raw;
-                     OutputStream out = Files.newOutputStream(tmp)) {
-                    byte[] buffer = new byte[64 * 1024];
-                    int n;
-                    while ((n = in.read(buffer)) > 0) {
-                        total += n;
-                        if (total > maxBytes) {
-                            throw new IOException("File too large");
+                try {
+                    try (InputStream raw = c.getInputStream();
+                         InputStream in = gzip ? new java.util.zip.GZIPInputStream(raw) : raw;
+                         OutputStream out = Files.newOutputStream(tmp)) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int n;
+                        while ((n = in.read(buffer)) > 0) {
+                            total += n;
+                            if (total > maxBytes) {
+                                throw new IOException("File too large");
+                            }
+                            out.write(buffer, 0, n);
                         }
-                        out.write(buffer, 0, n);
                     }
-                }
-                if (total > 0) {
-                    Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-                } else {
+                    if (total > 0) {
+                        try {
+                            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                        } catch (IOException e) {
+                            // Тот же файл в этот момент положил другой поток (Windows не даёт заменить) — берём его.
+                            if (!Files.isRegularFile(target) || Files.size(target) == 0) {
+                                throw e;
+                            }
+                        }
+                    }
+                } finally {
                     Files.deleteIfExists(tmp);
                 }
                 return new Download(code, total, type, current);

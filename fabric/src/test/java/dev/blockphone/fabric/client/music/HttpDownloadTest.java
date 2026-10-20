@@ -80,4 +80,32 @@ class HttpDownloadTest {
         assertFalse(Files.exists(target));
         assertNull(null);
     }
+
+    /** Один трек качают сразу несколько потоков (проигрывание и предзагрузка) — временные файлы не мешают друг другу. */
+    @Test
+    void parallelDownloadsOfOneFile() throws Exception {
+        Path target = dir.resolve("same.mp3");
+        String url = "http://127.0.0.1:" + second.getAddress().getPort() + "/file";
+        java.util.List<Thread> threads = new java.util.ArrayList<>();
+        java.util.List<Throwable> errors = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        for (int i = 0; i < 6; i++) {
+            Thread t = new Thread(() -> {
+                try {
+                    Http.download(url, Map.of(), target, 1_000_000);
+                } catch (Throwable e) {
+                    errors.add(e);
+                }
+            });
+            threads.add(t);
+            t.start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+        assertTrue(errors.isEmpty(), errors.toString());
+        assertArrayEquals(AUDIO, Files.readAllBytes(target));
+        try (var files = Files.list(dir)) {
+            assertEquals(1, files.count(), "no .part files left");
+        }
+    }
 }
