@@ -175,7 +175,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 
 ### fabric — клиент (`fabric/src/client`, `dev.blockphone.fabric.client`)
 - `BlockPhoneClient` — клавиши `openPhoneKey` (по умолчанию ↑, категория `key.category.blockphone.main`), `cameraKey`
-  (камера сразу) и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст — Spotify; не назначены);
+  (камера сразу), `compactKey` («на ходу») и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст —
+  Spotify; не назначены); `passMovementThrough` — в режиме «на ходу» клавиши ходьбы/прыжка/приседа/бега передаются игроку
+  (`KeyMapping.setDown` по состоянию клавиатуры), пока приложение не ждёт текст;
   каждый тик `MusicPlayer.tick()` и `Spotify.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
 - `network/ClientNetwork` — приём пакетов (Session → `ClientSession`, SocialPackets → `SocialClient`, фото → `ImageUploads`/
   `RemoteImages`, остальное → `MessengerClient`); `serverHello()`, `messengerAvailable()`, `socialAvailable()`; при выходе с сервера
@@ -189,7 +191,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   результаты поиска, ошибки; `unreadTotal` для значка), `MessengerNotifications` (тост о новом сообщении, если мессенджер не открыт),
   `Avatars` (лицо скина: PlayerInfo с сервера или стандартный скин по UUID; группа — цветной квадрат с буквой).
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
-  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen).
+  darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -202,6 +204,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     Иконка (`Entry.drawIcon`) — плитка-градиент в оттенке цвета приложения + белый символ `textures/gui/glyph/<id>.png`, окрашенный.
   - `PhoneState` — экземпляры приложений и текущее приложение между открытиями телефона; `LOCK` — экран блокировки,
     `markClosed()`/`shouldLock()` (включён в настройках и телефон был закрыт > 15 с или открывается впервые).
+  - Режим «на ходу» (`PhoneScreen.compact()/toggleCompact()`, настройка `compactPhone`): телефон ~60 % высоты окна в правом нижнем
+    углу, без затемнения фона; переключение — клавишей `compactKey` или в настройках.
   - `PhoneNotifications` — центр уведомлений (до 30, ключ для замены/снятия, «что открыть» при нажатии). Добавляют
     `MessengerNotifications`, `SocialNotifications`, `TelegramNotifications`, `CallClient` (пропущенный звонок); снимаются при
     открытии чата/ленты. `PhoneScreen.unlock()`/`locked()`; Esc на экране блокировки закрывает телефон.

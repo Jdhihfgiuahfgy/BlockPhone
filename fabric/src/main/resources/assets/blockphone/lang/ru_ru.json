@@ -478,5 +478,7 @@
   "lock.clear": "Очистить",
   "lock.unlock_hint": "Нажмите, чтобы разблокировать",
   "settings.lock_screen": "Экран блокировки",
-  "call.missed": "Пропущенный звонок"
+  "call.missed": "Пропущенный звонок",
+  "key.blockphone.compact": "Телефон «на ходу»",
+  "settings.compact": "Телефон «на ходу»"
 }

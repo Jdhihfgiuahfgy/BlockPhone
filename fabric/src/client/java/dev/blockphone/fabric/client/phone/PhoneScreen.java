@@ -38,11 +38,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     protected void init() {
-        float fit = (height - 16f) / PHONE_H;
-        // Если места много — масштаб кратен 0.5, чтобы пиксели шрифта были ровными.
-        scale = fit >= 1f ? Math.min(2f, (float) Math.floor(fit * 2) / 2f) : fit;
-        originX = (width - PHONE_W * scale) / 2f;
-        originY = (height - PHONE_H * scale) / 2f;
+        layoutPhone();
         if (app == null) {
             if (PhoneState.shouldLock()) {
                 locked = true;
@@ -51,6 +47,39 @@ public class PhoneScreen extends Screen {
                 show(PhoneState.current());
             }
         }
+    }
+
+    /** Размер и положение телефона: по центру или маленький в правом нижнем углу (режим «на ходу»). */
+    private void layoutPhone() {
+        if (compact()) {
+            scale = Math.max(0.4f, Math.min(1f, height * 0.6f / PHONE_H));
+            originX = width - PHONE_W * scale - 6;
+            originY = height - PHONE_H * scale - 6;
+            return;
+        }
+        float fit = (height - 16f) / PHONE_H;
+        // Если места много — масштаб кратен 0.5, чтобы пиксели шрифта были ровными.
+        scale = fit >= 1f ? Math.min(2f, (float) Math.floor(fit * 2) / 2f) : fit;
+        originX = (width - PHONE_W * scale) / 2f;
+        originY = (height - PHONE_H * scale) / 2f;
+    }
+
+    /** Режим «на ходу»: телефон маленький в углу, фон не затемняется, можно ходить (пока не печатаешь). */
+    public boolean compact() {
+        return PhoneSettings.get().compactPhone;
+    }
+
+    /** Переключить режим «на ходу». */
+    public void toggleCompact() {
+        PhoneSettings settings = PhoneSettings.get();
+        settings.compactPhone = !settings.compactPhone;
+        settings.save();
+        layoutPhone();
+    }
+
+    /** Приложение ждёт ввода текста (тогда клавиши ходьбы не пропускаются в игру). */
+    public boolean capturesKeyboard() {
+        return app != null && app.capturesKeyboard();
     }
 
     /** Снять блокировку: открыть приложение, которое было открыто до блокировки. */
@@ -181,6 +210,9 @@ public class PhoneScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        if (compact()) {
+            return; // «На ходу» мир виден полностью.
+        }
         int alpha = (int) (0x60 * slideProgress());
         g.fillGradient(0, 0, width, height, alpha / 3 << 24, alpha << 24);
     }
@@ -447,6 +479,10 @@ public class PhoneScreen extends Screen {
         }
         if (!app.capturesKeyboard() && BlockPhoneClient.openPhoneKey.matches(event)) {
             closePhone();
+            return true;
+        }
+        if (!app.capturesKeyboard() && BlockPhoneClient.compactKey.matches(event)) {
+            toggleCompact();
             return true;
         }
         return super.keyPressed(event);

@@ -158,7 +158,16 @@ public final class SettingsApp extends PhoneApp {
                         dir -> s.animations = !s.animations, null, false),
                 new Row(() -> PhoneLang.tr("settings.lock_screen"),
                         () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
-                        dir -> s.lockScreen = !s.lockScreen, null, false))));
+                        dir -> s.lockScreen = !s.lockScreen, null, false),
+                new Row(() -> PhoneLang.tr("settings.compact"),
+                        () -> PhoneLang.tr(s.compactPhone ? "settings.on" : "settings.off"),
+                        dir -> {
+                            if (phone != null) {
+                                phone.toggleCompact();
+                            } else {
+                                s.compactPhone = !s.compactPhone;
+                            }
+                        }, null, false))));
         result.add(new Section("settings.section.music", List.of(
                 new Row(() -> PhoneLang.tr("settings.music_hud"),
                         () -> PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off"),

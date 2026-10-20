@@ -42,6 +42,8 @@ public final class PhoneSettings {
     public boolean musicHud = true;
     /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */
     public boolean lockScreen = true;
+    /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
+    public boolean compactPhone = false;
 
     public static PhoneSettings get() {
         if (instance == null) {

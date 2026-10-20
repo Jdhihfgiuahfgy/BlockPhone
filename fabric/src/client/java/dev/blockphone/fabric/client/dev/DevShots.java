@@ -225,6 +225,18 @@ public final class DevShots {
         shot(30, "world_home");
         step(1, mc -> phone(mc, p -> p.openApp("weather")));
         shot(20, "world_weather");
+        // Режим «на ходу»: маленький телефон в углу, мир виден.
+        step(1, mc -> {
+            settings.compactPhone = true;
+            mc.setScreen(null);
+            mc.setScreen(new PhoneScreen());
+        });
+        shot(30, "world_compact");
+        step(1, mc -> {
+            settings.compactPhone = false;
+            mc.setScreen(null);
+            mc.setScreen(new PhoneScreen());
+        });
 
         if (scenario.equals("messenger")) {
             planMessenger(settings);

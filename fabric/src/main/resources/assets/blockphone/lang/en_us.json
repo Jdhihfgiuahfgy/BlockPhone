@@ -478,5 +478,7 @@
   "lock.clear": "Clear",
   "lock.unlock_hint": "Click to unlock",
   "settings.lock_screen": "Lock screen",
-  "call.missed": "Missed call"
+  "call.missed": "Missed call",
+  "key.blockphone.compact": "Phone on the go",
+  "settings.compact": "Phone on the go"
 }

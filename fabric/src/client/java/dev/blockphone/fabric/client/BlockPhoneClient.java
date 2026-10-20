@@ -27,6 +27,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
     /** Сразу открыть/закрыть камеру. По умолчанию не назначена. */
     public static KeyMapping cameraKey;
     /** Музыка: пауза/продолжить, следующий, предыдущий трек (по умолчанию не назначены). */
+    /** Включить/выключить режим «на ходу» (по умолчанию не назначена). */
+    public static KeyMapping compactKey;
     public static KeyMapping musicPlayKey;
     public static KeyMapping musicNextKey;
     public static KeyMapping musicPrevKey;
@@ -39,6 +41,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
         cameraKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.blockphone.camera", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), KEY_CATEGORY));
 
+        compactKey = register("key.blockphone.compact");
         musicPlayKey = register("key.blockphone.music_play");
         musicNextKey = register("key.blockphone.music_next");
         musicPrevKey = register("key.blockphone.music_prev");
@@ -46,6 +49,13 @@ public final class BlockPhoneClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             MusicPlayer.tick();
             Spotify.tick();
+            passMovementThrough(client);
+            while (compactKey.consumeClick()) {
+                if (client.screen == null && client.player != null) {
+                    dev.blockphone.fabric.client.config.PhoneSettings.get().compactPhone = true;
+                    client.setScreen(new PhoneScreen());
+                }
+            }
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
@@ -93,6 +103,24 @@ public final class BlockPhoneClient implements ClientModInitializer {
 
         ClientNetwork.init();
         DevShots.initIfRequested();
+    }
+
+    /**
+     * Режим «на ходу»: пока открыт маленький телефон и не печатаешь, клавиши ходьбы, прыжка, приседа и бега
+     * передаются игроку (обычно экран их перехватывает).
+     */
+    private static void passMovementThrough(net.minecraft.client.Minecraft client) {
+        if (!(client.screen instanceof PhoneScreen phone) || !phone.compact() || phone.capturesKeyboard()) {
+            return;
+        }
+        var options = client.options;
+        for (KeyMapping key : new KeyMapping[]{options.keyUp, options.keyDown, options.keyLeft, options.keyRight, options.keyJump,
+                options.keyShift, options.keySprint}) {
+            InputConstants.Key bound = KeyBindingHelper.getBoundKeyOf(key);
+            if (bound.getType() == InputConstants.Type.KEYSYM && bound.getValue() != InputConstants.UNKNOWN.getValue()) {
+                key.setDown(InputConstants.isKeyDown(client.getWindow(), bound.getValue()));
+            }
+        }
     }
 
     private static KeyMapping register(String name) {
