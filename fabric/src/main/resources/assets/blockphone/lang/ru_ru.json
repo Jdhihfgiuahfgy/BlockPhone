@@ -666,5 +666,8 @@
   "voice.error.daily_limit": "Достигнут предел загрузок за сутки (%s).",
   "music.error.yandex_format": "Яндекс прислал трек не в формате MP3. Подробности — в журнале игры (строка «Yandex track … not downloaded»).",
   "settings.lyrics_outline": "Обводка текста",
-  "settings.lyrics_unsynced": "Текст без времени строк"
+  "settings.lyrics_unsynced": "Текст без времени строк",
+  "music.playlists": "Мои плейлисты",
+  "music.no_playlists": "Плейлистов пока нет",
+  "music.playlist_empty": "В плейлисте нет доступных треков"
 }

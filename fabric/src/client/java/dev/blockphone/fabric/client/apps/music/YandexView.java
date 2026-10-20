@@ -22,6 +22,8 @@ import java.util.List;
 final class YandexView extends MusicView {
     private final TextArea tokenInput = new TextArea(true, 0.7f);
     private final TextArea search = new TextArea(false, 0.75f);
+    /** Что показано под поиском: «Мне нравится» или «Мои плейлисты». */
+    private boolean showPlaylists;
 
     YandexView(MusicApp app) {
         super(app);
@@ -126,6 +128,28 @@ final class YandexView extends MusicView {
         search.setPlaceholder(tr("music.search_placeholder"));
         search.render(g, mx, my);
         int top = sy + 20;
+        if (search.text().isBlank()) {
+            // Переключатель «Мне нравится» / «Мои плейлисты».
+            int half = (w - 16) / 2;
+            PhoneDraw.button(g, 6, top, half, 14, tr("music.liked"), mx, my,
+                    showPlaylists ? PhoneDraw.ButtonStyle.NORMAL : PhoneDraw.ButtonStyle.SELECTED);
+            hit(6, top, half, 14, () -> {
+                showPlaylists = false;
+                scroll = 0;
+            });
+            PhoneDraw.button(g, 10 + half, top, half, 14, tr("music.playlists"), mx, my,
+                    showPlaylists ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+            hit(10 + half, top, half, 14, () -> {
+                showPlaylists = true;
+                scroll = 0;
+                YandexMusic.loadPlaylists();
+            });
+            top += 18;
+            if (showPlaylists) {
+                renderPlaylists(g, mx, my, top);
+                return;
+            }
+        }
         int listMouseY = my >= top ? my : -1000;
         List<Track> list;
         String name;
@@ -155,6 +179,44 @@ final class YandexView extends MusicView {
         }
         endList(g);
         clampScroll((list == null ? 0 : list.size()) * TrackRows.H + 20, height() - top);
+    }
+
+    /** Список своих плейлистов: обложка, название, число треков; нажатие — треки плейлиста. */
+    private void renderPlaylists(GuiGraphics g, int mx, int my, int top) {
+        int w = width();
+        List<YandexApi.Playlist> playlists = YandexMusic.playlists();
+        int listMouseY = my >= top ? my : -1000;
+        beginList(g, top, height());
+        int y = top - (int) scroll;
+        if (playlists == null) {
+            PhoneDraw.text(g, tr("music.loading"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+        } else if (playlists.isEmpty()) {
+            PhoneDraw.text(g, tr("music.no_playlists"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+        } else {
+            for (YandexApi.Playlist playlist : playlists) {
+                int rowH = TrackRows.H;
+                boolean hover = PhoneDraw.inside(mx, listMouseY, 4, y, w - 8, rowH);
+                if (hover) {
+                    PhoneDraw.roundedRect(g, 4, y, w - 4, y + rowH, 4, PhoneTheme.cardHover());
+                }
+                int cs = rowH - 6;
+                dev.blockphone.fabric.client.photo.PhotoTextures.Image cover = dev.blockphone.fabric.client.music.Covers.url(playlist.coverUrl());
+                if (cover != null) {
+                    PhoneDraw.texture(g, cover.id(), 8, y + 3, cs, cs, cover.width(), cover.height());
+                } else {
+                    PhoneDraw.roundedRect(g, 8, y + 3, 8 + cs, y + 3 + cs, 3, PhoneTheme.card());
+                    PhoneDraw.tinted(g, NOTE, 8 + cs / 2 - 5, y + 3 + cs / 2 - 5, 10, 10, 32, 32, PhoneTheme.accent());
+                }
+                PhoneDraw.text(g, PhoneDraw.ellipsize(playlist.title(), w - cs - 24, 0.75f), 14 + cs, y + 5, PhoneTheme.text(), 0.75f, false);
+                PhoneDraw.text(g, tr("music.tracks_count", playlist.trackCount()), 14 + cs, y + 14, PhoneTheme.secondaryText(), 0.6f, false);
+                if (y + rowH > top && y < height()) {
+                    hit(4, Math.max(y, top), w - 8, rowH - Math.max(0, top - y), () -> app.push(new YandexPlaylistView(app, playlist)));
+                }
+                y += rowH;
+            }
+        }
+        endList(g);
+        clampScroll((playlists == null ? 1 : playlists.size()) * TrackRows.H + 10, height() - top);
     }
 
     @Override

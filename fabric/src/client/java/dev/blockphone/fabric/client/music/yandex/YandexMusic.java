@@ -100,6 +100,8 @@ public final class YandexMusic {
     }
 
     public static void logout() {
+        playlists = null;
+        PLAYLIST_TRACKS.clear();
         Accounts.get().yandexToken = "";
         Accounts.save();
         status = Status.NONE;
@@ -145,6 +147,65 @@ public final class YandexMusic {
             loadingLikes = false;
             searching = false;
             startingWave = false;
+        });
+    }
+
+    private static @Nullable List<YandexApi.Playlist> playlists;
+    private static boolean loadingPlaylists;
+    private static final java.util.Map<String, List<Track>> PLAYLIST_TRACKS = new java.util.HashMap<>();
+    private static final Set<String> LOADING_PLAYLISTS = new HashSet<>();
+
+    public static @Nullable List<YandexApi.Playlist> playlists() {
+        return playlists;
+    }
+
+    public static boolean loadingPlaylists() {
+        return loadingPlaylists;
+    }
+
+    /** Загрузить список своих плейлистов (один раз; повторно — после выхода и входа). */
+    public static void loadPlaylists() {
+        if (account == null || loadingPlaylists || playlists != null) {
+            return;
+        }
+        loadingPlaylists = true;
+        YandexApi api = api();
+        String uid = account.uid();
+        ClientFiles.IO.execute(() -> {
+            try {
+                List<YandexApi.Playlist> result = api.playlists(uid);
+                Minecraft.getInstance().execute(() -> {
+                    playlists = result;
+                    loadingPlaylists = false;
+                });
+            } catch (IOException e) {
+                Minecraft.getInstance().execute(() -> loadingPlaylists = false);
+                fail(e);
+            }
+        });
+    }
+
+    public static @Nullable List<Track> playlistTracks(YandexApi.Playlist playlist) {
+        return PLAYLIST_TRACKS.get(playlist.owner() + ":" + playlist.kind());
+    }
+
+    public static void loadPlaylist(YandexApi.Playlist playlist) {
+        String key = playlist.owner() + ":" + playlist.kind();
+        if (account == null || PLAYLIST_TRACKS.containsKey(key) || !LOADING_PLAYLISTS.add(key)) {
+            return;
+        }
+        YandexApi api = api();
+        ClientFiles.IO.execute(() -> {
+            try {
+                List<Track> result = api.playlistTracks(playlist);
+                Minecraft.getInstance().execute(() -> {
+                    PLAYLIST_TRACKS.put(key, result);
+                    LOADING_PLAYLISTS.remove(key);
+                });
+            } catch (IOException e) {
+                Minecraft.getInstance().execute(() -> LOADING_PLAYLISTS.remove(key));
+                fail(e);
+            }
         });
     }
 

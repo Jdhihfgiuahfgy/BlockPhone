@@ -9,17 +9,24 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
 import java.util.List;
 
 /**
- * Текст песни в мире: строка появляется перед игроком (над блоками) и остаётся на месте («в мире») или следует за взглядом;
- * слова возникают по одному в такт песне, последнее — акцентным цветом; закончившаяся строка гаснет и уплывает вверх.
- * Настройки — {@code PhoneSettings.lyrics*}.
+ * Текст песни в мире: строка появляется перед игроком и остаётся на месте («в мире») или следует за взглядом; всегда
+ * повёрнута к игроку. Слова возникают по одному в такт песне, последнее — акцентным цветом; закончившаяся строка гаснет
+ * и уплывает вверх. Длинная строка делится на две.
+ * <p>
+ * Место выбирается так, чтобы текст не попал в блоки: от заданного расстояния ближе (шаг 0,5 блока) и выше, пока весь
+ * прямоугольник текста свободен и до него видно (в пещере текст встанет ближе). Настройки — {@code PhoneSettings.lyrics*}.
  */
 public final class LyricsWorld {
     private static final int FULL_BRIGHT = 0xF000F0;
@@ -27,17 +34,25 @@ public final class LyricsWorld {
     private static final long FADE_MS = 700;
     /** Пикселей шрифта на блок при размере 1..4 и расстоянии 6 блоков. */
     private static final float[] SIZES = {0.018f, 0.026f, 0.036f, 0.05f};
+    /** Строка шире (в пикселях шрифта, с разбросом размеров) — делится на две. */
+    private static final float MAX_ROW = 190;
+    private static final float ROW_GAP = 1.7f;
+    public static final int MAX_DISTANCE = 30;
+    private static final float[] LIFTS = {0.4f, 0.9f, 1.5f, 2.2f, 3.0f};
 
     private static int shownLine = -1;
     private static Vec3 anchor = Vec3.ZERO;
-    private static float yaw;
-    private static float pitch;
+    private static float anchorDist = 6;
+    private static long placedAt;
     private static int fadingLine = -1;
     private static Vec3 fadingAnchor = Vec3.ZERO;
-    private static float fadingYaw;
-    private static float fadingPitch;
+    private static float fadingDist = 6;
     private static long fadingSince;
     private static Lyrics shownFor;
+
+    /** Раскладка строки: размеры и сдвиги слов, номер строки (ряда) для каждого слова, ширины рядов. */
+    record Layout(float[] scale, float[] dy, int[] row, float[] rowWidth, int rows) {
+    }
 
     public static void init() {
         WorldRenderEvents.BEFORE_ENTITIES.register(LyricsWorld::render);
@@ -48,8 +63,7 @@ public final class LyricsWorld {
         PhoneSettings settings = PhoneSettings.get();
         Lyrics lyrics = LyricsService.current();
         if (!settings.lyricsWorld || lyrics == null || (!lyrics.synced() && !settings.lyricsUnsynced) || mc.player == null
-                || mc.options.hideGui
-                || MusicPlayer.state() == MusicPlayer.State.STOPPED) {
+                || mc.level == null || mc.options.hideGui || MusicPlayer.state() == MusicPlayer.State.STOPPED) {
             shownLine = -1;
             fadingLine = -1;
             return;
@@ -60,6 +74,7 @@ public final class LyricsWorld {
             fadingLine = -1;
         }
         Camera camera = mc.gameRenderer.getMainCamera();
+        Font font = mc.font;
         long pos = LyricsService.positionMs();
         long now = System.currentTimeMillis();
         int line = lyrics.lineAt(pos);
@@ -68,20 +83,21 @@ public final class LyricsWorld {
             if (shownLine >= 0) {
                 fadingLine = shownLine;
                 fadingAnchor = anchor;
-                fadingYaw = yaw;
-                fadingPitch = pitch;
+                fadingDist = anchorDist;
                 fadingSince = now;
             }
             shownLine = line;
             if (line >= 0) {
-                place(camera, settings);
+                place(mc, camera, font, lyrics.lines().get(line), line, settings);
+                placedAt = now;
             }
         }
-        if (follow && shownLine >= 0) {
-            place(camera, settings);
+        // «Перед глазами» — место пересчитывается 20 раз в секунду (с той же проверкой блоков).
+        if (follow && shownLine >= 0 && now - placedAt >= 50) {
+            place(mc, camera, font, lyrics.lines().get(shownLine), shownLine, settings);
+            placedAt = now;
         }
 
-        Font font = mc.font;
         PoseStack pose = context.matrices();
         Vec3 cam = camera.position();
         if (fadingLine >= 0 && fadingLine < lyrics.lines().size()) {
@@ -89,42 +105,127 @@ public final class LyricsWorld {
             if (t >= 1) {
                 fadingLine = -1;
             } else {
-                Lyrics.Line l = lyrics.lines().get(fadingLine);
-                drawLine(context, pose, font, cam, fadingAnchor.add(0, t * 0.6, 0), fadingYaw, fadingPitch, l, fadingLine,
-                        Long.MAX_VALUE, 1 - t, settings);
+                drawLine(context, pose, font, cam, fadingAnchor.add(0, t * 0.6, 0), fadingDist, lyrics.lines().get(fadingLine),
+                        fadingLine, Long.MAX_VALUE, 1 - t, settings);
             }
         }
         if (shownLine >= 0) {
-            drawLine(context, pose, font, cam, anchor, yaw, pitch, lyrics.lines().get(shownLine), shownLine, pos, 1, settings);
+            drawLine(context, pose, font, cam, anchor, anchorDist, lyrics.lines().get(shownLine), shownLine, pos, 1, settings);
         }
     }
 
-    /** Точка перед игроком: по направлению взгляда (наклон ограничен), чуть выше глаз. */
-    private static void place(Camera camera, PhoneSettings settings) {
-        yaw = camera.yRot();
-        pitch = Math.max(-25, Math.min(20, camera.xRot()));
-        Vec3 dir = Vec3.directionFromRotation(pitch, yaw);
-        anchor = camera.position().add(dir.scale(Math.max(2, settings.lyricsDistance))).add(0, 0.4, 0);
+    private static float scaleAt(PhoneSettings settings, float distance) {
+        int size = Math.max(1, Math.min(4, settings.lyricsSize));
+        return SIZES[size - 1] * distance / 6f;
     }
 
-    private static void drawLine(WorldRenderContext context, PoseStack pose, Font font, Vec3 cam, Vec3 at, float yaw, float pitch,
+    /** Разложить строку: размеры слов (разброс), сдвиги по высоте и деление на два ряда, если строка длинная. */
+    static Layout layout(Font font, Lyrics.Line line, int index, boolean scatter) {
+        List<Lyrics.Word> words = line.words();
+        int n = words.size();
+        float[] scale = new float[n];
+        float[] dy = new float[n];
+        float[] width = new float[n];
+        int space = font.width(" ");
+        float total = 0;
+        for (int i = 0; i < n; i++) {
+            scale[i] = scatter ? 0.8f + hash(index * 31 + i) * 1.1f : 1f;
+            dy[i] = scatter ? (hash(index * 17 + i * 7 + 3) - 0.5f) * 8f : 0f;
+            width[i] = (font.width(words.get(i).text()) + space) * scale[i];
+            total += width[i];
+        }
+        int[] row = new int[n];
+        if (total <= MAX_ROW || n < 2) {
+            return new Layout(scale, dy, row, new float[]{total}, 1);
+        }
+        // Делим там, где ряды получаются ближе всего по ширине.
+        int split = 1;
+        float best = Float.MAX_VALUE;
+        float left = 0;
+        for (int i = 1; i < n; i++) {
+            left += width[i - 1];
+            float diff = Math.abs(left - (total - left));
+            if (diff < best) {
+                best = diff;
+                split = i;
+            }
+        }
+        float first = 0;
+        for (int i = 0; i < n; i++) {
+            row[i] = i < split ? 0 : 1;
+            if (i < split) {
+                first += width[i];
+            }
+        }
+        return new Layout(scale, dy, row, new float[]{first, total - first}, 2);
+    }
+
+    /**
+     * Место для строки: направление взгляда (наклон −25..20°), от заданного расстояния ближе, на высоте глаз и выше —
+     * первое, где прямоугольник текста не задевает блоки и между ним и игроком нет стены.
+     */
+    private static void place(Minecraft mc, Camera camera, Font font, Lyrics.Line line, int index, PhoneSettings settings) {
+        Layout layout = layout(font, line, index, settings.lyricsScatter);
+        float widest = 0;
+        for (float w : layout.rowWidth()) {
+            widest = Math.max(widest, w);
+        }
+        float maxWordScale = settings.lyricsScatter ? 1.9f : 1f;
+        float textH = (layout.rows() * ROW_GAP) * font.lineHeight * maxWordScale;
+        float yaw = camera.yRot();
+        float pitch = Math.max(-25, Math.min(20, camera.xRot()));
+        Vec3 dir = Vec3.directionFromRotation(pitch, yaw);
+        Vec3 right = Vec3.directionFromRotation(0, yaw + 90);
+        Vec3 eye = camera.position();
+        float wanted = Math.max(2, Math.min(MAX_DISTANCE, settings.lyricsDistance));
+        for (float d = wanted; d >= 1.5f; d -= 0.5f) {
+            float scale = scaleAt(settings, d);
+            double halfW = widest * scale / 2 + 0.2;
+            double halfH = textH * scale / 2 + 0.15;
+            for (float lift : LIFTS) {
+                Vec3 center = eye.add(dir.scale(d)).add(0, lift, 0);
+                if (free(mc.level, center, right, dir, halfW, halfH) && visible(mc, eye, center)) {
+                    anchor = center;
+                    anchorDist = d;
+                    return;
+                }
+            }
+        }
+        // Совсем тесно (узкий лаз) — вплотную перед глазами.
+        anchor = eye.add(dir.scale(1.5));
+        anchorDist = 1.5f;
+    }
+
+    /** Прямоугольник текста (с небольшой толщиной) не задевает блоки с хитбоксом. */
+    private static boolean free(Level level, Vec3 center, Vec3 right, Vec3 forward, double halfW, double halfH) {
+        int stepsW = Math.max(2, (int) Math.ceil(halfW / 0.5));
+        int stepsH = Math.max(1, (int) Math.ceil(halfH / 0.5));
+        for (int iw = -stepsW; iw <= stepsW; iw++) {
+            for (int ih = -stepsH; ih <= stepsH; ih++) {
+                for (double depth : new double[]{-0.3, 0.3}) {
+                    Vec3 p = center.add(right.scale(halfW * iw / stepsW)).add(0, halfH * ih / stepsH, 0).add(forward.scale(depth));
+                    BlockPos bp = BlockPos.containing(p);
+                    if (!level.getBlockState(bp).getCollisionShape(level, bp).isEmpty()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Между глазами и текстом нет стены (иначе текст «за стеной» — его не видно). */
+    private static boolean visible(Minecraft mc, Vec3 eye, Vec3 center) {
+        HitResult hit = mc.level.clip(new ClipContext(eye, center, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
+        return hit.getType() == HitResult.Type.MISS;
+    }
+
+    private static void drawLine(WorldRenderContext context, PoseStack pose, Font font, Vec3 cam, Vec3 at, float distance,
                                  Lyrics.Line line, int index, long pos, float alpha, PhoneSettings settings) {
         List<Lyrics.Word> words = line.words();
-        int size = Math.max(1, Math.min(4, settings.lyricsSize));
-        float scale = SIZES[size - 1] * Math.max(2, settings.lyricsDistance) / 6f;
-        boolean scatter = settings.lyricsScatter;
-
-        // Ширина всей строки — чтобы слова не сдвигались по мере появления.
-        float[] wordScale = new float[words.size()];
-        float[] wordDy = new float[words.size()];
-        float total = 0;
+        Layout layout = layout(font, line, index, settings.lyricsScatter);
+        float scale = scaleAt(settings, distance);
         int space = font.width(" ");
-        for (int i = 0; i < words.size(); i++) {
-            float r = hash(index * 31 + i);
-            wordScale[i] = scatter ? 0.8f + r * 1.1f : 1f;
-            wordDy[i] = scatter ? (hash(index * 17 + i * 7 + 3) - 0.5f) * 10f : 0f;
-            total += (font.width(words.get(i).text()) + space) * wordScale[i];
-        }
         int last = -1;
         for (int i = 0; i < words.size(); i++) {
             if (words.get(i).startMs() <= pos) {
@@ -137,18 +238,26 @@ public final class LyricsWorld {
         // Строка стоит на месте, но всегда повёрнута к игроку (как ник над головой) — читается откуда угодно.
         pose.mulPose(new Quaternionf(Minecraft.getInstance().gameRenderer.getMainCamera().rotation()));
         pose.scale(scale, -scale, scale);
-        float x = -total / 2;
+        float rowStep = font.lineHeight * ROW_GAP * (settings.lyricsScatter ? 1.4f : 1f);
+        float top = -(layout.rows() - 1) * rowStep / 2f;
+        float x = 0;
+        int currentRow = -1;
         for (int i = 0; i < words.size(); i++) {
             Lyrics.Word word = words.get(i);
-            float w = (font.width(word.text()) + space) * wordScale[i];
+            int row = layout.row()[i];
+            if (row != currentRow) {
+                currentRow = row;
+                x = -layout.rowWidth()[row] / 2;
+            }
+            float w = (font.width(word.text()) + space) * layout.scale()[i];
             if (i <= last) {
                 float pop = pos == Long.MAX_VALUE ? 1 : Math.min(1, (pos - word.startMs()) / (float) POP_MS);
-                float s = wordScale[i] * (0.6f + 0.4f * easeOut(pop));
+                float s = layout.scale()[i] * (0.6f + 0.4f * easeOut(pop));
                 float a = alpha * pop;
                 int alphaBits = Math.max(4, Math.round(a * 255)) << 24;
                 int rgb = i == last && pos != Long.MAX_VALUE && settings.lyricsAccentWord ? PhoneTheme.accent() & 0xFFFFFF : 0xFFFFFF;
                 pose.pushPose();
-                pose.translate(x + w / 2, wordDy[i], 0);
+                pose.translate(x + w / 2, top + row * rowStep + layout.dy()[i], 0);
                 pose.scale(s, s, s);
                 FormattedCharSequence text = FormattedCharSequence.forward(word.text(), Style.EMPTY);
                 float half = font.width(word.text()) / 2f;

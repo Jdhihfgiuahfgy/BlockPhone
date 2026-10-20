@@ -533,7 +533,7 @@ public final class DevShots {
                 "[00:01.00]BlockPhone играет в мире",
                 "[00:58.50]Свет фонаря над тихой рекой",
                 "[01:01.20]Камень за камнем <01:02.20>строим <01:02.80>наш <01:03.20>дом",
-                "[01:04.50]Ночь опустилась на сонный лес",
+                "[01:04.50]Ночь опустилась на сонный лес и звёзды горят над тихой рекой у старого дома",
                 "[01:08.00]");
         try (var files = java.nio.file.Files.list(LocalLibrary.dir())) {
             for (Path track : files.filter(f -> f.toString().endsWith(".ogg")).toList()) {
@@ -623,6 +623,35 @@ public final class DevShots {
             MusicPlayer.seek(64_600);
         });
         shot(40, "music_lyrics_view");
+        // Стена в 4 блоках перед игроком, текст на 12 блоков: он должен встать перед стеной, а не в ней; длинная строка — в два ряда.
+        java.util.List<net.minecraft.core.BlockPos> wall = new java.util.ArrayList<>();
+        step(1, mc -> {
+            settings.lyricsMode = "world";
+            settings.lyricsScatter = false;
+            settings.lyricsDistance = 12;
+            net.minecraft.world.phys.Vec3 look = mc.player.getLookAngle().multiply(1, 0, 1).normalize();
+            net.minecraft.world.phys.Vec3 side = new net.minecraft.world.phys.Vec3(-look.z, 0, look.x);
+            net.minecraft.world.phys.Vec3 base = mc.player.getEyePosition().add(look.scale(4));
+            for (int u = -4; u <= 4; u++) {
+                for (int v = -3; v <= 4; v++) {
+                    wall.add(net.minecraft.core.BlockPos.containing(base.add(side.scale(u)).add(0, v, 0)));
+                }
+            }
+            var server = mc.getSingleplayerServer();
+            var dimension = mc.level.dimension();
+            server.execute(() -> wall.forEach(bp -> server.getLevel(dimension).setBlockAndUpdate(bp,
+                    net.minecraft.world.level.block.Blocks.STONE.defaultBlockState())));
+        });
+        step(20, mc -> MusicPlayer.seek(62_000));
+        shot(40, "music_lyrics_wall");
+        step(1, mc -> {
+            var server = mc.getSingleplayerServer();
+            var dimension = mc.level.dimension();
+            server.execute(() -> wall.forEach(bp -> server.getLevel(dimension).setBlockAndUpdate(bp,
+                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState())));
+            settings.lyricsDistance = 6;
+            settings.lyricsScatter = true;
+        });
         // Оформления виджета музыки в разных углах экрана.
         String[][] looks = {{"compact", "top_center", "dark"}, {"large", "top_right", "dark"}, {"minimal", "bottom_left", "dark"},
                 {"cover", "middle_right", "accent"}, {"card", "top_left", "light"}};

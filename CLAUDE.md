@@ -253,7 +253,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
   darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone,
   hudStyle, hudAnchor, hudOffsetX/Y, hudScale, hudOpacity, hudColor, hudShowCover/Artist/Progress/Time/Lyrics/Paused,
-  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..12, lyricsScatter, lyricsAccentWord, lyricsOutline, lyricsUnsynced, lyricsOffsetMs, lyricsOnline).
+  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..30, lyricsScatter, lyricsAccentWord, lyricsOutline, lyricsUnsynced, lyricsOffsetMs, lyricsOnline).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -367,9 +367,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `lyrics/Lyrics` — разбор текста: LRC (`[мм:сс.хх]`, несколько меток, `[offset:]`), расширенный LRC (`<мм:сс.хх>` у слов),
     обычный текст (строки равномерно по треку); слова без времени — пропорционально длине (к 75 % строки); строка не дольше 8 с;
     `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
-    (`TrackTags.Tags.lyrics`) → LRCLIB (`lrclib.net/api/get`; если нет syncedLyrics — `/api/search`: текст с временем строк и длиной ±4 с,
-    иначе обычный; кэш `blockphone/cache/lyrics/<sha1>.v2.lrc`, пустой файл — нет текста; ошибка сети не кэшируется); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
-    `commandQueue().submitText`, полная яркость, обводка): строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
+    (`TrackTags.Tags.lyrics`) → LRCLIB: `/api/get-cached` → `/api/search` по полям → `/api/search?q=` → `/api/get` (медленный,
+    внешние источники); название чистится (`cleanTitle`), исполнитель — первый (`mainArtist`); текст с временем строк и длиной ±4 с
+    (`bestSynced`), иначе обычный; кэш `blockphone/cache/lyrics/<sha1>.v3.lrc`, пустой файл — нет текста; ошибка сети не
+    кэшируется, повторы через 3/8/20 с; свой пул потоков «BlockPhone Lyrics»; следующий трек очереди — заранее; `seekTo(line)`); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
+    `commandQueue().submitText`, полная яркость, обводка): место — `place()`: от `lyricsDistance` ближе по 0,5 блока и выше
+    (`LIFTS`), пока прямоугольник текста свободен от блоков с хитбоксом (`free`) и виден (`clip`); масштаб — по фактическому
+    расстоянию; строка шире 190 px — в два ряда (`layout`); строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
     остаётся или следует за взглядом, всегда повёрнута к камере (`camera.rotation()`); текст без времени строк в мире — только
     при `lyricsUnsynced`; обводка — `lyricsOutline`; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
     гаснет и уплывает вверх. Прячется при F1 и остановке музыки.
@@ -381,7 +385,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
   `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
   поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
-  `QueueView`, `LyricsView` (текст в телефоне, текущая строка по центру; в заголовке — «В мире: вкл/выкл»; `MusicApp.openLyrics()`).
+  `QueueView`, `YandexPlaylistView` (треки плейлиста, «Играть»; в `YandexView` переключатель «Мне нравится»/«Мои плейлисты»,
+  `YandexApi.playlists/playlistTracks`, `YandexMusic.loadPlaylists/loadPlaylist`), `LyricsView` (текст в телефоне, текущая
+  строка по центру, длинные — в два ряда, нажатие — перемотка к строке; в заголовке — «В мире: вкл/выкл»; `MusicApp.openLyrics()`).
   В плеере под громкостью — кнопки «Текст» и «В мире». Иконки `textures/gui/music/*` (gen_icons.py).
 - `camera/` — режим камеры:
   - `CameraMode` — вход/выход, такт (ЛКМ снимок, ПКМ следующий фильтр), клавиши (Esc, ←→↑↓, H, R, G), зум колесом,

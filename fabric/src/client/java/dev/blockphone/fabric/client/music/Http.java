@@ -21,6 +21,21 @@ public final class Http {
         }
     }
 
+    /** GET с собственными тайм-аутами (для быстрых сервисов — не ждать по 30 секунд). */
+    public static Response get(String url, Map<String, String> headers, int connectMs, int readMs) throws IOException {
+        HttpURLConnection c = open("GET", url, headers);
+        c.setConnectTimeout(connectMs);
+        c.setReadTimeout(readMs);
+        try {
+            int code = c.getResponseCode();
+            InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            String body = in == null ? "" : new String(in.readNBytes(4 * 1024 * 1024), StandardCharsets.UTF_8);
+            return new Response(code, body);
+        } finally {
+            c.disconnect();
+        }
+    }
+
     public static Response request(String method, String url, Map<String, String> headers, String formBody) throws IOException {
         HttpURLConnection c = open(method, url, headers);
         if (formBody != null) {

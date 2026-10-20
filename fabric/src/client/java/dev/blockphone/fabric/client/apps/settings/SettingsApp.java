@@ -194,7 +194,7 @@ public final class SettingsApp extends PhoneApp {
                         dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false),
                 new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
                         () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
-                        dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 10) + 3, null, false),
+                        dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 28) + 3, null, false),
                 new Row(() -> PhoneLang.tr("settings.lyrics_scatter"),
                         () -> PhoneLang.tr(s.lyricsScatter ? "settings.on" : "settings.off"),
                         dir -> s.lyricsScatter = !s.lyricsScatter, null, false),

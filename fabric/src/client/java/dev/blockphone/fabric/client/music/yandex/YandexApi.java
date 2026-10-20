@@ -93,6 +93,69 @@ public final class YandexApi {
         return new Account(uid, str(account, "login"), name.isEmpty() ? str(account, "login") : name, plus);
     }
 
+    /** Плейлист пользователя: kind — номер плейлиста у владельца. */
+    public record Playlist(String owner, String kind, String title, int trackCount, @Nullable String coverUrl) {
+    }
+
+    /** Свои плейлисты (созданные пользователем). */
+    public List<Playlist> playlists(String uid) throws IOException {
+        List<Playlist> result = new ArrayList<>();
+        for (JsonElement e : get("/users/" + uid + "/playlists/list").getAsJsonArray("result")) {
+            Playlist p = parsePlaylist(e.getAsJsonObject(), uid);
+            if (p != null) {
+                result.add(p);
+            }
+        }
+        return result;
+    }
+
+    static @Nullable Playlist parsePlaylist(JsonObject o, String fallbackOwner) {
+        String kind = str(o, "kind");
+        if (kind.isEmpty()) {
+            return null;
+        }
+        String owner = o.has("owner") && o.get("owner").isJsonObject() ? str(o.getAsJsonObject("owner"), "uid") : "";
+        String cover = null;
+        if (o.has("cover") && o.get("cover").isJsonObject()) {
+            JsonObject c = o.getAsJsonObject("cover");
+            String uri = str(c, "uri");
+            if (uri.isEmpty() && c.has("itemsUri") && c.get("itemsUri").isJsonArray() && !c.getAsJsonArray("itemsUri").isEmpty()) {
+                uri = c.getAsJsonArray("itemsUri").get(0).getAsString();
+            }
+            cover = uri.isEmpty() ? null : "https://" + uri.replace("%%", "200x200");
+        }
+        return new Playlist(owner.isEmpty() ? fallbackOwner : owner, kind, str(o, "title"),
+                o.has("trackCount") ? o.get("trackCount").getAsInt() : 0, cover);
+    }
+
+    /** Треки плейлиста (по порядку; недоступные пропускаются). */
+    public List<Track> playlistTracks(Playlist playlist) throws IOException {
+        JsonObject result = get("/users/" + playlist.owner() + "/playlists/" + playlist.kind()).getAsJsonObject("result");
+        List<Track> tracks = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
+        if (result.has("tracks") && result.get("tracks").isJsonArray()) {
+            for (JsonElement e : result.getAsJsonArray("tracks")) {
+                JsonObject item = e.getAsJsonObject();
+                if (item.has("track") && item.get("track").isJsonObject()) {
+                    Track t = parseTrack(item.getAsJsonObject("track"));
+                    if (t != null) {
+                        tracks.add(t);
+                    }
+                } else {
+                    String id = str(item, "id");
+                    String album = str(item, "albumId");
+                    if (!id.isEmpty()) {
+                        missing.add(album.isEmpty() ? id : id + ":" + album);
+                    }
+                }
+            }
+        }
+        if (!missing.isEmpty()) {
+            tracks.addAll(tracks(missing));
+        }
+        return tracks;
+    }
+
     /** «Мне нравится»: id треков, затем сами треки пачками. */
     public List<Track> likes(String uid, int limit) throws IOException {
         JsonArray items = get("/users/" + uid + "/likes/tracks").getAsJsonObject("result").getAsJsonObject("library")

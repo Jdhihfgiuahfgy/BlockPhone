@@ -666,5 +666,8 @@
   "voice.error.daily_limit": "Daily upload limit reached (%s).",
   "music.error.yandex_format": "Yandex sent the track in a format other than MP3. Details are in the game log (\"Yandex track … not downloaded\").",
   "settings.lyrics_outline": "Text outline",
-  "settings.lyrics_unsynced": "Lyrics without timing"
+  "settings.lyrics_unsynced": "Lyrics without timing",
+  "music.playlists": "My playlists",
+  "music.no_playlists": "No playlists yet",
+  "music.playlist_empty": "No available tracks in this playlist"
 }
