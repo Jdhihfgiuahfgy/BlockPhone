@@ -34,6 +34,25 @@ abstract class TgView {
     void onHeaderAction() {
     }
 
+    /** Вторая строка шапки (статус собеседника) или null. */
+    String subtitle() {
+        return null;
+    }
+
+    /** Чат, чей аватар показать в шапке, или null. */
+    it.tdlight.jni.TdApi.Chat headerChat() {
+        return null;
+    }
+
+    /** Нажатие на название в шапке. */
+    void onTitleClick() {
+    }
+
+    /** Фон экрана. */
+    int background() {
+        return TgTheme.background();
+    }
+
     void onShown() {
     }
 
@@ -122,7 +141,7 @@ abstract class TgView {
     }
 
     int height() {
-        return app.contentHeight();
+        return app.contentHeight() - TelegramApp.HEADER;
     }
 
     static String tr(String key, Object... args) {

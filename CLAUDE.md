@@ -59,6 +59,8 @@
   телефона», запись «кружочка» из мира (3 с, микрофон выключен) и проверка файла MP4 (в логе); настоящие ключи из accounts.json
   восстанавливаются. Затем поддельный чат (`Telegram.debugInject`): `telegram_chat`, `_menu`, `_reply`, `_stickers`, `_gifs`;
   `fabric/run/blockphone/dev_sticker.webp` (если есть) — WEBP-стикер; в лог — проход Opus внутри игры.
+  Сценарий снимает только свою часть: общие снимки (все приложения в меню, мир, «на ходу») — только `all`/`design`/`hand`.
+  Telegram дополнительно: `telegram_list`, `telegram_viewer`, `telegram_profile`.
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
@@ -352,7 +354,17 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   JCodec FrameGrab → до 8 с по 15 к/с, уменьшенные кадры-текстуры, своя очередь «BlockPhone Animation decoder»; `poster` —
   первый кадр для панели; не декодируется — обложка). Стикеры: `stickerImage` (WEBP — сам файл, TGS/WEBM — обложка),
   `loadStickerPanel` (наборы, недавние, сохранённые GIF), `stickerSet`, `sendSticker/sendAnimation/sendVoice`.
-- `apps/telegram/` — приложение: `TelegramApp` (корень — вход или список чатов по состоянию), `TgView`, `TgLoginView` (ключи api_id/api_hash
+- `apps/telegram/` — приложение в стиле официального клиента: гладкий шрифт DejaVu Sans (`assets/blockphone/font/smooth.json`,
+  `PhoneDraw.smoothText` — включает только `TelegramApp` на время отрисовки и ввода; остальной телефон — шрифтом игры),
+  цвета `TgTheme` (Night/Classic по теме телефона), своя шапка `TelegramApp.HEADER` («‹», круглый аватар, название, статус —
+  `TgView.subtitle/headerChat/onTitleClick`), `TgMediaViewer` (фото/видео/GIF/«кружочки» на весь экран, альбом, поворот —
+  `landscape()`, полный экран — `immersive()`), `TgProfileView` (телефон, @имя, «о себе»/описание — `Telegram.fullInfo`, нажатие —
+  копировать, уведомления — `setMuted`). `telegram/VideoPlayer` — JCodec: видео в своём потоке + звук AAC (JAAD) через
+  javax.sound, часы по звуку, перемотка — перезапуск с места. В `Telegram`: статусы (`status`, `userStatus`, `online`, `typing` по
+  UpdateChatAction), группы (UpdateSupergroup/BasicGroup — участники), `read` (lastReadOutboxMessageId — галочки ✓/✓✓, ◷, !),
+  `muted` (свои настройки чата или по умолчанию для личных/групп/каналов из UpdateScopeNotificationSettings) и `inMain`
+  (архив не уведомляет), `reactionIcon` (GetEmojiReaction → staticIcon), `availableReactions`, `progress(file)`.
+  Структура: `TelegramApp` (корень — вход или список чатов по состоянию), `TgView`, `TgLoginView` (ключи api_id/api_hash
   с my.telegram.org, номер, код, пароль — поле с маской `TextArea.setMasked`), `TgChatListView`, `TgChatView` (пузыри; альбомы — сообщения
   подряд с одним `mediaAlbumId` одним пузырём с сеткой; ответ (цитата) и «Переслано от»; реакции-«таблетки» (клик — поставить/
   снять); ПКМ — полоса быстрых реакций + меню Ответить/Копировать/Изменить/Удалить; полосы над полем — ответ/правка и выбранные фото;

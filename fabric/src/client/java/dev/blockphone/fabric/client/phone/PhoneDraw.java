@@ -20,6 +20,27 @@ public final class PhoneDraw {
         return Minecraft.getInstance().font;
     }
 
+    private static final net.minecraft.network.chat.Style SMOOTH = net.minecraft.network.chat.Style.EMPTY.withFont(
+            new net.minecraft.network.chat.FontDescription.Resource(
+                    net.minecraft.resources.Identifier.fromNamespaceAndPath(dev.blockphone.common.BlockPhone.MOD_ID, "smooth")));
+
+    /** Гладкий шрифт (DejaVu Sans, assets/blockphone/font/smooth.json) — включает Telegram на время своей отрисовки и ввода. */
+    public static boolean smoothText;
+
+    /** Стиль текста: гладкий внутри Telegram, иначе обычный шрифт игры. */
+    public static net.minecraft.network.chat.Style style() {
+        return smoothText ? SMOOTH : net.minecraft.network.chat.Style.EMPTY;
+    }
+
+    /** Текст в стиле телефона — для font().split / width. */
+    public static FormattedText styled(String s) {
+        return FormattedText.of(s, style());
+    }
+
+    private static FormattedCharSequence seq(String s) {
+        return FormattedCharSequence.forward(s, style());
+    }
+
     // --- Формы ---
 
     /**
@@ -162,14 +183,14 @@ public final class PhoneDraw {
     // --- Текст ---
 
     public static void text(GuiGraphics g, String s, int x, int y, int color) {
-        g.drawString(font(), s, x, y, color, false);
+        g.drawString(font(), seq(s), x, y, color, false);
     }
 
     public static void text(GuiGraphics g, String s, float x, float y, int color, float scale, boolean shadow) {
         g.pose().pushMatrix();
         g.pose().translate(x, y);
         g.pose().scale(scale, scale);
-        g.drawString(font(), s, 0, 0, color, shadow);
+        g.drawString(font(), seq(s), 0, 0, color, shadow);
         g.pose().popMatrix();
     }
 
@@ -182,7 +203,7 @@ public final class PhoneDraw {
     }
 
     public static float width(String s, float scale) {
-        return font().width(s) * scale;
+        return font().width(styled(s)) * scale;
     }
 
     /** Обрезает строку с «…», чтобы она влезла в maxWidth (с учётом масштаба). */
@@ -200,7 +221,7 @@ public final class PhoneDraw {
 
     /** Многострочный текст с переносом по словам. Возвращает высоту в единицах телефона. */
     public static int wrapped(GuiGraphics g, String s, float x, float y, float maxWidth, int color, float scale, boolean centered) {
-        List<FormattedCharSequence> lines = font().split(FormattedText.of(s), (int) (maxWidth / scale));
+        List<FormattedCharSequence> lines = font().split(styled(s), (int) (maxWidth / scale));
         float lh = 10 * scale;
         for (int i = 0; i < lines.size(); i++) {
             FormattedCharSequence line = lines.get(i);
@@ -215,7 +236,7 @@ public final class PhoneDraw {
     }
 
     public static int wrappedHeight(String s, float maxWidth, float scale) {
-        return (int) Math.ceil(font().split(FormattedText.of(s), (int) (maxWidth / scale)).size() * 10 * scale);
+        return (int) Math.ceil(font().split(styled(s), (int) (maxWidth / scale)).size() * 10 * scale);
     }
 
     // --- Текстуры ---

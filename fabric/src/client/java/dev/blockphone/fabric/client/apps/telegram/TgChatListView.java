@@ -2,7 +2,6 @@ package dev.blockphone.fabric.client.apps.telegram;
 
 import dev.blockphone.fabric.client.phone.PhoneDialog;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
-import dev.blockphone.fabric.client.phone.PhoneTheme;
 import dev.blockphone.fabric.client.telegram.Telegram;
 import dev.blockphone.fabric.client.telegram.TelegramAvatars;
 import it.tdlight.jni.TdApi;
@@ -15,10 +14,13 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/** Чаты Telegram (основной список, закреплённые сверху): аватар, название, последнее сообщение, время, непрочитанные. */
+/**
+ * Чаты Telegram, как в официальном клиенте: круглый аватар (зелёная точка — в сети), название, время и галочки своего
+ * последнего сообщения, текст или «печатает…», счётчик непрочитанных (серый — чат без звука).
+ */
 final class TgChatListView extends TgView {
-    private static final int ROW_H = 34;
-    private static final int AVATAR = 24;
+    private static final int ROW_H = 38;
+    private static final int AVATAR = 28;
 
     TgChatListView(TelegramApp app) {
         super(app);
@@ -31,7 +33,7 @@ final class TgChatListView extends TgView {
 
     @Override
     String headerAction() {
-        return tr("music.logout");
+        return "⋮";
     }
 
     @Override
@@ -43,6 +45,8 @@ final class TgChatListView extends TgView {
     @Override
     void render(GuiGraphics g, int mouseX, int mouseY) {
         int w = width();
+        int bg = TgTheme.background();
+        g.fill(0, 0, w, height(), bg);
         List<TdApi.Chat> chats = Telegram.chats();
         if (chats.isEmpty()) {
             hint(g, tr("telegram.loading_chats"), height() / 2 - 10);
@@ -56,28 +60,46 @@ final class TgChatListView extends TgView {
                 continue;
             }
             TdApi.Chat chat = chats.get(i);
-            if (PhoneDraw.inside(mouseX, mouseY, 0, y, w, ROW_H)) {
-                g.fill(0, y, w, y + ROW_H, PhoneTheme.cardHover());
+            boolean hover = PhoneDraw.inside(mouseX, mouseY, 0, y, w, ROW_H);
+            int rowBg = hover ? TgTheme.cardHover() : bg;
+            if (hover) {
+                g.fill(0, y, w, y + ROW_H, rowBg);
             }
-            TelegramAvatars.draw(g, chat, 6, y + (ROW_H - AVATAR) / 2, AVATAR);
-            int tx = 6 + AVATAR + 6;
-            String time = chat.lastMessage != null ? shortTime(chat.lastMessage.date) : "";
+            int ay = y + (ROW_H - AVATAR) / 2;
+            TelegramAvatars.drawRound(g, chat, 6, ay, AVATAR, rowBg);
+            if (Telegram.online(chat)) {
+                PhoneDraw.rawRoundedRect(g, 6 + AVATAR - 9, ay + AVATAR - 9, 6 + AVATAR + 1, ay + AVATAR + 1, 5, rowBg);
+                PhoneDraw.rawRoundedRect(g, 6 + AVATAR - 7, ay + AVATAR - 7, 6 + AVATAR - 1, ay + AVATAR - 1, 3, TgTheme.online());
+            }
+            int tx = 6 + AVATAR + 7;
+            TdApi.Message last = chat.lastMessage;
+            String time = last != null ? shortTime(last.date) : "";
             float timeW = PhoneDraw.width(time, 0.6f);
-            PhoneDraw.rightText(g, time, w - 6, y + 7, PhoneTheme.secondaryText(), 0.6f);
-            PhoneDraw.text(g, PhoneDraw.ellipsize(Telegram.title(chat), w - tx - timeW - 10, 0.85f), tx, y + 6, PhoneTheme.text(), 0.85f, false);
+            PhoneDraw.rightText(g, time, w - 6, y + 8, TgTheme.secondaryText(), 0.6f);
+            float right = w - 6 - timeW - 3;
+            if (last != null && last.isOutgoing) {
+                String checks = Telegram.read(last) ? "✓✓" : last.sendingState != null ? "◷" : "✓";
+                float cw = PhoneDraw.width(checks, 0.6f);
+                PhoneDraw.text(g, checks, right - cw, y + 8, TgTheme.check(), 0.6f, false);
+                right -= cw + 2;
+            }
+            boolean muted = Telegram.muted(chat);
+            String title = PhoneDraw.ellipsize(Telegram.title(chat), right - tx - 2, 0.8f);
+            PhoneDraw.text(g, title, tx, y + 7, TgTheme.text(), 0.8f, false);
             float badgeW = 0;
             if (chat.unreadCount > 0) {
                 String count = chat.unreadCount > 999 ? "999+" : String.valueOf(chat.unreadCount);
-                badgeW = Math.max(10, PhoneDraw.width(count, 0.6f) + 6);
+                badgeW = Math.max(12, PhoneDraw.width(count, 0.6f) + 7);
                 int bx = (int) (w - 6 - badgeW);
-                boolean muted = chat.notificationSettings != null && chat.notificationSettings.muteFor > 0;
-                PhoneDraw.roundedRect(g, bx, y + 18, w - 6, y + 28, 5, muted ? PhoneTheme.secondaryText() : 0xFF2AABEE);
-                PhoneDraw.centeredText(g, count, bx + badgeW / 2f, y + 20.5f, 0xFFFFFFFF, 0.6f, false);
+                PhoneDraw.rawRoundedRect(g, bx, y + 20, w - 6, y + 31, 5, muted ? TgTheme.badgeMuted() : TgTheme.badge());
+                PhoneDraw.centeredText(g, count, bx + badgeW / 2f, y + 22.5f, 0xFFFFFFFF, 0.6f, false);
             }
-            PhoneDraw.text(g, PhoneDraw.ellipsize(Telegram.preview(chat), w - tx - badgeW - 12, 0.7f), tx, y + 20, PhoneTheme.secondaryText(),
-                    0.7f, false);
+            String typing = Telegram.typing(chat.id);
+            String preview = typing != null ? typing : Telegram.preview(chat);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(preview, w - tx - badgeW - 12, 0.7f), tx, y + 22,
+                    typing != null ? TgTheme.accent() : TgTheme.secondaryText(), 0.7f, false);
             if (i < chats.size() - 1) {
-                g.fill(tx, y + ROW_H - 1, w, y + ROW_H, PhoneTheme.separator());
+                g.fill(tx, y + ROW_H - 1, w, y + ROW_H, TgTheme.separator());
             }
             long id = chat.id;
             hit(0, y, w, ROW_H, () -> app.push(new TgChatView(app, id)));
@@ -85,10 +107,16 @@ final class TgChatListView extends TgView {
         endList(g);
     }
 
-    /** Сегодня — время, иначе дата. */
+    /** Сегодня — время, на этой неделе — день, иначе дата. */
     static String shortTime(int unixSeconds) {
         ZonedDateTime t = Instant.ofEpochSecond(unixSeconds).atZone(ZoneId.systemDefault());
-        return t.toLocalDate().equals(LocalDate.now()) ? t.format(DateTimeFormatter.ofPattern("HH:mm"))
-                : t.format(DateTimeFormatter.ofPattern("dd.MM"));
+        LocalDate day = t.toLocalDate();
+        if (day.equals(LocalDate.now())) {
+            return t.format(DateTimeFormatter.ofPattern("HH:mm"));
+        }
+        if (day.isAfter(LocalDate.now().minusDays(7))) {
+            return t.format(DateTimeFormatter.ofPattern("EE", dev.blockphone.fabric.client.phone.PhoneClock.locale()));
+        }
+        return t.format(DateTimeFormatter.ofPattern("dd.MM.yy"));
     }
 }

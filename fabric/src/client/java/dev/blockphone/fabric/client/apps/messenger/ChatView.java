@@ -358,7 +358,7 @@ final class ChatView extends MessengerView {
     }
 
     private List<FormattedCharSequence> wrap(String key, String text) {
-        return wrapCache.computeIfAbsent(key, k -> PhoneDraw.font().split(FormattedText.of(text), (int) (maxTextWidth() / TEXT_SCALE)));
+        return wrapCache.computeIfAbsent(key, k -> PhoneDraw.font().split(PhoneDraw.styled(text), (int) (maxTextWidth() / TEXT_SCALE)));
     }
 
     private List<Item> layout() {

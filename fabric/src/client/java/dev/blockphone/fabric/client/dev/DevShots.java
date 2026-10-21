@@ -255,7 +255,10 @@ public final class DevShots {
         // 1. Все приложения в главном меню.
         boolean server = scenario.equals("messenger") || scenario.equals("social") || scenario.equals("music")
                 || scenario.equals("voice") || scenario.equals("telegram");
-        for (boolean dark : server ? new boolean[0] : new boolean[]{true, false}) {
+        // Общие снимки (все приложения в меню, мир, «на ходу») — только в полном прогоне и «design»/«hand»:
+        // сценарий конкретной части снимает только её (быстрее).
+        boolean full = scenario.equals("all") || scenario.equals("design");
+        for (boolean dark : !full ? new boolean[0] : new boolean[]{true, false}) {
             String suffix = dark ? "_dark" : "";
             step(1, mc -> {
                 settings.darkTheme = dark;
@@ -272,7 +275,7 @@ public final class DevShots {
         }
 
         // 1б. Другой акцент, страницы цвета и обоев.
-        if (!server) {
+        if (full) {
             step(1, mc -> {
                 settings.darkTheme = true;
                 settings.language = "ru_ru";
@@ -355,29 +358,12 @@ public final class DevShots {
             }
         });
         waitFor(mc -> mc.level != null && mc.player != null && mc.screen == null);
-        shot(200, "world_game");
-        step(1, mc -> mc.setScreen(new PhoneScreen()));
-        shot(30, "world_home");
-        step(1, mc -> phone(mc, p -> p.openApp("weather")));
-        shot(20, "world_weather");
-        // Режим «на ходу»: телефон прикреплён в углу, мышь у игры (курсора нет).
-        step(1, mc -> {
-            mc.setScreen(null);
-            dev.blockphone.fabric.client.phone.PhonePin.pin(mc);
-        });
-        shot(30, "world_compact");
-        // Телефон в руке: свой персонаж от третьего лица спереди.
-        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));
-        shot(30, "world_phone_in_hand");
-        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
-        // Как при зажатом Alt: курсор, телефоном можно пользоваться.
-        step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true);
-        shot(30, "world_compact_cursor");
-        step(1, mc -> {
-            dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;
-            dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);
-            mc.setScreen(new PhoneScreen());
-        });
+        boolean world = scenario.equals("all") || scenario.equals("hand");
+        if (!world) {
+            step(100, mc -> mc.setScreen(new PhoneScreen())); // мир прогрузился — сразу к своему сценарию
+        } else {
+            shot(200, "world_game");            step(1, mc -> mc.setScreen(new PhoneScreen()));            shot(30, "world_home");            step(1, mc -> phone(mc, p -> p.openApp("weather")));            shot(20, "world_weather");            // Режим «на ходу»: телефон прикреплён в углу, мышь у игры (курсора нет).            step(1, mc -> {                mc.setScreen(null);                dev.blockphone.fabric.client.phone.PhonePin.pin(mc);            });            shot(30, "world_compact");            // Телефон в руке: свой персонаж от третьего лица спереди.            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));            shot(30, "world_phone_in_hand");            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));            // Как при зажатом Alt: курсор, телефоном можно пользоваться.            step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true);            shot(30, "world_compact_cursor");            step(1, mc -> {                dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;                dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);                mc.setScreen(new PhoneScreen());            });
+        }
 
         if (scenario.equals("messenger")) {
             planMessenger(settings);
@@ -934,6 +920,12 @@ public final class DevShots {
         shot(30, "telegram_stickers");
         step(1, mc -> telegramDebug("gifs"));
         shot(40, "telegram_gifs");
+        step(1, mc -> telegramDebug("viewer"));
+        shot(30, "telegram_viewer");
+        step(1, mc -> telegramDebug("profile"));
+        shot(30, "telegram_profile");
+        step(1, mc -> telegramDebug("list"));
+        shot(30, "telegram_list");
     }
 
     private static void copyMinecraftMusic(Minecraft mc) {

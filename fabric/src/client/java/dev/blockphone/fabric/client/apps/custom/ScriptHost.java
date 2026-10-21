@@ -689,7 +689,7 @@ final class ScriptHost {
         gfx.set("wrap", fn(a -> {
             float scale = (float) a.optdouble(3, 1);
             List<net.minecraft.network.chat.FormattedText> parts = PhoneDraw.font().getSplitter()
-                    .splitLines(a.checkjstring(1), Math.max(10, (int) (a.checkdouble(2) / scale)), net.minecraft.network.chat.Style.EMPTY);
+                    .splitLines(a.checkjstring(1), Math.max(10, (int) (a.checkdouble(2) / scale)), PhoneDraw.style());
             LuaTable t = new LuaTable();
             for (int k = 0; k < parts.size(); k++) {
                 t.set(k + 1, LuaValue.valueOf(parts.get(k).getString()));

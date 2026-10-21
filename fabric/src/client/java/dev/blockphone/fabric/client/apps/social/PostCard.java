@@ -57,7 +57,7 @@ final class PostCard {
             return List.of();
         }
         return WRAP.computeIfAbsent(width + "|" + scale + "|" + text,
-                k -> PhoneDraw.font().split(FormattedText.of(text), (int) (width / scale)));
+                k -> PhoneDraw.font().split(PhoneDraw.styled(text), (int) (width / scale)));
     }
 
     /** Нарисовать строки текста; возвращает высоту. */

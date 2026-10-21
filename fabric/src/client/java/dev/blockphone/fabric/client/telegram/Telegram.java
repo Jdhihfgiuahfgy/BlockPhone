@@ -235,6 +235,25 @@ public final class Telegram {
             });
             case TdApi.UpdateChatNotificationSettings u -> withChat(u.chatId, c -> c.notificationSettings = u.notificationSettings);
             case TdApi.UpdateUser u -> USERS.put(u.user.id, u.user);
+            case TdApi.UpdateUserStatus u -> {
+                TdApi.User user = USERS.get(u.userId);
+                if (user != null) {
+                    user.status = u.status;
+                }
+            }
+            case TdApi.UpdateSupergroup u -> SUPERGROUPS.put(u.supergroup.id, u.supergroup);
+            case TdApi.UpdateBasicGroup u -> BASIC_GROUPS.put(u.basicGroup.id, u.basicGroup);
+            case TdApi.UpdateChatReadOutbox u -> withChat(u.chatId, c -> c.lastReadOutboxMessageId = u.lastReadOutboxMessageId);
+            case TdApi.UpdateScopeNotificationSettings u -> SCOPES.put(u.scope.getClass(), u.notificationSettings);
+            case TdApi.UpdateChatAction u -> {
+                long sender = u.senderId instanceof TdApi.MessageSenderUser s ? s.userId : 0;
+                java.util.Map<Long, Object[]> chatTyping = TYPING.computeIfAbsent(u.chatId, k -> new HashMap<>());
+                if (u.action instanceof TdApi.ChatActionCancel) {
+                    chatTyping.remove(sender);
+                } else {
+                    chatTyping.put(sender, new Object[]{u.action, System.currentTimeMillis() + 6000});
+                }
+            }
             case TdApi.UpdateFile u -> {
                 FILES.put(u.file.id, u.file);
                 if (u.file.local.isDownloadingCompleted) {
@@ -629,6 +648,22 @@ public final class Telegram {
         chat.id = 100;
         chat.title = "Строители";
         chat.type = new TdApi.ChatTypeBasicGroup();
+        chat.positions = new TdApi.ChatPosition[]{new TdApi.ChatPosition(new TdApi.ChatListMain(), 2, false, null)};
+        chat.unreadCount = 2;
+        TdApi.BasicGroup group = new TdApi.BasicGroup();
+        group.memberCount = 3;
+        BASIC_GROUPS.put(0L, group);
+        USERS.get(2L).status = new TdApi.UserStatusOnline();
+        // Второй чат — личный, с Алексом (в сети, без звука).
+        TdApi.Chat alex = new TdApi.Chat();
+        alex.id = 101;
+        alex.title = "Алекс";
+        alex.type = new TdApi.ChatTypePrivate(2);
+        alex.positions = new TdApi.ChatPosition[]{new TdApi.ChatPosition(new TdApi.ChatListMain(), 1, false, null)};
+        alex.notificationSettings = new TdApi.ChatNotificationSettings();
+        alex.notificationSettings.muteFor = 100000;
+        alex.unreadCount = 5;
+        CHATS.put(alex.id, alex);
         CHATS.put(chat.id, chat);
         ChatMessages m = new ChatMessages();
         m.loaded = true;
@@ -713,6 +748,8 @@ public final class Telegram {
             stickerSets = List.of(set);
             SET_STICKERS.put(9L, List.copyOf(stickers));
         }
+        chat.lastMessage = m.list.get(m.list.size() - 1);
+        CHATS.get(101L).lastMessage = m.list.get(0);
         panelLoadedAt = Long.MAX_VALUE / 2;
         return chat.id;
     }
@@ -846,6 +883,198 @@ public final class Telegram {
         TdApi.InputVoiceNote voice = new TdApi.InputVoiceNote(new TdApi.InputFileLocal(file.toAbsolutePath().toString()),
                 durationSec, waveform);
         sendContent(chatId, new TdApi.InputMessageVoiceNote(voice, new TdApi.FormattedText("", new TdApi.TextEntity[0]), null), replyTo);
+    }
+
+    // --- Статусы, группы, уведомления, реакции ---
+
+    private static final Map<Long, TdApi.Supergroup> SUPERGROUPS = new HashMap<>();
+    private static final Map<Long, TdApi.BasicGroup> BASIC_GROUPS = new HashMap<>();
+    private static final Map<Class<?>, TdApi.ScopeNotificationSettings> SCOPES = new HashMap<>();
+    private static final Map<Long, Map<Long, Object[]>> TYPING = new HashMap<>();
+    private static final Map<String, TdApi.Sticker> REACTION_ICONS = new HashMap<>();
+    private static final Set<String> REACTION_LOADING = new HashSet<>();
+    private static final Map<Long, TdApi.Object> FULL_INFO = new HashMap<>();
+    private static final Set<Long> FULL_LOADING = new HashSet<>();
+
+    /** Собеседник личного чата или null. */
+    public static @Nullable TdApi.User peer(TdApi.Chat chat) {
+        return chat.type instanceof TdApi.ChatTypePrivate p ? USERS.get(p.userId) : null;
+    }
+
+    public static @Nullable TdApi.Supergroup supergroup(TdApi.Chat chat) {
+        return chat.type instanceof TdApi.ChatTypeSupergroup s ? SUPERGROUPS.get(s.supergroupId) : null;
+    }
+
+    /** Звук уведомлений чата выключен (свой выбор или по умолчанию для личных/групп/каналов) — как в самом Telegram. */
+    public static boolean muted(TdApi.Chat chat) {
+        TdApi.ChatNotificationSettings n = chat.notificationSettings;
+        if (n != null && !n.useDefaultMuteFor) {
+            return n.muteFor > 0;
+        }
+        Class<?> scope = chat.type instanceof TdApi.ChatTypePrivate || chat.type instanceof TdApi.ChatTypeSecret
+                ? TdApi.NotificationSettingsScopePrivateChats.class
+                : chat.type instanceof TdApi.ChatTypeSupergroup s && s.isChannel
+                ? TdApi.NotificationSettingsScopeChannelChats.class : TdApi.NotificationSettingsScopeGroupChats.class;
+        TdApi.ScopeNotificationSettings def = SCOPES.get(scope);
+        return def != null && def.muteFor > 0;
+    }
+
+    /** Чат в основном списке (не только в архиве). */
+    public static boolean inMain(TdApi.Chat chat) {
+        return mainOrder(chat) != 0;
+    }
+
+    /** Кто печатает сейчас (только что) или null. */
+    public static @Nullable String typing(long chatId) {
+        Map<Long, Object[]> map = TYPING.get(chatId);
+        if (map == null) {
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        map.values().removeIf(v -> (long) v[1] < now);
+        for (Map.Entry<Long, Object[]> e : map.entrySet()) {
+            String what = switch ((TdApi.ChatAction) e.getValue()[0]) {
+                case TdApi.ChatActionRecordingVoiceNote a -> PhoneLang.tr("telegram.action.voice");
+                case TdApi.ChatActionRecordingVideoNote a -> PhoneLang.tr("telegram.action.video_note");
+                case TdApi.ChatActionUploadingPhoto a -> PhoneLang.tr("telegram.action.photo");
+                case TdApi.ChatActionChoosingSticker a -> PhoneLang.tr("telegram.action.sticker");
+                default -> PhoneLang.tr("telegram.action.typing");
+            };
+            TdApi.Chat chat = CHATS.get(chatId);
+            TdApi.User u = USERS.get(e.getKey());
+            if (chat != null && !(chat.type instanceof TdApi.ChatTypePrivate) && u != null) {
+                return u.firstName + " " + what;
+            }
+            return what;
+        }
+        return null;
+    }
+
+    /** Строка под названием чата: «печатает…», «в сети», «был(а) в 12:30», «5 участников», «1,2K подписчиков». */
+    public static String status(TdApi.Chat chat) {
+        String typing = typing(chat.id);
+        if (typing != null) {
+            return typing;
+        }
+        TdApi.User user = peer(chat);
+        if (user != null) {
+            if (user.id == myId) {
+                return "";
+            }
+            if (user.type instanceof TdApi.UserTypeBot) {
+                return PhoneLang.tr("telegram.status.bot");
+            }
+            return userStatus(user);
+        }
+        int members = 0;
+        boolean channel = false;
+        TdApi.Supergroup sg = supergroup(chat);
+        if (sg != null) {
+            members = sg.memberCount;
+            channel = sg.isChannel;
+        } else if (chat.type instanceof TdApi.ChatTypeBasicGroup b && BASIC_GROUPS.get(b.basicGroupId) != null) {
+            members = BASIC_GROUPS.get(b.basicGroupId).memberCount;
+        }
+        if (members <= 0) {
+            return "";
+        }
+        return PhoneLang.tr(channel ? "telegram.status.subscribers" : "telegram.status.members", members);
+    }
+
+    public static String userStatus(TdApi.User user) {
+        return switch (user.status) {
+            case TdApi.UserStatusOnline o -> PhoneLang.tr("telegram.status.online");
+            case TdApi.UserStatusOffline o -> {
+                java.time.ZonedDateTime t = java.time.Instant.ofEpochSecond(o.wasOnline).atZone(java.time.ZoneId.systemDefault());
+                boolean today = t.toLocalDate().equals(java.time.LocalDate.now());
+                yield PhoneLang.tr(today ? "telegram.status.seen_at" : "telegram.status.seen_on",
+                        t.format(java.time.format.DateTimeFormatter.ofPattern(today ? "HH:mm" : "dd.MM HH:mm")));
+            }
+            case TdApi.UserStatusRecently r -> PhoneLang.tr("telegram.status.recently");
+            case TdApi.UserStatusLastWeek r -> PhoneLang.tr("telegram.status.week");
+            case TdApi.UserStatusLastMonth r -> PhoneLang.tr("telegram.status.month");
+            default -> PhoneLang.tr("telegram.status.long_ago");
+        };
+    }
+
+    public static boolean online(TdApi.Chat chat) {
+        TdApi.User user = peer(chat);
+        return user != null && user.id != myId && user.status instanceof TdApi.UserStatusOnline;
+    }
+
+    /** Своё сообщение прочитано собеседником. */
+    public static boolean read(TdApi.Message message) {
+        TdApi.Chat chat = CHATS.get(message.chatId);
+        return chat != null && message.isOutgoing && message.id <= chat.lastReadOutboxMessageId;
+    }
+
+    /** Значок реакции-эмодзи из самого Telegram (статичная картинка) или null, пока грузится / нет такой. */
+    public static @Nullable TdApi.File reactionIcon(String emoji) {
+        TdApi.Sticker icon = REACTION_ICONS.get(emoji);
+        if (icon == null && client != null && REACTION_LOADING.add(emoji)) {
+            send(new TdApi.GetEmojiReaction(emoji), r -> {
+                if (r instanceof TdApi.EmojiReaction er && er.staticIcon != null) {
+                    REACTION_ICONS.put(emoji, er.staticIcon);
+                }
+            });
+        }
+        return icon != null ? stickerImage(icon) : null;
+    }
+
+    /** Реакции, доступные для сообщения (как в меню Telegram); onReady — список эмодзи. */
+    public static void availableReactions(long chatId, long messageId, Consumer<List<String>> onReady) {
+        send(new TdApi.GetMessageAvailableReactions(chatId, messageId, 8), r -> {
+            List<String> list = new ArrayList<>();
+            if (r instanceof TdApi.AvailableReactions ar) {
+                for (TdApi.AvailableReaction[] group : new TdApi.AvailableReaction[][]{ar.topReactions, ar.popularReactions}) {
+                    for (TdApi.AvailableReaction a : group) {
+                        if (a.type instanceof TdApi.ReactionTypeEmoji e && !a.needsPremium && !list.contains(e.emoji)) {
+                            list.add(e.emoji);
+                        }
+                    }
+                }
+            }
+            onReady.accept(list);
+        });
+    }
+
+    /** Полные сведения о собеседнике или группе (о себе / описание): UserFullInfo, SupergroupFullInfo или BasicGroupFullInfo. */
+    public static @Nullable TdApi.Object fullInfo(TdApi.Chat chat) {
+        TdApi.Object cached = FULL_INFO.get(chat.id);
+        if (cached == null && client != null && FULL_LOADING.add(chat.id)) {
+            TdApi.Function<?> request = switch (chat.type) {
+                case TdApi.ChatTypePrivate p -> new TdApi.GetUserFullInfo(p.userId);
+                case TdApi.ChatTypeSupergroup s -> new TdApi.GetSupergroupFullInfo(s.supergroupId);
+                case TdApi.ChatTypeBasicGroup b -> new TdApi.GetBasicGroupFullInfo(b.basicGroupId);
+                default -> null;
+            };
+            if (request != null) {
+                send(request, r -> {
+                    if (!(r instanceof TdApi.Error)) {
+                        FULL_INFO.put(chat.id, r);
+                    }
+                });
+            }
+        }
+        return cached;
+    }
+
+    /** Включить/выключить уведомления чата (как «Без звука» в Telegram). */
+    public static void setMuted(TdApi.Chat chat, boolean mute) {
+        TdApi.ChatNotificationSettings n = chat.notificationSettings != null ? chat.notificationSettings : new TdApi.ChatNotificationSettings();
+        n.useDefaultMuteFor = false;
+        n.muteFor = mute ? Integer.MAX_VALUE : 0;
+        send(new TdApi.SetChatNotificationSettings(chat.id, n), null);
+    }
+
+    /** Сколько файла скачано (0..1). */
+    public static float progress(@Nullable TdApi.File file) {
+        if (file == null) {
+            return 0;
+        }
+        TdApi.File current = FILES.getOrDefault(file.id, file);
+        long size = current.size > 0 ? current.size : current.expectedSize;
+        return size > 0 && current.local != null ? Math.min(1, current.local.downloadedSize / (float) size) : 0;
     }
 
     /** Кто автор пересланного сообщения. */

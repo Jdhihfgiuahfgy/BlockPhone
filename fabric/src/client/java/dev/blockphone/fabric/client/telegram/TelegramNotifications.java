@@ -20,6 +20,10 @@ final class TelegramNotifications {
         if (mc.screen instanceof PhoneScreen && "telegram".equals(PhoneState.current().id())) {
             return;
         }
+        // Как в самом Telegram: беззвучные чаты, каналы и группы и архив не уведомляют.
+        if (Telegram.muted(chat) || !Telegram.inMain(chat)) {
+            return;
+        }
         String title = Telegram.title(chat);
         String text = Telegram.text(message).replace('\n', ' ');
         if (!(chat.type instanceof TdApi.ChatTypePrivate)) {

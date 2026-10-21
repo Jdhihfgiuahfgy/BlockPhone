@@ -65,6 +65,7 @@ final class TgChatView extends TgView {
     /** Быстрые реакции в меню сообщения. */
     private static final String[] REACTIONS = {"👍", "❤", "🔥", "😂", "😮", "😢", "👎", "🎉"};
     private static final int REACT_CELL = 14;
+    private String[] quick = REACTIONS;
     private static final String[] REACTION_ICONS = {"like", "heart", "fire", "laugh", "wow", "sad", "dislike", "party"};
 
     /** Свой цветной значок реакции (шрифт игры рисует эмодзи мелко и одним цветом) или null. */
@@ -79,6 +80,12 @@ final class TgChatView extends TgView {
     }
 
     private static void drawEmoji(GuiGraphics g, String emoji, int x, int y, int size, int color) {
+        Path tgIcon = Telegram.localFile(Telegram.reactionIcon(emoji));
+        PhotoTextures.Image image = tgIcon != null ? PhotoTextures.preview(new PhotoStore.Photo(tgIcon, 0), 64) : null;
+        if (image != null) {
+            PhoneDraw.texture(g, image.id(), x, y, size, size, image.width(), image.height());
+            return;
+        }
         Identifier icon = reactionIcon(emoji);
         if (icon != null) {
             PhoneDraw.texture(g, icon, x, y, size, size, 32, 32);
@@ -138,6 +145,31 @@ final class TgChatView extends TgView {
         return chat != null ? Telegram.title(chat) : "Telegram";
     }
 
+    long chatId() {
+        return chatId;
+    }
+
+    @Override
+    String subtitle() {
+        TdApi.Chat chat = Telegram.chat(chatId);
+        return chat != null ? Telegram.status(chat) : null;
+    }
+
+    @Override
+    TdApi.Chat headerChat() {
+        return Telegram.chat(chatId);
+    }
+
+    @Override
+    void onTitleClick() {
+        app.push(new TgProfileView(app, chatId));
+    }
+
+    @Override
+    int background() {
+        return TgTheme.chatBg();
+    }
+
     @Override
     void onShown() {
         Telegram.openChat(chatId);
@@ -181,7 +213,7 @@ final class TgChatView extends TgView {
 
     private List<FormattedCharSequence> wrap(TdApi.Message m, String text) {
         return wrapCache.computeIfAbsent(m.id + ":" + text.hashCode(),
-                k -> PhoneDraw.font().split(FormattedText.of(text), (int) (maxInner() / TEXT)));
+                k -> PhoneDraw.font().split(PhoneDraw.styled(text), (int) (maxInner() / TEXT)));
     }
 
     private static String bodyText(TdApi.Message m) {
@@ -261,7 +293,7 @@ final class TgChatView extends TgView {
             for (FormattedCharSequence line : lines) {
                 contentW = Math.max(contentW, PhoneDraw.font().width(line) * TEXT);
             }
-            contentW = Math.max(contentW, PhoneDraw.width(time, SMALL));
+            contentW = Math.max(contentW, PhoneDraw.width(time, SMALL) + (first.isOutgoing ? 10 : 0));
             if (name != null) {
                 contentW = Math.max(contentW, PhoneDraw.width(name, SMALL));
             }
@@ -438,21 +470,31 @@ final class TgChatView extends TgView {
         TdApi.Message m = item.main();
         boolean own = m.isOutgoing;
         int x = own ? w - 6 - item.width() : 6;
-        int bg = own ? PhoneTheme.accent() : PhoneTheme.card();
-        if (m.sendingState instanceof TdApi.MessageSendingStatePending) {
-            bg = (bg & 0x00FFFFFF) | 0x99000000;
-        }
+        int bg = own ? TgTheme.outBubble() : TgTheme.inBubble();
         boolean sticker = item.kind() == KIND_STICKER;
         if (!sticker) {
-            PhoneDraw.roundedRect(g, x, y, x + item.width(), y + item.height(), 6, bg);
+            // Пузырь как в Telegram: скругление 8 и «хвостик» у нижнего угла (у своих — справа).
+            PhoneDraw.rawRoundedRect(g, x, y, x + item.width(), y + item.height(), 8, bg);
+            int by = y + item.height();
+            if (own) {
+                g.fill(x + item.width() - 6, by - 6, x + item.width(), by, bg);
+                for (int i = 0; i < 4; i++) {
+                    g.fill(x + item.width(), by - 4 + i, x + item.width() + 4 - i, by - 3 + i, bg);
+                }
+            } else {
+                g.fill(x, by - 6, x + 6, by, bg);
+                for (int i = 0; i < 4; i++) {
+                    g.fill(x - 4 + i, by - 4 + i, x, by - 3 + i, bg);
+                }
+            }
         }
         int top = Math.max(0, y);
         int bottom = Math.min(areaBottom(), y + item.height());
         if (bottom > top) {
             bubbles.add(new Bubble(x, top, item.width(), bottom - top, item));
         }
-        int textColor = own && !sticker ? PhoneTheme.onAccent() : PhoneTheme.text();
-        int softColor = own && !sticker ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xC0000000 : PhoneTheme.secondaryText();
+        int textColor = TgTheme.text();
+        int softColor = own && !sticker ? TgTheme.outMeta() : TgTheme.secondaryText();
         int inner = item.width() - PAD * 2;
         int ty = y + 3;
         if (item.name() != null) {
@@ -464,8 +506,8 @@ final class TgChatView extends TgView {
             ty += 7;
         }
         if (item.replyName() != null) {
-            int barColor = own ? PhoneTheme.onAccent() : PhoneTheme.accent();
-            g.fill(x + PAD, ty, x + item.width() - PAD, ty + REPLY_H, own ? 0x30FFFFFF : PhoneTheme.accentTint(0x30));
+            int barColor = own ? TgTheme.onAccent() : TgTheme.accent();
+            g.fill(x + PAD, ty, x + item.width() - PAD, ty + REPLY_H, own ? 0x30FFFFFF : TgTheme.accentTint(0x30));
             g.fill(x + PAD, ty, x + PAD + 2, ty + REPLY_H, barColor);
             PhoneDraw.text(g, PhoneDraw.ellipsize(item.replyName(), inner - 6, SMALL), x + PAD + 5, ty + 2, barColor, SMALL, false);
             PhoneDraw.text(g, PhoneDraw.ellipsize(item.replyText(), inner - 6, SMALL), x + PAD + 5, ty + 9, textColor, SMALL, false);
@@ -491,11 +533,11 @@ final class TgChatView extends TgView {
             int cx = x + PAD + c.dx();
             int cy = ty + c.dy();
             boolean hover = PhoneDraw.inside(mouseX, mouseY, cx, cy, c.w(), CHIP_H);
-            int chipBg = c.chosen() ? (own ? 0xFFFFFFFF : PhoneTheme.accent()) : (own ? 0x40FFFFFF : PhoneTheme.accentTint(0x40));
+            int chipBg = c.chosen() ? (own ? 0xFFFFFFFF : TgTheme.accent()) : (own ? 0x40FFFFFF : TgTheme.accentTint(0x40));
             if (hover) {
-                chipBg = PhoneTheme.mix(chipBg, 0xFFFFFFFF, 0.2f);
+                chipBg = TgTheme.mix(chipBg, 0xFFFFFFFF, 0.2f);
             }
-            int chipFg = c.chosen() ? (own ? PhoneTheme.accent() : PhoneTheme.onAccent()) : textColor;
+            int chipFg = c.chosen() ? (own ? TgTheme.accent() : TgTheme.onAccent()) : textColor;
             PhoneDraw.roundedRect(g, cx, cy, cx + c.w(), cy + CHIP_H, CHIP_H / 2, chipBg);
             drawEmoji(g, c.emoji(), cx + 2, cy + 1, 8, chipFg);
             PhoneDraw.text(g, String.valueOf(c.count()), cx + 12, cy + 2, chipFg, SMALL, false);
@@ -506,11 +548,21 @@ final class TgChatView extends TgView {
         if (sticker) {
             int tw = (int) PhoneDraw.width(item.time(), SMALL) + 6;
             int tx = x + item.width() - PAD - tw;
-            PhoneDraw.roundedRect(g, tx, ty - 1, tx + tw, ty + 7, 4, PhoneTheme.accentTint(0x30));
-            PhoneDraw.text(g, item.time(), tx + 3, ty + 1, PhoneTheme.secondaryText(), SMALL, false);
+            PhoneDraw.roundedRect(g, tx, ty - 1, tx + tw, ty + 7, 4, TgTheme.accentTint(0x30));
+            PhoneDraw.text(g, item.time(), tx + 3, ty + 1, TgTheme.secondaryText(), SMALL, false);
             return;
         }
-        PhoneDraw.rightText(g, item.time(), x + item.width() - PAD, ty + 1, softColor, SMALL);
+        // Время и статус своего сообщения: ◷ отправляется, ! не отправлено, ✓ отправлено, ✓✓ прочитано.
+        float right = x + item.width() - PAD;
+        if (own) {
+            String checks = m.sendingState instanceof TdApi.MessageSendingStateFailed ? "!"
+                    : m.sendingState != null ? "◷" : Telegram.read(m) ? "✓✓" : "✓";
+            int checkColor = checks.equals("!") ? TgTheme.danger() : TgTheme.check();
+            float cw = PhoneDraw.width(checks, SMALL);
+            PhoneDraw.text(g, checks, right - cw, ty + 1, checkColor, SMALL, false);
+            right -= cw + 2;
+        }
+        PhoneDraw.rightText(g, item.time(), right, ty + 1, softColor, SMALL);
     }
 
     private static int nameColor(long sender) {
@@ -521,6 +573,10 @@ final class TgChatView extends TgView {
         for (Media media : item.media()) {
             int mx = x + media.dx();
             int my = y + media.dy();
+            int mediaIndex = item.media().indexOf(media);
+            if (TgMediaViewer.viewable(item.messages().get(Math.min(mediaIndex, item.messages().size() - 1)))) {
+                hit(mx, my, media.w(), media.h(), () -> app.openViewer(item.messages(), mediaIndex));
+            }
             Path path = Telegram.localFile(media.file());
             PhotoTextures.Image image = path != null ? PhotoTextures.preview(new PhotoStore.Photo(path, 0), 320) : null;
             boolean animated = false;
@@ -536,8 +592,8 @@ final class TgChatView extends TgView {
             if (image != null) {
                 PhoneDraw.textureCover(g, image.id(), mx, my, media.w(), media.h(), image.width(), image.height());
             } else {
-                g.fill(mx, my, mx + media.w(), my + media.h(), PhoneTheme.dark() ? 0xFF1F2738 : 0xFFDCE3EE);
-                PhoneDraw.centeredText(g, "...", mx + media.w() / 2f, my + media.h() / 2f - 3, PhoneTheme.secondaryText(), 0.75f, false);
+                g.fill(mx, my, mx + media.w(), my + media.h(), TgTheme.dark() ? 0xFF1F2738 : 0xFFDCE3EE);
+                PhoneDraw.centeredText(g, "...", mx + media.w() / 2f, my + media.h() / 2f - 3, TgTheme.secondaryText(), 0.75f, false);
             }
             if (!media.badge().isEmpty() && !animated) {
                 int bw = (int) PhoneDraw.width(media.badge(), SMALL) + 6;
@@ -547,10 +603,10 @@ final class TgChatView extends TgView {
         }
         if (item.note() && item.main().content instanceof TdApi.MessageVideoNote v) {
             // Круглая рамка «кружочка» поверх обложки (углы закрашены цветом пузыря).
-            int bubble = own ? PhoneTheme.accent() : PhoneTheme.card();
+            int bubble = own ? TgTheme.accent() : TgTheme.card();
             PhoneDraw.roundCornersMask(g, x, y, x + NOTE, y + NOTE, NOTE / 2, bubble);
             String label = tr("telegram.video_note") + " " + v.videoNote.duration / 60 + ":" + String.format("%02d", v.videoNote.duration % 60);
-            PhoneDraw.text(g, label, x, y + NOTE + 1, own ? PhoneTheme.onAccent() : PhoneTheme.secondaryText(), SMALL, false);
+            PhoneDraw.text(g, label, x, y + NOTE + 1, own ? TgTheme.onAccent() : TgTheme.secondaryText(), SMALL, false);
         }
     }
 
@@ -558,8 +614,8 @@ final class TgChatView extends TgView {
     private void renderVoice(GuiGraphics g, TdApi.VoiceNote voice, int x, int y, int w, boolean own, int mouseX, int mouseY) {
         boolean playing = TelegramVoice.playing(voice);
         boolean loading = TelegramVoice.loading(voice);
-        int button = own ? PhoneTheme.onAccent() : PhoneTheme.accent();
-        int buttonFg = own ? PhoneTheme.accent() : PhoneTheme.onAccent();
+        int button = own ? TgTheme.check() : TgTheme.accent();
+        int buttonFg = TgTheme.onAccent();
         PhoneDraw.roundedRect(g, x, y + 1, x + 16, y + 17, 8, button);
         String icon = loading ? "…" : TelegramVoice.failed(voice) ? "!" : playing ? "❚❚" : "▶";
         PhoneDraw.centeredText(g, icon, x + 8, y + 5, buttonFg, playing ? 0.55f : 0.75f, false);
@@ -567,8 +623,8 @@ final class TgChatView extends TgView {
         int[] wave = OggOpus.unpackWaveform(voice.waveform);
         int bars = (w - 22) / 2;
         float progress = TelegramVoice.progress(voice);
-        int soft = own ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0x70000000 : PhoneTheme.accentTint(0x60);
-        int strong = own ? PhoneTheme.onAccent() : PhoneTheme.accent();
+        int soft = ((own ? TgTheme.check() : TgTheme.accent()) & 0x00FFFFFF) | 0x60000000;
+        int strong = own ? TgTheme.check() : TgTheme.accent();
         for (int i = 0; i < bars; i++) {
             int v = wave.length == 0 ? 6 : wave[Math.min(wave.length - 1, i * wave.length / Math.max(1, bars))];
             int h = 2 + v * 9 / 31;
@@ -576,14 +632,14 @@ final class TgChatView extends TgView {
             g.fill(bx, y + 10 - h / 2, bx + 1, y + 10 - h / 2 + h, i < progress * bars ? strong : soft);
         }
         String time = VoiceMessages.time(voice.duration * 1000L);
-        PhoneDraw.text(g, time, x + 20, y + 15, own ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xC0000000 : PhoneTheme.secondaryText(), 0.5f, false);
+        PhoneDraw.text(g, time, x + 20, y + 15, own ? TgTheme.outMeta() : TgTheme.secondaryText(), 0.5f, false);
     }
 
     /** Панель стикеров и GIF над полем: вкладки (недавние, GIF, наборы) и сетка; нажатие — отправить. */
     private void renderPanel(GuiGraphics g, int mouseX, int mouseY, int top) {
         int w = width();
-        g.fill(0, top, w, top + PANEL_H, PhoneTheme.background());
-        g.fill(0, top, w, top + 1, PhoneTheme.separator());
+        g.fill(0, top, w, top + PANEL_H, TgTheme.background());
+        g.fill(0, top, w, top + 1, TgTheme.separator());
         List<TdApi.StickerSetInfo> sets = Telegram.stickerSets();
         int tabs = 2 + sets.size();
         int visible = (w - 4) / TAB;
@@ -593,17 +649,17 @@ final class TgChatView extends TgView {
             int ty = top + 2;
             boolean selected = t == panelTab;
             if (selected || PhoneDraw.inside(mouseX, mouseY, tx, ty, TAB - 1, TAB - 2)) {
-                PhoneDraw.roundedRect(g, tx, ty, tx + TAB - 1, ty + TAB - 2, 4, selected ? PhoneTheme.accentTint(0x50) : PhoneTheme.cardHover());
+                PhoneDraw.roundedRect(g, tx, ty, tx + TAB - 1, ty + TAB - 2, 4, selected ? TgTheme.accentTint(0x50) : TgTheme.cardHover());
             }
             if (t == 0) {
-                PhoneDraw.centeredText(g, "◷", tx + TAB / 2f, ty + 4, PhoneTheme.text(), 0.8f, false);
+                PhoneDraw.centeredText(g, "◷", tx + TAB / 2f, ty + 4, TgTheme.text(), 0.8f, false);
             } else if (t == 1) {
-                PhoneDraw.centeredText(g, "GIF", tx + TAB / 2f, ty + 5, PhoneTheme.text(), 0.5f, false);
+                PhoneDraw.centeredText(g, "GIF", tx + TAB / 2f, ty + 5, TgTheme.text(), 0.5f, false);
             } else {
                 TdApi.StickerSetInfo set = sets.get(t - 2);
                 TdApi.File cover = set.covers != null && set.covers.length > 0 ? Telegram.stickerImage(set.covers[0]) : null;
                 if (!drawImage(g, cover, tx + 2, ty + 1, TAB - 5, TAB - 5, false)) {
-                    PhoneDraw.centeredText(g, set.title.isEmpty() ? "?" : set.title.substring(0, 1), tx + TAB / 2f, ty + 4, PhoneTheme.text(), 0.7f, false);
+                    PhoneDraw.centeredText(g, set.title.isEmpty() ? "?" : set.title.substring(0, 1), tx + TAB / 2f, ty + 4, TgTheme.text(), 0.7f, false);
                 }
             }
             int tab = t;
@@ -639,8 +695,8 @@ final class TgChatView extends TgView {
                 if (poster != null) {
                     PhoneDraw.textureCover(g, poster.id(), cx, cy, cw, ch, poster.width(), poster.height());
                 } else if (!drawImage(g, thumb(a.thumbnail), cx, cy, cw, ch, true)) {
-                    g.fill(cx, cy, cx + cw, cy + ch, PhoneTheme.card());
-                    PhoneDraw.centeredText(g, "GIF", cx + cw / 2f, cy + ch / 2f - 3, PhoneTheme.secondaryText(), 0.6f, false);
+                    g.fill(cx, cy, cx + cw, cy + ch, TgTheme.card());
+                    PhoneDraw.centeredText(g, "GIF", cx + cw / 2f, cy + ch / 2f - 3, TgTheme.secondaryText(), 0.6f, false);
                 }
                 hit(cx, cy, cw, ch, () -> sendFromPanel(() -> Telegram.sendAnimation(chatId, a, replyTo)));
             }
@@ -660,10 +716,10 @@ final class TgChatView extends TgView {
                     continue;
                 }
                 if (PhoneDraw.inside(mouseX, mouseY, cx, cy, cell, cell)) {
-                    PhoneDraw.roundedRect(g, cx, cy, cx + cell, cy + cell, 4, PhoneTheme.cardHover());
+                    PhoneDraw.roundedRect(g, cx, cy, cx + cell, cy + cell, 4, TgTheme.cardHover());
                 }
                 if (!drawImage(g, Telegram.stickerImage(st), cx + 2, cy + 2, cell - 4, cell - 4, false)) {
-                    PhoneDraw.centeredText(g, st.emoji, cx + cell / 2f, cy + cell / 2f - 4, PhoneTheme.text(), 1f, false);
+                    PhoneDraw.centeredText(g, st.emoji, cx + cell / 2f, cy + cell / 2f - 4, TgTheme.text(), 1f, false);
                 }
                 hit(cx, cy, cell, cell, () -> sendFromPanel(() -> Telegram.sendSticker(chatId, st, replyTo)));
             }
@@ -705,17 +761,17 @@ final class TgChatView extends TgView {
         int w = width();
         int y = areaBottom();
         if (barsHeight() > 0) {
-            g.fill(0, y, w, y + barsHeight() + 4, PhoneTheme.background());
+            g.fill(0, y, w, y + barsHeight() + 4, TgTheme.background());
         }
-        g.fill(0, y, w, y + 1, PhoneTheme.separator());
+        g.fill(0, y, w, y + 1, TgTheme.separator());
         y += 3;
         if (replyTo != 0 || editing != 0) {
             TdApi.Message target = Telegram.message(chatId, editing != 0 ? editing : replyTo);
             String title = editing != 0 ? tr("telegram.editing") : tr("telegram.reply_to", target != null ? Telegram.senderName(target) : "…");
             String text = target != null ? Telegram.text(target).replace('\n', ' ') : "";
-            g.fill(6, y, 8, y + 15, PhoneTheme.accent());
-            PhoneDraw.text(g, PhoneDraw.ellipsize(title, w - 40, SMALL), 11, y + 1, PhoneTheme.accent(), SMALL, false);
-            PhoneDraw.text(g, PhoneDraw.ellipsize(text, w - 40, SMALL), 11, y + 8, PhoneTheme.secondaryText(), SMALL, false);
+            g.fill(6, y, 8, y + 15, TgTheme.accent());
+            PhoneDraw.text(g, PhoneDraw.ellipsize(title, w - 40, SMALL), 11, y + 1, TgTheme.accent(), SMALL, false);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(text, w - 40, SMALL), 11, y + 8, TgTheme.secondaryText(), SMALL, false);
             button(g, w - 20, y + 1, 14, 13, "×", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, this::cancelBar);
             y += 18;
         }
@@ -726,7 +782,7 @@ final class TgChatView extends TgView {
                 if (thumb != null) {
                     PhoneDraw.textureCover(g, thumb.id(), x, y, 26, 26, thumb.width(), thumb.height());
                 } else {
-                    g.fill(x, y, x + 26, y + 26, PhoneTheme.card());
+                    g.fill(x, y, x + 26, y + 26, TgTheme.card());
                 }
                 PhoneDraw.roundedRect(g, x + 17, y + 1, x + 25, y + 9, 4, 0xC0000000);
                 PhoneDraw.centeredText(g, "×", x + 21, y + 1, 0xFFFFFFFF, 0.6f, false);
@@ -736,14 +792,14 @@ final class TgChatView extends TgView {
                     break;
                 }
             }
-            PhoneDraw.rightText(g, photos.size() + "/" + MAX_PHOTOS, w - 6, y + 10, PhoneTheme.secondaryText(), SMALL);
+            PhoneDraw.rightText(g, photos.size() + "/" + MAX_PHOTOS, w - 6, y + 10, TgTheme.secondaryText(), SMALL);
         }
     }
 
     private void renderInput(GuiGraphics g, int mouseX, int mouseY) {
         int w = width();
         int top = inputTop();
-        g.fill(0, top - 4, w, top - 3, PhoneTheme.separator());
+        g.fill(0, top - 4, w, top - 3, TgTheme.separator());
         if (recorder != null) {
             renderRecording(g, mouseX, mouseY, top);
             return;
@@ -764,22 +820,22 @@ final class TgChatView extends TgView {
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, top + 1, 18, 18);
         if (!canSend && ready && editing == 0) {
             // Пустое поле — микрофон: записать голосовое.
-            PhoneDraw.roundedRect(g, bx, top + 1, bx + 18, top + 19, 9, hovered ? PhoneTheme.accentHover() : PhoneTheme.accent());
+            PhoneDraw.roundedRect(g, bx, top + 1, bx + 18, top + 19, 9, hovered ? TgTheme.accentHover() : TgTheme.accent());
             PhoneDraw.tinted(g, Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/gui/voice/mic.png"),
-                    bx + 3, top + 4, 12, 12, 32, 32, PhoneTheme.onAccent());
+                    bx + 3, top + 4, 12, 12, 32, 32, TgTheme.onAccent());
             hit(bx, top + 1, 18, 18, this::startRecording);
             return;
         }
         PhoneDraw.roundedRect(g, bx, top + 1, bx + 18, top + 19, 9,
-                canSend ? (hovered ? 0xFF5BBDF0 : 0xFF2AABEE) : PhoneTheme.separator());
+                canSend ? (hovered ? 0xFF5BBDF0 : 0xFF2AABEE) : TgTheme.separator());
         PhoneDraw.centeredText(g, editing != 0 ? "✔" : "➤", bx + 9, top + 6, 0xFFFFFFFF, 0.9f, false);
         hit(bx, top + 1, 18, 18, this::submit);
     }
 
     private void roundButton(GuiGraphics g, int x, int y, String label, boolean active, int mouseX, int mouseY, Runnable action) {
         boolean hover = PhoneDraw.inside(mouseX, mouseY, x, y, 18, 18);
-        PhoneDraw.roundedRect(g, x, y, x + 18, y + 18, 9, active ? PhoneTheme.accentTint(0x50) : hover ? PhoneTheme.cardHover() : PhoneTheme.card());
-        PhoneDraw.centeredText(g, label, x + 9, y + 5, PhoneTheme.accent(), 0.9f, false);
+        PhoneDraw.roundedRect(g, x, y, x + 18, y + 18, 9, active ? TgTheme.accentTint(0x50) : hover ? TgTheme.cardHover() : TgTheme.card());
+        PhoneDraw.centeredText(g, label, x + 9, y + 5, TgTheme.accent(), 0.9f, false);
         hit(x, y, 18, 18, action);
     }
 
@@ -789,14 +845,14 @@ final class TgChatView extends TgView {
         VoiceRecorder r = recorder;
         PhoneDraw.field(g, 6, top, w - 28, top + INPUT_H, false);
         if (r.error() != null) {
-            PhoneDraw.text(g, PhoneDraw.ellipsize(tr(r.error()), w - 60, 0.6f), 12, top + 7, PhoneTheme.danger(), 0.6f, false);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(tr(r.error()), w - 60, 0.6f), 12, top + 7, TgTheme.danger(), 0.6f, false);
         } else {
             boolean blink = System.currentTimeMillis() / 500 % 2 == 0;
             PhoneDraw.roundedRect(g, 11, top + 7, 17, top + 13, 3, blink ? 0xFFE5534B : 0x80E5534B);
-            PhoneDraw.text(g, VoiceMessages.time(r.recordedMs()), 21, top + 7, PhoneTheme.text(), 0.65f, false);
+            PhoneDraw.text(g, VoiceMessages.time(r.recordedMs()), 21, top + 7, TgTheme.text(), 0.65f, false);
             int barW = w - 34 - 52 - 22;
-            g.fill(50, top + 9, 50 + barW, top + 11, PhoneTheme.separator());
-            g.fill(50, top + 9, 50 + Math.round(barW * r.level()), top + 11, PhoneTheme.accent());
+            g.fill(50, top + 9, 50 + barW, top + 11, TgTheme.separator());
+            g.fill(50, top + 9, 50 + Math.round(barW * r.level()), top + 11, TgTheme.accent());
         }
         button(g, w - 46, top + 3, 14, 14, "×", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, this::cancelRecording);
         int bx = w - 24;
@@ -876,18 +932,18 @@ final class TgChatView extends TgView {
 
     /** Полоса быстрых реакций над меню сообщения. */
     private void renderReactions(GuiGraphics g, int mouseX, int mouseY) {
-        int w = REACTIONS.length * REACT_CELL + 4;
+        int w = quick.length * REACT_CELL + 4;
         PhoneDraw.roundedRect(g, reactX - 1, reactY, reactX + w + 1, reactY + REACT_CELL + 4, 7, 0x40000000);
-        PhoneDraw.roundedRect(g, reactX, reactY, reactX + w, reactY + REACT_CELL + 2, 7, PhoneTheme.card());
-        for (int i = 0; i < REACTIONS.length; i++) {
+        PhoneDraw.roundedRect(g, reactX, reactY, reactX + w, reactY + REACT_CELL + 2, 7, TgTheme.card());
+        for (int i = 0; i < quick.length; i++) {
             int cx = reactX + 2 + i * REACT_CELL;
             if (PhoneDraw.inside(mouseX, mouseY, cx, reactY + 1, REACT_CELL, REACT_CELL)) {
-                PhoneDraw.roundedRect(g, cx, reactY + 1, cx + REACT_CELL, reactY + 1 + REACT_CELL, 7, PhoneTheme.cardHover());
+                PhoneDraw.roundedRect(g, cx, reactY + 1, cx + REACT_CELL, reactY + 1 + REACT_CELL, 7, TgTheme.cardHover());
             }
-            if (chosen(menuTarget, REACTIONS[i])) {
-                PhoneDraw.roundedRect(g, cx, reactY + 1, cx + REACT_CELL, reactY + 1 + REACT_CELL, 7, PhoneTheme.accentTint(0x60));
+            if (chosen(menuTarget, quick[i])) {
+                PhoneDraw.roundedRect(g, cx, reactY + 1, cx + REACT_CELL, reactY + 1 + REACT_CELL, 7, TgTheme.accentTint(0x60));
             }
-            drawEmoji(g, REACTIONS[i], cx + 2, reactY + 3, REACT_CELL - 4, PhoneTheme.text());
+            drawEmoji(g, quick[i], cx + 2, reactY + 3, REACT_CELL - 4, TgTheme.text());
         }
     }
 
@@ -907,6 +963,12 @@ final class TgChatView extends TgView {
         TdApi.Message m = item.main();
         long[] ids = item.messages().stream().mapToLong(x -> x.id).toArray();
         menuTarget = m;
+        quick = quick;
+        Telegram.availableReactions(chatId, m.id, list -> {
+            if (!list.isEmpty() && menuTarget == m) {
+                quick = list.subList(0, Math.min(8, list.size())).toArray(String[]::new);
+            }
+        });
         menu = new PopupMenu();
         menu.add(tr("telegram.reply"), () -> {
             editing = 0;
@@ -928,7 +990,7 @@ final class TgChatView extends TgView {
         menu.addDanger(tr("telegram.delete"), () -> app.showDialog(PhoneDialog.confirmDelete(tr("telegram.delete"),
                 tr(m.isOutgoing ? "telegram.delete_all" : "telegram.delete_me"),
                 () -> Telegram.deleteMessages(chatId, ids, m.isOutgoing))));
-        int stripW = REACTIONS.length * REACT_CELL + 4;
+        int stripW = quick.length * REACT_CELL + 4;
         reactX = Math.max(4, Math.min(width() - stripW - 4, mx - stripW / 2));
         reactY = Math.max(2, Math.min(height() - 90, my - REACT_CELL - 6));
         menu.show(mx, reactY + REACT_CELL + 6, width(), height());
@@ -977,10 +1039,10 @@ final class TgChatView extends TgView {
             return picker.mouseClicked(x, y, button);
         }
         if (menu.isOpen()) {
-            int stripW = REACTIONS.length * REACT_CELL + 4;
+            int stripW = quick.length * REACT_CELL + 4;
             if (PhoneDraw.inside(x, y, reactX, reactY, stripW, REACT_CELL + 2) && menuTarget != null) {
-                int i = Math.max(0, Math.min(REACTIONS.length - 1, (int) ((x - reactX - 2) / REACT_CELL)));
-                Telegram.toggleReaction(chatId, menuTarget.id, REACTIONS[i], chosen(menuTarget, REACTIONS[i]));
+                int i = Math.max(0, Math.min(quick.length - 1, (int) ((x - reactX - 2) / REACT_CELL)));
+                Telegram.toggleReaction(chatId, menuTarget.id, quick[i], chosen(menuTarget, quick[i]));
                 menu.close();
                 return true;
             }
