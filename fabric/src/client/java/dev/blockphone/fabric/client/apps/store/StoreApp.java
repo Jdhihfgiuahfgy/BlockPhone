@@ -146,12 +146,6 @@ public final class StoreApp extends PhoneApp {
         search.setBounds(6, 4, w - 12, 16);
         search.render(g, mx, my);
         int top = 24;
-        if (AppStore.sources().isEmpty()) {
-            PhoneDraw.wrapped(g, PhoneLang.tr("store.no_sources"), 12, top + 20, w - 24, PhoneTheme.secondaryText(), 0.7f, true);
-            PhoneDraw.button(g, w / 2 - 50, top + 60, 100, 18, PhoneLang.tr("store.add_source"), mx, my, PhoneDraw.ButtonStyle.PRIMARY);
-            hits.add(new Hit(w / 2 - 50, top + 60, 100, 18, () -> tab = Tab.SOURCES));
-            return;
-        }
         if (AppStore.state() == AppStore.State.LOADING && AppStore.entries().isEmpty()) {
             PhoneDraw.centeredText(g, PhoneLang.tr("messenger.loading"), w / 2f, top + 30, PhoneTheme.secondaryText(), 0.75f, false);
             return;
@@ -289,6 +283,21 @@ public final class StoreApp extends PhoneApp {
         }
     }
 
+    /** Отправить своё приложение в официальный каталог (на проверку владельцу каталога). */
+    private void askPublish(AppDefinition app) {
+        if (phone == null) {
+            return;
+        }
+        String name = CustomApps.name(app);
+        phone.showDialog(new PhoneDialog(PhoneLang.tr("store.publish"), PhoneLang.tr("store.publish_confirm", name, app.version()),
+                PhoneLang.tr("store.publish_send"), false, () -> {
+                    toast(PhoneLang.tr("store.publishing", name));
+                    AppStore.publish(app.id(), error -> toast(error == null ? PhoneLang.tr("store.published", name)
+                            : error.equals("not_configured") ? PhoneLang.tr("store.publish_off")
+                            : PhoneLang.tr("store.publish_failed", error)));
+                }));
+    }
+
     /** Установленные из папки apps (в т. ч. не из магазина). */
     private void renderInstalled(GuiGraphics g, int mx, int my, int w, int h) {
         List<AppDefinition> apps = CustomApps.all();
@@ -305,8 +314,8 @@ public final class StoreApp extends PhoneApp {
             if (entry != null) {
                 entry.drawIcon(g, 6, y + 5, 24);
             }
-            PhoneDraw.text(g, PhoneDraw.ellipsize(CustomApps.name(app), w - 100, 0.8f), 36, y + 6, PhoneTheme.text(), 0.8f, false);
-            PhoneDraw.text(g, PhoneDraw.ellipsize((app.author().isEmpty() ? "" : app.author() + " · ") + app.version(), w - 100, 0.6f), 36, y + 18,
+            PhoneDraw.text(g, PhoneDraw.ellipsize(CustomApps.name(app), w - 120, 0.8f), 36, y + 6, PhoneTheme.text(), 0.8f, false);
+            PhoneDraw.text(g, PhoneDraw.ellipsize((app.author().isEmpty() ? "" : app.author() + " · ") + app.version(), w - 120, 0.6f), 36, y + 18,
                     PhoneTheme.secondaryText(), 0.6f, false);
             int ow = (int) PhoneDraw.width(PhoneLang.tr("store.open"), 0.75f) + 10;
             PhoneDraw.button(g, w - 26 - ow, y + 9, ow, 15, PhoneLang.tr("store.open"), mx, my, PhoneDraw.ButtonStyle.NORMAL);
@@ -315,6 +324,9 @@ public final class StoreApp extends PhoneApp {
                     phone.openApp(CustomApps.PREFIX + app.id());
                 }
             }));
+            int pw = 16;
+            PhoneDraw.button(g, w - 44 - ow, y + 9, pw, 15, "↑", mx, my, PhoneDraw.ButtonStyle.PRIMARY);
+            hits.add(new Hit(w - 44 - ow, y + 9, pw, 15, () -> askPublish(app)));
             PhoneDraw.button(g, w - 22, y + 9, 16, 15, "✕", mx, my, PhoneDraw.ButtonStyle.DANGER);
             hits.add(new Hit(w - 22, y + 9, 16, 15, () -> askRemove(app.id(), CustomApps.name(app))));
             g.fill(36, y + ROW_H - 1, w, y + ROW_H, PhoneTheme.separator());
@@ -331,6 +343,9 @@ public final class StoreApp extends PhoneApp {
         PhoneDraw.button(g, w - 30, y, 24, 16, "+", mx, my, PhoneDraw.ButtonStyle.PRIMARY);
         hits.add(new Hit(w - 30, y, 24, 16, this::addSource));
         y += 24;
+        PhoneDraw.card(g, 6, y, w - 6, y + 18, false);
+        PhoneDraw.text(g, PhoneLang.tr("store.official"), 10, y + 6, PhoneTheme.accent(), 0.6f, false);
+        y += 22;
         for (String src : List.copyOf(AppStore.sources())) {
             PhoneDraw.card(g, 6, y, w - 6, y + 18, false);
             PhoneDraw.text(g, PhoneDraw.ellipsize(src.replaceFirst("^https://", ""), w - 36, 0.6f), 10, y + 6, PhoneTheme.text(), 0.6f, false);

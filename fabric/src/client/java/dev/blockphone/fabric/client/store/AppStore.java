@@ -49,6 +49,15 @@ public final class AppStore {
 
     public enum State { IDLE, LOADING, READY }
 
+    /** Официальный каталог (репозиторий владельца мода) — источник у всех игроков, его нельзя убрать. */
+    public static final String OFFICIAL = "https://raw.githubusercontent.com/Jdhihfgiuahfgy/blockphone-apps/main/catalog.json";
+    /**
+     * «Приёмник» публикаций (Cloudflare Worker, store-repo/worker.js): принимает архив и создаёт заявку (Pull Request)
+     * в официальном репозитории. Ключ GitHub хранится только в приёмнике. Пусто — публикация ещё не настроена.
+     */
+    public static final String PUBLISH_URL = "";
+    private static final long MAX_PUBLISH = 10L << 20;
+
     private static final long MAX_CATALOG = 2L << 20;
     private static final long MAX_ZIP = 30L << 20;
     private static final long MAX_UNPACKED = 40L << 20;
@@ -76,8 +85,23 @@ public final class AppStore {
         return state;
     }
 
+    /** Свои источники игрока (без официального). */
     public static List<String> sources() {
         return PhoneSettings.get().storeSources;
+    }
+
+    /** Все каталоги: официальный + свои. */
+    public static List<String> allSources() {
+        List<String> all = new ArrayList<>();
+        if (!allowFiles) {
+            all.add(OFFICIAL);
+        }
+        for (String s : sources()) {
+            if (!all.contains(s)) {
+                all.add(s);
+            }
+        }
+        return all;
     }
 
     public static void addSource(String url) {
@@ -98,7 +122,7 @@ public final class AppStore {
     /** Загрузить все каталоги заново (в фоне). */
     public static void refresh() {
         state = State.LOADING;
-        List<String> list = List.copyOf(sources());
+        List<String> list = allSources();
         ClientFiles.IO.execute(() -> {
             List<Entry> found = new ArrayList<>();
             List<String> problems = new ArrayList<>();
@@ -289,6 +313,74 @@ public final class AppStore {
                 Files.write(out, data);
             }
         }
+    }
+
+    /**
+     * Опубликовать своё приложение (папку blockphone/apps/&lt;id&gt;) в официальный каталог: архив только из файлов
+     * приложения уходит в «приёмник», тот создаёт заявку; после одобрения владельцем каталога приложение появится у всех.
+     * done(null) — заявка отправлена, иначе текст ошибки. На потоке рендера.
+     */
+    public static void publish(String id, Consumer<String> done) {
+        if (PUBLISH_URL.isEmpty()) {
+            done.accept("not_configured");
+            return;
+        }
+        AppDefinition app = CustomApps.get(id);
+        Path folder = CustomApps.folder().resolve(id);
+        if (app == null || !Files.isDirectory(folder) || BUSY.putIfAbsent(id, "publish") != null) {
+            done.accept("no_folder");
+            return;
+        }
+        String player = Minecraft.getInstance().getUser().getName();
+        ClientFiles.IO.execute(() -> {
+            String error = null;
+            try {
+                byte[] zip = zipFolder(folder);
+                HttpRequest request = HttpRequest.newBuilder(URI.create(PUBLISH_URL)).timeout(Duration.ofSeconds(60))
+                        .header("Content-Type", "application/zip").header("X-App-Id", id)
+                        .header("X-App-Version", app.version()).header("X-Player", player)
+                        .POST(HttpRequest.BodyPublishers.ofByteArray(zip)).build();
+                HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    String body = response.body();
+                    try {
+                        body = JsonParser.parseString(body).getAsJsonObject().get("error").getAsString();
+                    } catch (RuntimeException ignored) {
+                        // как есть
+                    }
+                    error = "HTTP " + response.statusCode() + ": " + body;
+                }
+            } catch (Exception e) {
+                error = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
+            String result = error;
+            Minecraft.getInstance().execute(() -> {
+                BUSY.remove(id);
+                done.accept(result);
+            });
+        });
+    }
+
+    /** Архив папки приложения: только разрешённые файлы, пути через «/». */
+    static byte[] zipFolder(Path folder) throws IOException {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(bytes); Stream<Path> walk = Files.walk(folder, 6)) {
+            for (Path file : walk.filter(Files::isRegularFile).sorted().toList()) {
+                String rel = folder.relativize(file).toString().replace('\\', '/');
+                String lower = rel.toLowerCase(Locale.ROOT);
+                int dot = lower.lastIndexOf('.');
+                if (dot < 0 || !ALLOWED.contains(lower.substring(dot)) || rel.startsWith(".")) {
+                    continue;
+                }
+                zip.putNextEntry(new ZipEntry(rel));
+                Files.copy(file, zip);
+                zip.closeEntry();
+            }
+        }
+        if (bytes.size() > MAX_PUBLISH) {
+            throw new IOException("the app is too big to publish (max 10 MB)");
+        }
+        return bytes.toByteArray();
     }
 
     /** Удалить установленное приложение (папку blockphone/apps/&lt;id&gt;). */

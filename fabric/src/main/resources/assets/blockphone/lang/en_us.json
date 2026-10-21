@@ -791,6 +791,14 @@
   "store.remove_confirm": "Remove \"%s\" and its data?",
   "store.removed": "\"%s\" removed",
   "store.none_installed": "No custom apps yet.",
-  "store.sources_hint": "A source is an https link to catalog.json. How to publish your apps: docs/APP_STORE.md.",
-  "store.bad_source": "The link must start with https://"
+  "store.sources_hint": "The official catalog is always on. You can add more — https links to catalog.json (docs/APP_STORE.md).",
+  "store.bad_source": "The link must start with https://",
+  "store.official": "Official BlockPhone catalog",
+  "store.publish": "Publish",
+  "store.publish_confirm": "Send \"%s\" (version %s) to the official catalog?\n\nOnly the app files and your nickname (as the author) are sent. It appears in the Store for everyone after review.",
+  "store.publish_send": "Send",
+  "store.publishing": "Sending \"%s\"…",
+  "store.published": "\"%s\" was sent for review. Once approved, it will appear in the Store.",
+  "store.publish_off": "Publishing is not set up by the catalog owner yet.",
+  "store.publish_failed": "Could not send: %s"
 }

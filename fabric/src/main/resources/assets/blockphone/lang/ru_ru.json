@@ -791,6 +791,14 @@
   "store.remove_confirm": "Удалить «%s» и его данные?",
   "store.removed": "«%s» удалено",
   "store.none_installed": "Своих приложений пока нет.",
-  "store.sources_hint": "Источник — ссылка https на catalog.json. Как выложить свои приложения — в инструкции docs/APP_STORE.md.",
-  "store.bad_source": "Ссылка должна начинаться с https://"
+  "store.sources_hint": "Официальный каталог есть всегда. Можно добавить и другие — ссылки https на catalog.json (docs/APP_STORE.md).",
+  "store.bad_source": "Ссылка должна начинаться с https://",
+  "store.official": "Официальный каталог BlockPhone",
+  "store.publish": "Опубликовать",
+  "store.publish_confirm": "Отправить «%s» (версия %s) в официальный каталог?\n\nОтправятся только файлы приложения и ваш ник (как автора). Приложение появится в Магазине у всех после проверки.",
+  "store.publish_send": "Отправить",
+  "store.publishing": "Отправляю «%s»…",
+  "store.published": "«%s» отправлено на проверку. Когда его одобрят, оно появится в Магазине.",
+  "store.publish_off": "Публикация пока не настроена владельцем каталога.",
+  "store.publish_failed": "Не удалось отправить: %s"
 }
