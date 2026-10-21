@@ -103,6 +103,55 @@ public final class DevShots {
     }
 
     /**
+     * «Block Strike» из docs/examples/scripts/blockstrike: заставка → «Игра с ботами» → «Начать», фаза покупки,
+     * меню покупки, бой с ботами, пауза.
+     */
+    private void planStrike() {
+        step(1, mc -> {
+            try {
+                Path example = Path.of("..", "..", "docs", "examples", "scripts", "blockstrike");
+                Path target = dev.blockphone.fabric.client.apps.custom.CustomApps.folder().resolve("blockstrike");
+                try (var files = Files.walk(example)) {
+                    for (Path f : files.toList()) {
+                        Path to = target.resolve(example.relativize(f).toString());
+                        if (Files.isDirectory(f)) {
+                            Files.createDirectories(to);
+                        } else {
+                            Files.copy(f, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }
+                }
+                dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] strike: {}", e.toString());
+            }
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        step(20, mc -> phone(mc, p -> p.openApp("app.blockstrike")));
+        shot(60, "strike_title");
+        step(1, mc -> customApp("blockstrike", a -> a.debugClick(a.contentWidth() / 2.0, 58)));
+        shot(20, "strike_create");
+        step(1, mc -> customApp("blockstrike", a -> {
+            double sw = a.contentWidth(), sh = a.contentHeight(), size = sh - 46, x = size + 20, w = sw - size - 28;
+            a.debugClick(x + w * 0.75, sh - 13);
+        }));
+        shot(100, "strike_freeze");
+        step(1, mc -> customApp("blockstrike", a -> a.debugKey("b")));
+        step(5, mc -> customApp("blockstrike", a -> a.debugKey("1")));
+        shot(10, "strike_buy");
+        step(1, mc -> customApp("blockstrike", a -> {
+            a.debugKey("3");
+            a.debugKey("b");
+        }));
+        shot(120, "strike_live");
+        shot(300, "strike_fight");
+        shot(300, "strike_later");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        shot(20, "strike_pause");
+    }
+
+    /**
      * Свои приложения: «Кликер» из примера, «Банк» из docs/examples с серверной частью на Java (встроенный сервер,
      * нужен BLOCKPHONE_DEV_MESSENGER=1), подтверждение, отключённое сервером приложение, «Настройки → Свои приложения».
      */
@@ -403,6 +452,8 @@ public final class DevShots {
             planTelegram();
         } else if (scenario.equals("apps")) {
             planApps();
+        } else if (scenario.equals("strike")) {
+            planStrike();
         } else if (scenario.equals("hand")) {
             // только общая часть (мир, телефон, «на ходу», телефон в руке)
         } else {

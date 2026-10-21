@@ -27,6 +27,7 @@
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
 | `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
+| `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, radar из maps.lua, muzzles.lua, icon) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
@@ -63,6 +64,9 @@
   `fabric/run/blockphone/dev_sticker.webp` (если есть) — WEBP-стикер; в лог — проход Opus внутри игры.
   Сценарий снимает только свою часть: общие снимки (все приложения в меню, мир, «на ходу») — только `all`/`design`/`hand`.
   Telegram дополнительно: `telegram_list`, `telegram_viewer`, `telegram_profile`.
+  Сценарий `strike`: копирует пример `blockstrike`, заставка → «Игра с ботами» → покупка → бой → пауза (`strike_*`).
+  Логику Block Strike можно гонять без игры: LuaJ-jar из кэша Gradle, `java -cp luaj-jse.jar lua <скрипт>` в папке примера
+  (`require("sim")` — матч ботов; main.lua — только с заглушками gfx/g3d/ui/net).
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
@@ -513,7 +517,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (`input.lockMouse`: GLFW CURSOR_DISABLED, дельты по glfwGetCursorPos, `PhoneApp.capturesMouse` — клики в центр;
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
-  onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`); DevShots `apps`
+  onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`;
+  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud.lua, хост считает игру и ботов, графика `tools/gen_strike.py`); DevShots `apps`
   снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,
   хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
   ленты/музыки/Telegram. `AppRegistry.visible()` добавляет их на рабочий стол (Entry.custom, `label()`); «Настройки →
