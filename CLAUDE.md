@@ -311,6 +311,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
+- `storage/ClipboardImage` — картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
+  osascript, Linux — wl-copy/xclip; путь — через переменную окружения. В галерее — кнопка «Копировать».
+- `PhoneClock`: в 12-часовом формате — «AM/PM» (`time()`; крупные часы — `drawBig`, AM/PM мельче). `PhoneScreen.signalBars()` —
+  деления связи по пингу (`PlayerInfo.getLatency`: <80 — 4, <150 — 3, <300 — 2, <600 — 1), в одиночной игре — 4.
+  Выход из мира (`ClientNetwork`, DISCONNECT) останавливает музыку и голосовые.
 - `apps/messenger/` — приложение: `MessengerApp` (стек экранов `MessengerView`), `ChatListView`, `NewChatView`, `UserPickerView`
   (создать группу / добавить участников), `ChatView` (пузыри, разделители дней, подгрузка истории, Enter — отправить,
   Shift+Enter — перенос, ПКМ — меню изменить/копировать/удалить), `ChatInfoView` (участники, переименование, исключение, выход),
@@ -354,8 +359,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, уведомления;
   нажатие на уведомление — открыть, в другом месте — разблокировать),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
-  `settings/SettingsApp` (страницы MAIN / ACCENT — готовые цвета + HEX / WALLPAPER — градиенты + свои картинки /
-  HUD — виджет музыки: предпросмотр «экрана игры» 16:9 и настройки; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
+  `settings/SettingsApp` (MAIN — меню разделов-плиток (`categories()`: значок, название, кратко — что выбрано);
+  разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
+  цвета + HEX / WALLPAPER — градиенты + свои картинки (родитель LOOK) / HUD — виджет музыки: предпросмотр «экрана игры» 16:9
+  (родитель MUSIC); «назад» — `parent(page)`; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
   `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
   `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
   `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;
@@ -404,7 +411,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     расстоянию; строка шире 190 px — в два ряда (`layout`); строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
     остаётся или следует за взглядом, всегда повёрнута к камере (`camera.rotation()`); текст без времени строк в мире — только
     при `lyricsUnsynced`; обводка — `lyricsOutline`; слова «выпрыгивают» по времени, последнее — акцентом, разброс размеров по хэшу; прошлая строка
-    гаснет и уплывает вверх. Прячется при F1 и остановке музыки.
+    гаснет и уплывает вверх. Прячется при F1 и остановке музыки. Только режимы «world»/«view».
+  - `lyrics/LyricsHud` — текст на экране (`HudElementRegistry`), режимы `MODES` (настройка `lyricsMode`): left/right — столбик
+    строк сбоку (плавная прокрутка), actionbar — над хотбаром, subtitles — снизу с подложкой и следующей строкой, top — крупно
+    сверху (под виджетом музыки, если тот вверху); слова загораются по времени (караоке), размер — `lyricsSize`, обводка.
   - `MusicHud` — виджет «сейчас играет»: оформления `STYLES` (card, compact — строка-«таблетка», large, minimal — без фона,
     cover — квадрат-обложка), цвет `COLORS` (dark/light/accent) и непрозрачность подложки, угол/край `ANCHORS` (8 мест) + отступы,
     масштаб 50–200 %, что показывать (обложка, исполнитель, полоска, время, строка текста песни, показ на паузе). `current()` →

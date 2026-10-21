@@ -42,7 +42,7 @@ public final class HomeApp extends PhoneApp {
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         float cx = contentWidth() / 2f;
-        PhoneDraw.centeredText(g, PhoneClock.time(), cx, 14, 0xFFFFFFFF, 3f, true);
+        PhoneClock.drawBig(g, cx, 14);
         PhoneDraw.centeredText(g, PhoneClock.date(), cx, 44, 0xE6FFFFFF, 0.75f, true);
 
         List<AppRegistry.Entry> apps = AppRegistry.visible();

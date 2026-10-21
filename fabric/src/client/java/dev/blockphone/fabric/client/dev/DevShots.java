@@ -684,8 +684,21 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
             phone(mc, p -> p.openApp("settings"));
         });
+        step(5, mc -> settingsPage("main"));
+        shot(30, "settings_menu");
+        step(1, mc -> settingsPage("lyrics"));
+        shot(30, "settings_lyrics");
         step(5, mc -> settingsPage("hud"));
         shot(30, "settings_hud");
+        // Текст песни на экране: все режимы, кроме «в мире».
+        for (String mode : new String[]{"left", "right", "actionbar", "subtitles", "top"}) {
+            step(1, mc -> {
+                mc.setScreen(null);
+                settings.lyricsMode = mode;
+                MusicPlayer.seek(62_000);
+            });
+            shot(40, "lyrics_" + mode);
+        }
         step(1, mc -> {
             mc.setScreen(null);
             PhoneSettings fresh = new PhoneSettings();

@@ -31,16 +31,28 @@ import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 
 /**
- * Настройки телефона: основной список (ЛКМ — следующее значение, ПКМ — предыдущее) и два экрана —
- * выбор акцентного цвета (готовые + свой HEX) и выбор обоев (стандартные + свои картинки).
- * Все изменения сразу сохраняются в {@link PhoneSettings}.
+ * Настройки телефона: главная страница — меню разделов (Основные, Оформление, Уведомления, Музыка, Текст песни, Telegram,
+ * Свои приложения, О телефоне); в разделе — строки (ЛКМ — следующее значение, ПКМ — предыдущее) и вложенные страницы
+ * (акцентный цвет, обои, виджет музыки). «Назад» — к родительской странице. Все изменения сразу сохраняются в {@link PhoneSettings}.
  */
 public final class SettingsApp extends PhoneApp {
     private static final List<String> LANGUAGES = List.of("auto", "ru_ru", "en_us");
     private static final int ROW_H = 20;
     private static final int MARGIN = 6;
 
-    private enum Page { MAIN, ACCENT, WALLPAPER, HUD, APPS, NOTIFY }
+    private enum Page { MAIN, GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT, ACCENT, WALLPAPER, HUD, APPS, NOTIFY }
+
+    /** Пункт главного меню: страница, цвет плитки, значок, краткое «что внутри». */
+    private record Category(Page page, int color, String glyph, String titleKey, Supplier<String> summary) {
+    }
+
+    private static Page parent(Page page) {
+        return switch (page) {
+            case ACCENT, WALLPAPER -> Page.LOOK;
+            case HUD -> Page.MUSIC;
+            default -> Page.MAIN;
+        };
+    }
 
     /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. */
     private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
@@ -70,6 +82,12 @@ public final class SettingsApp extends PhoneApp {
     public String title() {
         return switch (page) {
             case MAIN -> super.title();
+            case GENERAL -> PhoneLang.tr("settings.section.general");
+            case LOOK -> PhoneLang.tr("settings.section.appearance");
+            case MUSIC -> PhoneLang.tr("settings.section.music");
+            case LYRICS -> PhoneLang.tr("settings.section.lyrics");
+            case TELEGRAM -> "Telegram";
+            case ABOUT -> PhoneLang.tr("settings.section.about");
             case ACCENT -> PhoneLang.tr("settings.accent");
             case WALLPAPER -> PhoneLang.tr("settings.wallpaper");
             case HUD -> PhoneLang.tr("settings.music_hud");
@@ -81,7 +99,7 @@ public final class SettingsApp extends PhoneApp {
     @Override
     public boolean onBack() {
         if (page != Page.MAIN) {
-            open(Page.MAIN);
+            open(parent(page));
             return true;
         }
         return false;
@@ -138,101 +156,175 @@ public final class SettingsApp extends PhoneApp {
         PhoneSettings.get().save();
     }
 
-    // --- Основной список ---
+    // --- Главное меню и разделы ---
 
-    private List<Section> sections() {
+    private List<Category> categories() {
+        PhoneSettings s = PhoneSettings.get();
+        return List.of(
+                new Category(Page.GENERAL, 0xFF8E8E93, "⚙", "settings.section.general",
+                        () -> PhoneLang.tr("settings.language." + s.language) + " · "
+                                + PhoneLang.tr(s.clock24h ? "settings.clock_format.24" : "settings.clock_format.12")),
+                new Category(Page.LOOK, PhoneTheme.accent(), "◐", "settings.section.appearance",
+                        () -> PhoneLang.tr(s.darkTheme ? "settings.theme.dark" : "settings.theme.light") + " · " + wallpaperName()),
+                new Category(Page.NOTIFY, 0xFFE5534B, "!", "settings.section.notify",
+                        () -> PhoneLang.tr(s.notifyAll ? "settings.on" : "settings.off")),
+                new Category(Page.MUSIC, 0xFFEE5A8E, "♪", "settings.section.music",
+                        () -> Math.round(s.musicVolume * 100) + "% · " + PhoneLang.tr("settings.music_hud") + ": "
+                                + PhoneLang.tr(s.musicHud ? "settings.on" : "settings.off")),
+                new Category(Page.LYRICS, 0xFFA695E7, "≡", "settings.section.lyrics",
+                        () -> s.lyricsWorld ? PhoneLang.tr("settings.lyrics_mode." + s.lyricsMode) : PhoneLang.tr("settings.off")),
+                new Category(Page.TELEGRAM, 0xFF2AABEE, "✈", "settings.section.telegram",
+                        () -> PhoneLang.tr("settings.telegram.summary")),
+                new Category(Page.APPS, 0xFF34C759, "▦", "settings.section.apps",
+                        () -> PhoneLang.tr("settings.apps.count", dev.blockphone.fabric.client.apps.custom.CustomApps.all().size())),
+                new Category(Page.ABOUT, 0xFF5B6B85, "i", "settings.section.about", () -> BlockPhoneFabric.VERSION));
+    }
+
+    /** Главная: плитки-разделы (значок, название, кратко — что выбрано). */
+    private int renderMenu(GuiGraphics g, int mouseX, int mouseY) {
+        int w = contentWidth();
+        int y = 6 - (int) scroll;
+        int rowH = 28;
+        List<Category> list = categories();
+        PhoneDraw.card(g, MARGIN, y, w - MARGIN, y + list.size() * rowH, false);
+        for (int i = 0; i < list.size(); i++) {
+            Category c = list.get(i);
+            int ry = y + i * rowH;
+            if (PhoneDraw.inside(mouseX, mouseY, MARGIN, ry, w - 2 * MARGIN, rowH)) {
+                g.fill(MARGIN + 1, ry + (i == 0 ? 1 : 0), w - MARGIN - 1, ry + rowH - (i == list.size() - 1 ? 1 : 0), PhoneTheme.cardHover());
+            }
+            if (i > 0) {
+                g.fill(MARGIN + 30, ry, w - MARGIN - 6, ry + 1, PhoneTheme.separator());
+            }
+            PhoneDraw.rawRoundedRect(g, MARGIN + 6, ry + 5, MARGIN + 24, ry + 23, 4, c.color());
+            PhoneDraw.centeredText(g, c.glyph(), MARGIN + 15, ry + 10, 0xFFFFFFFF, 0.9f, false);
+            int textW = w - 2 * MARGIN - 30 - 14;
+            PhoneDraw.text(g, PhoneDraw.ellipsize(PhoneLang.tr(c.titleKey()), textW, 0.8f), MARGIN + 30, ry + 6, PhoneTheme.text(), 0.8f, false);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(c.summary().get(), textW, 0.6f), MARGIN + 30, ry + 16, PhoneTheme.secondaryText(), 0.6f, false);
+            PhoneDraw.text(g, ">", w - MARGIN - 10, ry + 10, PhoneTheme.secondaryText(), 0.75f, false);
+            Page target = c.page();
+            hits.add(new Hit(MARGIN, ry, w - 2 * MARGIN, rowH, dir -> open(target)));
+        }
+        return y + list.size() * rowH + 6;
+    }
+
+    private List<Section> pageSections(Page which) {
         PhoneSettings s = PhoneSettings.get();
         List<Section> result = new ArrayList<>();
-        result.add(new Section("settings.section.general", List.of(
-                new Row(() -> PhoneLang.tr("settings.language"), () -> PhoneLang.tr("settings.language." + s.language),
-                        dir -> s.language = cycle(LANGUAGES, s.language, dir), null, false),
-                new Row(() -> PhoneLang.tr("settings.clock_source"),
-                        () -> PhoneLang.tr(s.gameTimeClock ? "settings.clock_source.game" : "settings.clock_source.real"),
-                        dir -> s.gameTimeClock = !s.gameTimeClock, null, false),
-                new Row(() -> PhoneLang.tr("settings.clock_format"),
-                        () -> PhoneLang.tr(s.clock24h ? "settings.clock_format.24" : "settings.clock_format.12"),
-                        dir -> s.clock24h = !s.clock24h, null, false))));
-        result.add(new Section("settings.section.appearance", List.of(
-                new Row(() -> PhoneLang.tr("settings.theme"),
-                        () -> PhoneLang.tr(s.darkTheme ? "settings.theme.dark" : "settings.theme.light"),
-                        dir -> s.darkTheme = !s.darkTheme, null, false),
-                new Row(() -> PhoneLang.tr("settings.accent"),
-                        () -> String.format(Locale.ROOT, "#%06X", PhoneTheme.accent() & 0xFFFFFF),
-                        dir -> open(Page.ACCENT), PhoneTheme.accent(), true),
-                new Row(() -> PhoneLang.tr("settings.wallpaper"), SettingsApp::wallpaperName,
-                        dir -> open(Page.WALLPAPER), null, true),
-                new Row(() -> PhoneLang.tr("settings.animations"),
-                        () -> PhoneLang.tr(s.animations ? "settings.on" : "settings.off"),
-                        dir -> s.animations = !s.animations, null, false),
-                new Row(() -> PhoneLang.tr("settings.lock_screen"),
-                        () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
-                        dir -> s.lockScreen = !s.lockScreen, null, false),
-                new Row(() -> PhoneLang.tr("settings.compact"),
-                        () -> BlockPhoneClient.compactKey.getTranslatedKeyMessage().getString() + " · "
-                                + PhoneLang.tr("settings.compact_cursor", BlockPhoneClient.cursorKey.getTranslatedKeyMessage().getString()),
-                        dir -> {
-                            if (phone != null) {
-                                dev.blockphone.fabric.client.phone.PhonePin.toggle(net.minecraft.client.Minecraft.getInstance());
-                            }
-                        }, null, false))));
-        result.add(new Section("settings.section.music", List.of(
-                new Row(() -> PhoneLang.tr("settings.music_hud"),
-                        () -> PhoneLang.tr(s.musicHud ? "settings.hud.style." + s.hudStyle : "settings.off"),
-                        dir -> open(Page.HUD), null, true),
-                new Row(() -> PhoneLang.tr("settings.music_volume"),
-                        () -> Math.round(s.musicVolume * 100) + "%",
-                        dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false))));
-        result.add(new Section("settings.section.lyrics", List.of(
-                new Row(() -> PhoneLang.tr("settings.lyrics_world"),
-                        () -> PhoneLang.tr(s.lyricsWorld ? "settings.on" : "settings.off"),
-                        dir -> s.lyricsWorld = !s.lyricsWorld, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_mode"),
-                        () -> PhoneLang.tr("settings.lyrics_mode." + s.lyricsMode),
-                        dir -> s.lyricsMode = cycle(List.of("world", "view"), s.lyricsMode, dir), null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_size"),
-                        () -> PhoneLang.tr("settings.lyrics_size." + s.lyricsSize),
-                        dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
-                        () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
-                        dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 28) + 3, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_scatter"),
-                        () -> PhoneLang.tr(s.lyricsScatter ? "settings.on" : "settings.off"),
-                        dir -> s.lyricsScatter = !s.lyricsScatter, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_outline"),
+        switch (which) {
+            case GENERAL -> {
+                result.add(new Section("settings.section.language_time", List.of(
+                        new Row(() -> PhoneLang.tr("settings.language"), () -> PhoneLang.tr("settings.language." + s.language),
+                                dir -> s.language = cycle(LANGUAGES, s.language, dir), null, false),
+                        new Row(() -> PhoneLang.tr("settings.clock_source"),
+                                () -> PhoneLang.tr(s.gameTimeClock ? "settings.clock_source.game" : "settings.clock_source.real"),
+                                dir -> s.gameTimeClock = !s.gameTimeClock, null, false),
+                        new Row(() -> PhoneLang.tr("settings.clock_format"),
+                                () -> PhoneLang.tr(s.clock24h ? "settings.clock_format.24" : "settings.clock_format.12"),
+                                dir -> s.clock24h = !s.clock24h, null, false))));
+                result.add(new Section("settings.section.control", List.of(
+                        new Row(() -> PhoneLang.tr("settings.key"),
+                                () -> BlockPhoneClient.openPhoneKey.getTranslatedKeyMessage().getString(), null, null, false),
+                        new Row(() -> PhoneLang.tr("settings.compact"),
+                                () -> BlockPhoneClient.compactKey.getTranslatedKeyMessage().getString() + " · "
+                                        + PhoneLang.tr("settings.compact_cursor", BlockPhoneClient.cursorKey.getTranslatedKeyMessage().getString()),
+                                dir -> {
+                                    if (phone != null) {
+                                        dev.blockphone.fabric.client.phone.PhonePin.toggle(Minecraft.getInstance());
+                                    }
+                                }, null, false),
+                        new Row(() -> PhoneLang.tr("settings.lock_screen"),
+                                () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
+                                dir -> s.lockScreen = !s.lockScreen, null, false))));
+            }
+            case LOOK -> result.add(new Section("settings.section.appearance", List.of(
+                    new Row(() -> PhoneLang.tr("settings.theme"),
+                            () -> PhoneLang.tr(s.darkTheme ? "settings.theme.dark" : "settings.theme.light"),
+                            dir -> s.darkTheme = !s.darkTheme, null, false),
+                    new Row(() -> PhoneLang.tr("settings.accent"),
+                            () -> String.format(Locale.ROOT, "#%06X", PhoneTheme.accent() & 0xFFFFFF),
+                            dir -> open(Page.ACCENT), PhoneTheme.accent(), true),
+                    new Row(() -> PhoneLang.tr("settings.wallpaper"), SettingsApp::wallpaperName,
+                            dir -> open(Page.WALLPAPER), null, true),
+                    new Row(() -> PhoneLang.tr("settings.animations"),
+                            () -> PhoneLang.tr(s.animations ? "settings.on" : "settings.off"),
+                            dir -> s.animations = !s.animations, null, false))));
+            case MUSIC -> {
+                result.add(new Section("settings.section.music", List.of(
+                        new Row(() -> PhoneLang.tr("settings.music_volume"),
+                                () -> Math.round(s.musicVolume * 100) + "%",
+                                dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false),
+                        new Row(() -> PhoneLang.tr("settings.music_hud"),
+                                () -> PhoneLang.tr(s.musicHud ? "settings.hud.style." + s.hudStyle : "settings.off"),
+                                dir -> open(Page.HUD), null, true),
+                        new Row(() -> PhoneLang.tr("settings.section.lyrics"),
+                                () -> s.lyricsWorld ? PhoneLang.tr("settings.lyrics_mode." + s.lyricsMode) : PhoneLang.tr("settings.off"),
+                                dir -> open(Page.LYRICS), null, true))));
+                result.add(new Section("settings.section.music_keys", List.of(
+                        new Row(() -> PhoneLang.tr("settings.music_key_play"),
+                                () -> BlockPhoneClient.musicPlayKey.getTranslatedKeyMessage().getString(), null, null, false),
+                        new Row(() -> PhoneLang.tr("settings.music_key_next"),
+                                () -> BlockPhoneClient.musicNextKey.getTranslatedKeyMessage().getString(), null, null, false))));
+            }
+            case LYRICS -> {
+                boolean world = !dev.blockphone.fabric.client.music.lyrics.LyricsHud.screenMode(s.lyricsMode);
+                result.add(new Section("settings.lyrics.where", List.of(
+                        new Row(() -> PhoneLang.tr("settings.lyrics_world"),
+                                () -> PhoneLang.tr(s.lyricsWorld ? "settings.on" : "settings.off"),
+                                dir -> s.lyricsWorld = !s.lyricsWorld, null, false),
+                        new Row(() -> PhoneLang.tr("settings.lyrics_mode"),
+                                () -> PhoneLang.tr("settings.lyrics_mode." + s.lyricsMode),
+                                dir -> s.lyricsMode = cycle(dev.blockphone.fabric.client.music.lyrics.LyricsHud.MODES, s.lyricsMode, dir),
+                                null, false),
+                        new Row(() -> PhoneLang.tr("settings.lyrics_size"),
+                                () -> PhoneLang.tr("settings.lyrics_size." + s.lyricsSize),
+                                dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false))));
+                List<Row> look = new ArrayList<>();
+                if (world) {
+                    look.add(new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
+                            () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
+                            dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 28) + 3, null, false));
+                    look.add(new Row(() -> PhoneLang.tr("settings.lyrics_scatter"),
+                            () -> PhoneLang.tr(s.lyricsScatter ? "settings.on" : "settings.off"),
+                            dir -> s.lyricsScatter = !s.lyricsScatter, null, false));
+                }
+                look.add(new Row(() -> PhoneLang.tr("settings.lyrics_outline"),
                         () -> PhoneLang.tr(s.lyricsOutline ? "settings.on" : "settings.off"),
-                        dir -> s.lyricsOutline = !s.lyricsOutline, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_unsynced"),
-                        () -> PhoneLang.tr(s.lyricsUnsynced ? "settings.on" : "settings.off"),
-                        dir -> s.lyricsUnsynced = !s.lyricsUnsynced, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_accent"),
+                        dir -> s.lyricsOutline = !s.lyricsOutline, null, false));
+                look.add(new Row(() -> PhoneLang.tr("settings.lyrics_accent"),
                         () -> PhoneLang.tr(s.lyricsAccentWord ? "settings.on" : "settings.off"),
-                        dir -> s.lyricsAccentWord = !s.lyricsAccentWord, null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_offset"),
-                        () -> (s.lyricsOffsetMs > 0 ? "+" : "") + String.format(java.util.Locale.ROOT, "%.1f", s.lyricsOffsetMs / 1000f)
-                                + PhoneLang.tr("settings.lyrics_seconds"),
-                        dir -> s.lyricsOffsetMs = Math.max(-3000, Math.min(3000, s.lyricsOffsetMs + dir * 250)), null, false),
-                new Row(() -> PhoneLang.tr("settings.lyrics_online"),
-                        () -> PhoneLang.tr(s.lyricsOnline ? "settings.on" : "settings.off"),
-                        dir -> {
-                            s.lyricsOnline = !s.lyricsOnline;
-                            dev.blockphone.fabric.client.music.lyrics.LyricsService.reload();
-                        }, null, false))));
-
-        ServerHelloPacket hello = ClientNetwork.serverHello();
-        String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());
-        result.add(new Section("settings.section.notify", List.of(
-                new Row(() -> PhoneLang.tr("settings.notify"),
-                        () -> PhoneLang.tr(s.notifyAll ? "settings.on" : "settings.off"),
-                        dir -> open(Page.NOTIFY), null, true))));
-        result.add(new Section("settings.section.apps", List.of(
-                new Row(() -> PhoneLang.tr("settings.apps"),
-                        () -> String.valueOf(dev.blockphone.fabric.client.apps.custom.CustomApps.all().size()),
-                        dir -> open(Page.APPS), null, true))));
-        result.add(new Section("settings.section.about", List.of(
-                new Row(() -> PhoneLang.tr("settings.version"), () -> BlockPhoneFabric.VERSION, null, null, false),
-                new Row(() -> PhoneLang.tr("settings.server"), () -> server, null, null, false),
-                new Row(() -> PhoneLang.tr("settings.key"),
-                        () -> BlockPhoneClient.openPhoneKey.getTranslatedKeyMessage().getString(), null, null, false))));
+                        dir -> s.lyricsAccentWord = !s.lyricsAccentWord, null, false));
+                result.add(new Section("settings.lyrics.look", look));
+                result.add(new Section("settings.lyrics.text", List.of(
+                        new Row(() -> PhoneLang.tr("settings.lyrics_unsynced"),
+                                () -> PhoneLang.tr(s.lyricsUnsynced ? "settings.on" : "settings.off"),
+                                dir -> s.lyricsUnsynced = !s.lyricsUnsynced, null, false),
+                        new Row(() -> PhoneLang.tr("settings.lyrics_offset"),
+                                () -> (s.lyricsOffsetMs > 0 ? "+" : "") + String.format(Locale.ROOT, "%.1f", s.lyricsOffsetMs / 1000f)
+                                        + PhoneLang.tr("settings.lyrics_seconds"),
+                                dir -> s.lyricsOffsetMs = Math.max(-3000, Math.min(3000, s.lyricsOffsetMs + dir * 250)), null, false),
+                        new Row(() -> PhoneLang.tr("settings.lyrics_online"),
+                                () -> PhoneLang.tr(s.lyricsOnline ? "settings.on" : "settings.off"),
+                                dir -> {
+                                    s.lyricsOnline = !s.lyricsOnline;
+                                    dev.blockphone.fabric.client.music.lyrics.LyricsService.reload();
+                                }, null, false))));
+            }
+            case TELEGRAM -> result.add(new Section("settings.telegram.video_notes", List.of(
+                    toggle("settings.telegram.note_mic", () -> s.videoNoteMic, v -> s.videoNoteMic = v),
+                    toggle("settings.telegram.note_music", () -> s.videoNoteMusic, v -> s.videoNoteMusic = v))));
+            case ABOUT -> {
+                ServerHelloPacket hello = ClientNetwork.serverHello();
+                String server = hello == null ? PhoneLang.tr("settings.server.none") : PhoneLang.tr("settings.server.connected", hello.serverPlatform());
+                result.add(new Section("settings.section.about", List.of(
+                        new Row(() -> PhoneLang.tr("settings.version"), () -> BlockPhoneFabric.VERSION, null, null, false),
+                        new Row(() -> PhoneLang.tr("settings.server"), () -> server, null, null, false),
+                        new Row(() -> PhoneLang.tr("settings.signal"),
+                                () -> dev.blockphone.fabric.client.phone.PhoneScreen.signalBars() + "/4", null, null, false))));
+            }
+            default -> {
+            }
+        }
         return result;
     }
 
@@ -253,7 +345,8 @@ public final class SettingsApp extends PhoneApp {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         hits.clear();
         int bottom = switch (page) {
-            case MAIN -> renderMain(g, mouseX, mouseY);
+            case MAIN -> renderMenu(g, mouseX, mouseY);
+            case GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT -> renderSections(g, mouseX, mouseY, pageSections(page), 4 - (int) scroll);
             case ACCENT -> renderAccent(g, mouseX, mouseY);
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
             case HUD -> renderHud(g, mouseX, mouseY);
@@ -262,10 +355,6 @@ public final class SettingsApp extends PhoneApp {
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
-    }
-
-    private int renderMain(GuiGraphics g, int mouseX, int mouseY) {
-        return renderSections(g, mouseX, mouseY, sections(), 4 - (int) scroll);
     }
 
     // --- Виджет музыки ---

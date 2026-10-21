@@ -55,7 +55,7 @@ public final class LockApp extends PhoneApp {
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         int w = contentWidth();
         float cx = w / 2f;
-        PhoneDraw.centeredText(g, PhoneClock.time(), cx, 14, 0xFFFFFFFF, 3f, true);
+        PhoneClock.drawBig(g, cx, 14);
         PhoneDraw.centeredText(g, PhoneClock.date(), cx, 44, 0xE6FFFFFF, 0.75f, true);
 
         List<PhoneNotifications.Notice> notices = PhoneNotifications.all();

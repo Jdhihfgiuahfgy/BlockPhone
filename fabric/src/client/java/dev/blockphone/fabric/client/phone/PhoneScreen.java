@@ -334,8 +334,8 @@ public class PhoneScreen extends Screen {
 
         PhoneDraw.text(g, PhoneClock.time(), 8, 3.5f, color, 0.75f, false);
 
-        // «Связь»: полные деления — на сервере стоит BlockPhone.
-        int bars = ClientNetwork.serverHello() != null ? 4 : 1;
+        // «Связь»: по пингу на сервере; в одиночной игре — всегда полная.
+        int bars = signalBars();
         int x = SCREEN_W - 36;
         for (int i = 0; i < 4; i++) {
             int h = 2 + i * 2;
@@ -346,6 +346,20 @@ public class PhoneScreen extends Screen {
         PhoneDraw.outline(g, bx, 4, 13, 7, color);
         g.fill(bx + 13, 6, bx + 14, 9, color);
         g.fill(bx + 2, 6, bx + 11, 9, PhoneTheme.accent());
+    }
+
+    /** Деления связи 0..4: одиночная игра — 4; на сервере — по пингу (до 80 мс — 4, 150 — 3, 300 — 2, 600 — 1). */
+    public static int signalBars() {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.hasSingleplayerServer() || mc.player == null || mc.getConnection() == null) {
+            return 4;
+        }
+        var info = mc.getConnection().getPlayerInfo(mc.player.getUUID());
+        if (info == null) {
+            return 4;
+        }
+        int ping = info.getLatency();
+        return ping <= 0 || ping < 80 ? 4 : ping < 150 ? 3 : ping < 300 ? 2 : ping < 600 ? 1 : 0;
     }
 
     private static final int NAV_BUTTON_W = 26;

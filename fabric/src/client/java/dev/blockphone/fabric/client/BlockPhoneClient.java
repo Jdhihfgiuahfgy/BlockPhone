@@ -107,6 +107,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
         MusicHud.init();
         dev.blockphone.fabric.client.phone.PhonePin.init();
         dev.blockphone.fabric.client.music.lyrics.LyricsWorld.init();
+        dev.blockphone.fabric.client.music.lyrics.LyricsHud.init();
         dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             MusicPlayer.stop();

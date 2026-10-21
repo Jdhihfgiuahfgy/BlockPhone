@@ -342,23 +342,38 @@ public final class GalleryApp extends PhoneApp {
         }
 
         int by = contentHeight() - 24;
-        int bw = (w - 16 - 8) / 3;
-        PhoneDraw.button(g, 8, by, bw, 18, PhoneLang.tr("gallery.edit"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
-        hits.add(new Hit(8, by, bw, 18, this::openEditor));
-        PhoneDraw.button(g, 12 + bw, by, bw, 18, PhoneLang.tr("gallery.set_wallpaper"), mouseX, mouseY, PhoneTheme.accent(), PhoneTheme.onAccent());
-        hits.add(new Hit(12 + bw, by, bw, 18, () -> {
-            Wallpapers.importAndSet(photo.file());
-            wallpaperSetAt = System.currentTimeMillis();
+        int half = (w - 16 - 4) / 2;
+        // Верхний ряд: копировать в буфер обмена и папка; нижний: изменить и обои.
+        int ty = by - 22;
+        PhoneDraw.button(g, 8, ty, half, 18, PhoneLang.tr("gallery.copy"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
+        hits.add(new Hit(8, ty, half, 18, () -> {
+            showNotice(PhoneLang.tr("gallery.copying"));
+            dev.blockphone.fabric.client.storage.ClipboardImage.copy(photo.file(),
+                    ok -> showNotice(PhoneLang.tr(ok ? "gallery.copied" : "gallery.copy_failed")));
         }));
-        PhoneDraw.button(g, 16 + 2 * bw, by, bw, 18, PhoneLang.tr("gallery.folder"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
-        hits.add(new Hit(16 + 2 * bw, by, bw, 18, this::openFolder));
+        PhoneDraw.button(g, 12 + half, ty, half, 18, PhoneLang.tr("gallery.folder"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
+        hits.add(new Hit(12 + half, ty, half, 18, this::openFolder));
+        PhoneDraw.button(g, 8, by, half, 18, PhoneLang.tr("gallery.edit"), mouseX, mouseY, 0xFF1A2232, 0xFFFFFFFF);
+        hits.add(new Hit(8, by, half, 18, this::openEditor));
+        PhoneDraw.button(g, 12 + half, by, half, 18, PhoneLang.tr("gallery.set_wallpaper"), mouseX, mouseY, PhoneTheme.accent(), PhoneTheme.onAccent());
+        hits.add(new Hit(12 + half, by, half, 18, () -> {
+            Wallpapers.importAndSet(photo.file());
+            showNotice(PhoneLang.tr("gallery.wallpaper_set"));
+        }));
         if (System.currentTimeMillis() - wallpaperSetAt < 2500) {
-            String done = PhoneLang.tr("gallery.wallpaper_set");
+            String done = notice;
             float tw = PhoneDraw.width(done, 0.75f) + 12;
             int tx = (int) (w / 2f - tw / 2);
-            PhoneDraw.roundedRect(g, tx, by - 18, (int) (tx + tw), by - 4, 4, PhoneTheme.accent());
-            PhoneDraw.centeredText(g, done, w / 2f, by - 14, PhoneTheme.onAccent(), 0.75f, false);
+            PhoneDraw.roundedRect(g, tx, ty - 18, (int) (tx + tw), ty - 4, 4, PhoneTheme.accent());
+            PhoneDraw.centeredText(g, done, w / 2f, ty - 14, PhoneTheme.onAccent(), 0.75f, false);
         }
+    }
+
+    private String notice = "";
+
+    private void showNotice(String text) {
+        notice = text;
+        wallpaperSetAt = System.currentTimeMillis();
     }
 
     private void arrow(GuiGraphics g, String label, int x, int y, int mx, int my, Runnable action) {

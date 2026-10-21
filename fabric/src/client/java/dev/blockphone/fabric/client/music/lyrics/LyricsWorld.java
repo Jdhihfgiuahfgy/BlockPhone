@@ -62,7 +62,7 @@ public final class LyricsWorld {
         Minecraft mc = Minecraft.getInstance();
         PhoneSettings settings = PhoneSettings.get();
         Lyrics lyrics = LyricsService.current();
-        if (!settings.lyricsWorld || lyrics == null || (!lyrics.synced() && !settings.lyricsUnsynced) || mc.player == null
+        if (!settings.lyricsWorld || LyricsHud.screenMode(settings.lyricsMode) || lyrics == null || (!lyrics.synced() && !settings.lyricsUnsynced) || mc.player == null
                 || mc.level == null || mc.options.hideGui || MusicPlayer.state() == MusicPlayer.State.STOPPED) {
             shownLine = -1;
             fadingLine = -1;

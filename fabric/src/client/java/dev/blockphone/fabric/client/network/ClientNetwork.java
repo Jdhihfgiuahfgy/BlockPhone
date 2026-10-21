@@ -45,6 +45,9 @@ public final class ClientNetwork {
         // Событие приходит из сетевого потока, а текстуры освобождать можно только в потоке рендера.
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
             serverHello = null;
+            // Вышли из мира — музыка и голосовые замолкают (в главном меню телефон не открыть, выключить было бы нечем).
+            dev.blockphone.fabric.client.music.MusicPlayer.stop();
+            VoiceMessages.stop();
             PhoneState.reset();
             resetServerState();
         }));
