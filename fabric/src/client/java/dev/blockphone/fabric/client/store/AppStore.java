@@ -276,6 +276,8 @@ public final class AppStore {
             Path target = apps.resolve(id);
             deleteTree(target);
             Files.move(root, target, StandardCopyOption.ATOMIC_MOVE);
+            // Метка: скачано из магазина (такое приложение нельзя опубликовать как своё).
+            Files.writeString(target.resolve(".store.json"), "{\"id\": \"" + id + "\"}");
         } finally {
             deleteTree(tmp);
         }
@@ -331,6 +333,12 @@ public final class AppStore {
             done.accept("no_folder");
             return;
         }
+        String key = authorKey(id);
+        if (key == null) {
+            BUSY.remove(id);
+            done.accept("downloaded");
+            return;
+        }
         String player = Minecraft.getInstance().getUser().getName();
         ClientFiles.IO.execute(() -> {
             String error = null;
@@ -338,7 +346,7 @@ public final class AppStore {
                 byte[] zip = zipFolder(folder);
                 HttpRequest request = HttpRequest.newBuilder(URI.create(PUBLISH_URL)).timeout(Duration.ofSeconds(60))
                         .header("Content-Type", "application/zip").header("X-App-Id", id)
-                        .header("X-App-Version", app.version()).header("X-Player", player)
+                        .header("X-App-Version", app.version()).header("X-Player", player).header("X-Author-Key", key)
                         .POST(HttpRequest.BodyPublishers.ofByteArray(zip)).build();
                 HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
@@ -359,6 +367,39 @@ public final class AppStore {
                 done.accept(result);
             });
         });
+    }
+
+    /**
+     * Ключ автора приложения (config/blockphone/publish_keys.json; секрет — никуда, кроме приёмника, не уходит).
+     * Нет ключа, а приложение скачано из магазина — null (это чужое приложение). Нет ключа у своего — создаётся.
+     */
+    public static synchronized @Nullable String authorKey(String id) {
+        Path file = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("blockphone").resolve("publish_keys.json");
+        JsonObject keys = new JsonObject();
+        try {
+            if (Files.exists(file)) {
+                keys = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+            }
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("App store: cannot read publish keys", e);
+        }
+        if (keys.has(id)) {
+            return keys.get(id).getAsString();
+        }
+        if (Files.exists(CustomApps.folder().resolve(id).resolve(".store.json"))) {
+            return null;
+        }
+        byte[] random = new byte[32];
+        new java.security.SecureRandom().nextBytes(random);
+        String key = HexFormat.of().formatHex(random);
+        keys.addProperty(id, key);
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, keys.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            BlockPhoneFabric.LOGGER.warn("App store: cannot save publish key", e);
+        }
+        return key;
     }
 
     /** Архив папки приложения: только разрешённые файлы, пути через «/». */

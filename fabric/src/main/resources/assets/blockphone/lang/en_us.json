@@ -800,5 +800,6 @@
   "store.publishing": "Sending \"%s\"…",
   "store.published": "\"%s\" was sent for review. Once approved, it will appear in the Store.",
   "store.publish_off": "Publishing is not set up by the catalog owner yet.",
-  "store.publish_failed": "Could not send: %s"
+  "store.publish_failed": "Could not send: %s",
+  "store.publish_not_author": "This app was downloaded from the Store — only its author can publish it."
 }

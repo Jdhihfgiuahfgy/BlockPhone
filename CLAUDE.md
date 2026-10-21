@@ -334,7 +334,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Установленные / Источники, страница приложения, подтверждение с разрешениями. Официальный каталог владельца — `AppStore.OFFICIAL` (github.com/Jdhihfgiuahfgy/blockphone-apps,
   всегда в источниках), публикация с телефона — «↑» во вкладке «Установленные» → `AppStore.publish` (zip папки → POST на
   `PUBLISH_URL` — «приёмник» Cloudflare Worker `store-repo/worker.js`, ключ GitHub только в нём → Pull Request; пока URL
-  пуст — «не настроено»). Файлы репозитория — `store-repo/` (build_catalog.py, workflows catalog/check, стартовые
+  пуст — «не настроено»). Авторство: ключ автора на приложение (`AppStore.authorKey`, config/blockphone/publish_keys.json,
+  заголовок X-Author-Key), приёмник сверяет sha256 ключа с `owners.json` репозитория (новое приложение — записывает в той же
+  заявке; есть в apps-src без записи — принадлежит владельцу каталога); установленные из магазина помечены `.store.json`
+  (без ключа — «только автор»); `build_catalog.py --check` ищет копии (одинаковые .lua/.obj ≥ 300 байт). Файлы репозитория — `store-repo/` (build_catalog.py, workflows catalog/check, стартовые
   apps-src), настройка владельцем — docs/STORE_SETUP.md. Инструкция авторам — docs/APP_STORE.md,
   пример каталога — docs/examples/store (DevShots `apps`: `store_catalog`, `store_detail`, `store_installed`).
 - `storage/ClipboardImage` — картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —

@@ -6,6 +6,10 @@
 //   GITHUB_TOKEN — секрет (Secret): токен GitHub с доступом только к этому репозиторию (Contents и Pull requests: Read and write)
 //   REPO_OWNER   — ник на GitHub (Jdhihfgiuahfgy)
 //   REPO_NAME    — имя репозитория (blockphone-apps)
+//
+// Авторство: owners.json в репозитории хранит для каждого приложения отпечаток (SHA-256) секретного ключа автора.
+// Обновить приложение может только тот, у кого этот ключ (он есть только на устройстве автора). Приложения, которые лежат
+// в apps-src, но не записаны в owners.json (стартовые или загруженные владельцем вручную), с телефона не обновить.
 
 const MAX_ZIP = 10 * 1024 * 1024;
 
@@ -20,6 +24,10 @@ export default {
     const id = (request.headers.get("X-App-Id") || "").toLowerCase();
     const version = (request.headers.get("X-App-Version") || "?").slice(0, 32).replace(/[^\w.\-]/g, "");
     const player = request.headers.get("X-Player") || "";
+    const authorKey = request.headers.get("X-Author-Key") || "";
+    if (!/^[0-9a-f]{64}$/.test(authorKey)) {
+      return json({ error: "no author key (update BlockPhone)" }, 400);
+    }
     if (!/^[a-z0-9_-]{1,32}$/.test(id)) {
       return json({ error: "bad app id" }, 400);
     }
@@ -45,6 +53,27 @@ export default {
         },
       });
 
+    // Кто автор: owners.json (id → sha256 ключа) и есть ли приложение в каталоге.
+    const keyHash = await sha256hex(authorKey);
+    let owners = {};
+    let ownersSha;
+    const ownersRes = await gh("/contents/owners.json?ref=main");
+    if (ownersRes.ok) {
+      const file = await ownersRes.json();
+      ownersSha = file.sha;
+      owners = JSON.parse(decodeBase64(file.content));
+    }
+    if (owners[id]) {
+      if (owners[id] !== keyHash) {
+        return json({ error: "this app belongs to another author" }, 403);
+      }
+    } else {
+      const exists = await gh(`/contents/apps-src/${id}.zip?ref=main`);
+      if (exists.ok) {
+        return json({ error: "this app belongs to the catalog owner" }, 403);
+      }
+    }
+
     const main = await gh("/git/ref/heads/main");
     if (!main.ok) {
       return json({ error: "github: cannot read main (" + main.status + ")" }, 502);
@@ -64,6 +93,18 @@ export default {
     });
     if (!r.ok) {
       return json({ error: "github: cannot upload (" + r.status + ")" }, 502);
+    }
+    if (!owners[id]) {
+      // Новое приложение: записать автора (вступит в силу, когда заявку одобрят).
+      owners[id] = keyHash;
+      r = await gh("/contents/owners.json", {
+        method: "PUT",
+        body: JSON.stringify({ message: `Автор ${id}: ${player}`, content: btoa(unescape(encodeURIComponent(JSON.stringify(owners, null, 2)))),
+          branch, sha: ownersSha }),
+      });
+      if (!r.ok) {
+        return json({ error: "github: cannot save author (" + r.status + ")" }, 502);
+      }
     }
     r = await gh("/pulls", {
       method: "POST",
@@ -85,6 +126,16 @@ export default {
     return json({ ok: true, pr: pr.number });
   },
 };
+
+async function sha256hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function decodeBase64(text) {
+  const bin = atob(text.replace(/\n/g, ""));
+  return decodeURIComponent(escape(bin));
+}
 
 function base64(bytes) {
   let s = "";

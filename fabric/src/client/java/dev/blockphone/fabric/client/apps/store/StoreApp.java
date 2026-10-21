@@ -294,6 +294,7 @@ public final class StoreApp extends PhoneApp {
                     toast(PhoneLang.tr("store.publishing", name));
                     AppStore.publish(app.id(), error -> toast(error == null ? PhoneLang.tr("store.published", name)
                             : error.equals("not_configured") ? PhoneLang.tr("store.publish_off")
+                            : error.equals("downloaded") ? PhoneLang.tr("store.publish_not_author")
                             : PhoneLang.tr("store.publish_failed", error)));
                 }));
     }
