@@ -374,9 +374,11 @@ public final class StoreApp extends PhoneApp {
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
+        // Поле ввода — только своей вкладки (иначе невидимое поле поиска «съедало» клики по кнопкам «Установленных»).
+        TextArea active = detail != null ? null : tab == Tab.CATALOG ? search : tab == Tab.SOURCES ? sourceInput : null;
         boolean field = false;
         for (TextArea t : new TextArea[]{search, sourceInput}) {
-            if (t.mouseClicked(x, y, button)) {
+            if (t == active && t.mouseClicked(x, y, button)) {
                 field = true;
             } else {
                 t.setFocused(false);
