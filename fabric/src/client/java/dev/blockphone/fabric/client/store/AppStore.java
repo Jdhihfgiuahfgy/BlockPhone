@@ -55,7 +55,7 @@ public final class AppStore {
      * «Приёмник» публикаций (Cloudflare Worker, store-repo/worker.js): принимает архив и создаёт заявку (Pull Request)
      * в официальном репозитории. Ключ GitHub хранится только в приёмнике. Пусто — публикация ещё не настроена.
      */
-    public static final String PUBLISH_URL = "";
+    public static final String PUBLISH_URL = "https://blockphone-store.darkminecraft000.workers.dev";
     private static final long MAX_PUBLISH = 10L << 20;
 
     private static final long MAX_CATALOG = 2L << 20;
