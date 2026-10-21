@@ -1,9 +1,18 @@
 {
   "id": "tictactoe",
-  "name": {"ru_ru": "Крестики-нолики", "en_us": "Tic-tac-toe"},
+  "name": {
+    "ru_ru": "Крестики-нолики",
+    "en_us": "Tic-tac-toe"
+  },
   "version": "1.0",
   "author": "BlockPhone",
   "color": "#A695E7",
-  "permissions": ["multiplayer"],
-  "script": "main.lua"
+  "permissions": [
+    "multiplayer"
+  ],
+  "script": "main.lua",
+  "description": {
+    "ru_ru": "Крестики-нолики с другом на сервере.",
+    "en_us": "Tic-tac-toe with a friend on the server."
+  }
 }

@@ -216,11 +216,37 @@ public final class DevShots {
         shot(40, "apps_doom_title");
         step(1, mc -> customApp("doom", a -> a.debugClick(a.contentWidth() / 2.0, a.contentHeight() / 2.0 + 8)));
         shot(60, "apps_doom_play");
+        step(1, mc -> customApp("doom", a -> a.debugKey("m")));
+        shot(20, "apps_doom_map");
         step(1, mc -> phone(mc, PhoneScreen::back));
         shot(30, "apps_doom_pause");
+        // Магазин: каталог-пример из docs/examples/store (file:), установка «Крестиков-ноликов» через магазин.
+        step(1, mc -> {
+            dev.blockphone.fabric.client.store.AppStore.allowFiles = true;
+            PhoneSettings.get().storeSources.clear();
+            PhoneSettings.get().storeSources.add(Path.of("..", "..", "docs", "examples", "store", "catalog.json").toAbsolutePath().normalize().toUri().toString());
+            dev.blockphone.fabric.client.store.AppStore.uninstall("tictactoe");
+            phone(mc, p -> p.openApp("store"));
+            dev.blockphone.fabric.client.store.AppStore.refresh();
+        });
+        shot(40, "store_catalog");
+        step(1, mc -> storeDebug("detail"));
+        shot(20, "store_detail");
+        step(1, mc -> dev.blockphone.fabric.client.store.AppStore.entries().stream().filter(e -> e.id().equals("tictactoe")).findFirst()
+                .ifPresent(e -> dev.blockphone.fabric.client.store.AppStore.install(e,
+                        err -> BlockPhoneFabric.LOGGER.info("[DevShots] store install: {}", err == null ? "ok" : err))));
+        step(40, mc -> storeDebug("installed"));
+        shot(20, "store_installed");
+        step(1, mc -> PhoneSettings.get().storeSources.clear());
         step(1, mc -> phone(mc, p -> p.openApp("app.loop")));
         step(20, mc -> customApp("loop", a -> a.debugClick(20, 20)));
         shot(30, "apps_script_timeout");
+    }
+
+    private static void storeDebug(String what) {
+        if (PhoneState.existing("store") instanceof dev.blockphone.fabric.client.apps.store.StoreApp app) {
+            app.debug(what);
+        }
     }
 
     private static void telegramDebug(String what) {

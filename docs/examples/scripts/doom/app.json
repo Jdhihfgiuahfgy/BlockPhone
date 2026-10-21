@@ -1,11 +1,17 @@
 {
   "id": "doom",
   "name": "DOOM",
-  "version": "1.0",
+  "version": "2.0",
   "author": "BlockPhone",
   "color": "#B3261E",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "script": "main.lua",
   "orientation": "landscape",
-  "fullscreen": true
+  "fullscreen": true,
+  "description": {
+    "ru_ru": "3D-шутер: бесконечные случайные уровни, монстры и оружие.",
+    "en_us": "3D shooter: endless random levels, monsters and weapons."
+  }
 }

@@ -1,0 +1,348 @@
+package dev.blockphone.fabric.client.store;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import dev.blockphone.common.apps.AppDefinition;
+import dev.blockphone.common.apps.AppLoader;
+import dev.blockphone.fabric.BlockPhoneFabric;
+import dev.blockphone.fabric.client.apps.custom.CustomApps;
+import dev.blockphone.fabric.client.config.PhoneSettings;
+import dev.blockphone.fabric.client.storage.ClientFiles;
+import net.minecraft.client.Minecraft;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+/**
+ * Магазин приложений: каталоги («источники» — ссылки на catalog.json, например на GitHub), скачивание архива приложения,
+ * проверка хэша, безопасная распаковка (только файлы приложения, без выхода из своей папки), проверка app.json и
+ * установка в blockphone/apps/&lt;id&gt;. Формат каталога и как выложить приложения — docs/APP_STORE.md.
+ */
+public final class AppStore {
+    /** Приложение в каталоге. */
+    public record Entry(String source, String catalog, String id, String name, String version, String author, String description,
+                        @Nullable String icon, String download, @Nullable String sha256, long size, List<String> permissions) {
+    }
+
+    public enum State { IDLE, LOADING, READY }
+
+    private static final long MAX_CATALOG = 2L << 20;
+    private static final long MAX_ZIP = 30L << 20;
+    private static final long MAX_UNPACKED = 40L << 20;
+    private static final int MAX_FILES = 400;
+    private static final Set<String> ALLOWED = Set.of(".json", ".lua", ".png", ".obj", ".txt", ".md");
+    private static final HttpClient CLIENT = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(10)).build();
+
+    private static List<Entry> entries = List.of();
+    private static List<String> errors = List.of();
+    private static State state = State.IDLE;
+    private static final java.util.Map<String, String> BUSY = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Только для автоснимков: разрешить file: ссылки (локальный каталог). */
+    public static boolean allowFiles;
+
+    public static List<Entry> entries() {
+        return entries;
+    }
+
+    public static List<String> errors() {
+        return errors;
+    }
+
+    public static State state() {
+        return state;
+    }
+
+    public static List<String> sources() {
+        return PhoneSettings.get().storeSources;
+    }
+
+    public static void addSource(String url) {
+        String u = url.strip();
+        if (!u.isEmpty() && !sources().contains(u)) {
+            sources().add(u);
+            PhoneSettings.get().save();
+            refresh();
+        }
+    }
+
+    public static void removeSource(String url) {
+        sources().remove(url);
+        PhoneSettings.get().save();
+        refresh();
+    }
+
+    /** Загрузить все каталоги заново (в фоне). */
+    public static void refresh() {
+        state = State.LOADING;
+        List<String> list = List.copyOf(sources());
+        ClientFiles.IO.execute(() -> {
+            List<Entry> found = new ArrayList<>();
+            List<String> problems = new ArrayList<>();
+            for (String source : list) {
+                try {
+                    found.addAll(parseCatalog(source, new String(fetch(source, MAX_CATALOG), StandardCharsets.UTF_8)));
+                } catch (Exception e) {
+                    problems.add(source + ": " + e.getMessage());
+                }
+            }
+            found.sort(Comparator.comparing(e -> e.name().toLowerCase(Locale.ROOT)));
+            Minecraft.getInstance().execute(() -> {
+                entries = found;
+                errors = problems;
+                state = State.READY;
+            });
+        });
+    }
+
+    static List<Entry> parseCatalog(String source, String json) {
+        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+        String catalog = root.has("name") ? root.get("name").getAsString() : URI.create(source).getHost();
+        List<Entry> list = new ArrayList<>();
+        for (JsonElement el : root.getAsJsonArray("apps")) {
+            JsonObject a = el.getAsJsonObject();
+            String id = a.get("id").getAsString().toLowerCase(Locale.ROOT);
+            if (!id.matches("[a-z0-9_-]{1,32}")) {
+                continue;
+            }
+            List<String> perms = new ArrayList<>();
+            if (a.has("permissions")) {
+                for (JsonElement p : a.getAsJsonArray("permissions")) {
+                    perms.add(p.getAsString());
+                }
+            }
+            list.add(new Entry(source, catalog, id, str(a, "name", id), str(a, "version", "1.0"), str(a, "author", ""),
+                    str(a, "description", ""), a.has("icon") ? resolve(source, a.get("icon").getAsString()) : null,
+                    resolve(source, a.get("download").getAsString()), a.has("sha256") ? a.get("sha256").getAsString() : null,
+                    a.has("size") ? a.get("size").getAsLong() : 0, List.copyOf(perms)));
+        }
+        return list;
+    }
+
+    private static String str(JsonObject o, String key, String def) {
+        return o.has(key) && !o.get(key).isJsonNull() ? o.get(key).getAsString() : def;
+    }
+
+    private static String resolve(String base, String url) {
+        return URI.create(base).resolve(url.strip()).toString();
+    }
+
+    /** Скачать (https; в автоснимках — и file:), не больше max байт. */
+    static byte[] fetch(String url, long max) throws IOException, InterruptedException {
+        URI uri = URI.create(url);
+        if ("file".equals(uri.getScheme()) && allowFiles) {
+            return Files.readAllBytes(Path.of(uri));
+        }
+        if (!"https".equals(uri.getScheme())) {
+            throw new IOException("only https:// links");
+        }
+        HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30))
+                .header("User-Agent", "BlockPhone/" + BlockPhoneFabric.VERSION).build();
+        HttpResponse<InputStream> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() != 200) {
+            throw new IOException("HTTP " + response.statusCode());
+        }
+        try (InputStream in = response.body()) {
+            byte[] data = in.readNBytes((int) max + 1);
+            if (data.length > max) {
+                throw new IOException("file is too big");
+            }
+            return data;
+        }
+    }
+
+    // --- Установка ---
+
+    /** Установленная версия или null. */
+    public static @Nullable String installed(String id) {
+        AppDefinition app = CustomApps.get(id);
+        return app != null && Files.isDirectory(CustomApps.folder().resolve(id)) ? app.version() : null;
+    }
+
+    /** Что сейчас происходит с приложением (скачивание…) или null. */
+    public static @Nullable String busy(String id) {
+        return BUSY.get(id);
+    }
+
+    /** Скачать и установить (обновить); done(null) — успех, иначе текст ошибки. На потоке рендера. */
+    public static void install(Entry entry, Consumer<String> done) {
+        if (BUSY.putIfAbsent(entry.id(), "download") != null) {
+            return;
+        }
+        ClientFiles.IO.execute(() -> {
+            String error = null;
+            try {
+                byte[] zip = fetch(entry.download(), MAX_ZIP);
+                if (entry.sha256() != null && !entry.sha256().isBlank()) {
+                    String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(zip));
+                    if (!hash.equalsIgnoreCase(entry.sha256().strip())) {
+                        throw new IOException("checksum does not match (the file was changed)");
+                    }
+                }
+                installZip(entry.id(), zip);
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("App store: installing {} failed", entry.id(), e);
+                error = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
+            String result = error;
+            Minecraft.getInstance().execute(() -> {
+                BUSY.remove(entry.id());
+                CustomApps.scan(true);
+                done.accept(result);
+            });
+        });
+    }
+
+    /** Распаковать архив во временную папку, проверить app.json и заменить папку приложения. */
+    public static void installZip(String id, byte[] zip) throws IOException {
+        Path apps = CustomApps.folder();
+        Files.createDirectories(apps);
+        Path tmp = apps.resolve(".install-" + id);
+        deleteTree(tmp);
+        Files.createDirectories(tmp);
+        try {
+            unzip(zip, tmp);
+            Path root = tmp;
+            if (!Files.exists(root.resolve("app.json"))) {
+                // Архив с одной папкой внутри — приложение в ней.
+                try (Stream<Path> s = Files.list(tmp)) {
+                    List<Path> dirs = s.filter(Files::isDirectory).toList();
+                    if (dirs.size() == 1 && Files.exists(dirs.get(0).resolve("app.json"))) {
+                        root = dirs.get(0);
+                    }
+                }
+            }
+            Path json = root.resolve("app.json");
+            if (!Files.exists(json)) {
+                throw new IOException("no app.json in the archive");
+            }
+            byte[] icon = Files.exists(root.resolve("icon.png")) ? Files.readAllBytes(root.resolve("icon.png")) : null;
+            AppDefinition app;
+            try {
+                app = AppLoader.parse(Files.readString(json, StandardCharsets.UTF_8), icon, id, root);
+            } catch (AppLoader.AppException e) {
+                throw new IOException("app.json: " + e.getMessage());
+            }
+            if (!app.id().equals(id)) {
+                throw new IOException("app id is \"" + app.id() + "\", catalog says \"" + id + "\"");
+            }
+            Path target = apps.resolve(id);
+            deleteTree(target);
+            Files.move(root, target, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            deleteTree(tmp);
+        }
+    }
+
+    private static void unzip(byte[] zip, Path dir) throws IOException {
+        long total = 0;
+        int files = 0;
+        Path base = dir.toAbsolutePath().normalize();
+        try (ZipInputStream in = new ZipInputStream(new java.io.ByteArrayInputStream(zip))) {
+            ZipEntry e;
+            while ((e = in.getNextEntry()) != null) {
+                Path out = base.resolve(e.getName()).normalize();
+                if (!out.startsWith(base)) {
+                    throw new IOException("bad path in archive: " + e.getName());
+                }
+                if (e.isDirectory()) {
+                    Files.createDirectories(out);
+                    continue;
+                }
+                String name = out.getFileName().toString().toLowerCase(Locale.ROOT);
+                int dot = name.lastIndexOf('.');
+                if (dot < 0 || !ALLOWED.contains(name.substring(dot))) {
+                    continue; // чужие файлы (exe, jar…) не распаковываются
+                }
+                if (++files > MAX_FILES) {
+                    throw new IOException("too many files in archive");
+                }
+                Files.createDirectories(out.getParent());
+                byte[] data = in.readNBytes((int) Math.min(MAX_UNPACKED - total + 1, Integer.MAX_VALUE - 8));
+                total += data.length;
+                if (total > MAX_UNPACKED) {
+                    throw new IOException("archive is too big when unpacked");
+                }
+                Files.write(out, data);
+            }
+        }
+    }
+
+    /** Удалить установленное приложение (папку blockphone/apps/&lt;id&gt;). */
+    public static void uninstall(String id) {
+        if (!id.matches("[a-z0-9_-]{1,32}")) {
+            return;
+        }
+        try {
+            deleteTree(CustomApps.folder().resolve(id));
+        } catch (IOException e) {
+            BlockPhoneFabric.LOGGER.warn("App store: removing {} failed", id, e);
+        }
+        CustomApps.scan(true);
+    }
+
+    private static void deleteTree(Path dir) throws IOException {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
+    /** Иконка из каталога → файл в кэше (скачивается один раз) или null, пока качается. */
+    public static @Nullable Path icon(Entry entry) {
+        if (entry.icon() == null) {
+            return null;
+        }
+        try {
+            String name = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(entry.icon().getBytes(StandardCharsets.UTF_8)));
+            Path file = ClientFiles.root().resolve("cache").resolve("store").resolve(name + ".png");
+            if (Files.exists(file)) {
+                return file;
+            }
+            if (BUSY.putIfAbsent("icon:" + name, "") == null) {
+                ClientFiles.IO.execute(() -> {
+                    try {
+                        byte[] png = fetch(entry.icon(), 256 * 1024);
+                        Files.createDirectories(file.getParent());
+                        Files.write(file, png);
+                    } catch (Exception ignored) {
+                        // нет иконки — будет буква
+                    }
+                });
+            }
+        } catch (Exception ignored) {
+            // ignore
+        }
+        return null;
+    }
+
+    private AppStore() {
+    }
+}

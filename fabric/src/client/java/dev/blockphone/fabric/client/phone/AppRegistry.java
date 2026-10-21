@@ -100,6 +100,7 @@ public final class AppRegistry {
         add("notes", NotesApp::new, 0xFFF2C14E);
         add("calculator", CalculatorApp::new, 0xFFF29544);
         add("weather", WeatherApp::new, 0xFF4C8DF6);
+        add("store", dev.blockphone.fabric.client.apps.store.StoreApp::new, 0xFF2DB87D);
         add("settings", SettingsApp::new, 0xFFA371F7);
     }
 

@@ -25,6 +25,8 @@
 | `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
+| `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
+| `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
@@ -324,6 +326,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
+- «Магазин» (id `store`): `store/AppStore` (источники — `PhoneSettings.storeSources`, ссылки https на catalog.json;
+  `refresh`, `parseCatalog` (ссылки относительно каталога), `install` — скачать zip (≤ 30 МБ), сверить sha256, распаковать
+  во временную папку (только .json/.lua/.png/.obj/.txt/.md, без «../», ≤ 400 файлов, ≤ 40 МБ), проверить app.json
+  (`AppLoader.parse`, id = id каталога), заменить `blockphone/apps/<id>`; `uninstall`; `installed` — версия; иконки — кэш
+  `blockphone/cache/store/`; `allowFiles` — file: только для DevShots). `apps/store/StoreApp` — вкладки Каталог (поиск) /
+  Установленные / Источники, страница приложения, подтверждение с разрешениями. Инструкция авторам — docs/APP_STORE.md,
+  пример каталога — docs/examples/store (DevShots `apps`: `store_catalog`, `store_detail`, `store_installed`).
 - `storage/ClipboardImage` — картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
   osascript, Linux — wl-copy/xclip; путь — через переменную окружения. В галерее — кнопка «Копировать».
 - `PhoneClock`: в 12-часовом формате — «AM/PM» (`time()`; крупные часы — `drawBig`, AM/PM мельче). `PhoneScreen.signalBars()` —
@@ -486,7 +495,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление), server (Call/RequestVariables
   со страницей "script"), g3d — `Raster3D` (программная растеризация на Java: текстура с перспективной
   коррекцией, буфер глубины 1/z, свет граней, туман, отсечение по ближней плоскости, спрайты, буфер id для `pick`; кадр —
-  DynamicTexture по реальным пикселям, до 360 тыс.; модели — box/plane/mesh/obj, 2000 шт., 400 тыс. вершин), захват мыши
+  DynamicTexture по реальным пикселям, до 360 тыс.; модели — box/plane/mesh/obj, 2000 шт., 400 тыс. вершин; `g3d.free`), захват мыши
   (`input.lockMouse`: GLFW CURSOR_DISABLED, дельты по glfwGetCursorPos, `PhoneApp.capturesMouse` — клики в центр;
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/

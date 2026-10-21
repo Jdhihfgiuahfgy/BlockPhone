@@ -1,11 +1,20 @@
 {
   "id": "snake",
-  "name": {"ru_ru": "Змейка", "en_us": "Snake"},
+  "name": {
+    "ru_ru": "Змейка",
+    "en_us": "Snake"
+  },
   "version": "1.0",
   "author": "BlockPhone",
   "color": "#3FB950",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "script": "main.lua",
   "orientation": "landscape",
-  "fullscreen": true
+  "fullscreen": true,
+  "description": {
+    "ru_ru": "Классическая змейка: экран набок, клавиши, рекорд.",
+    "en_us": "Classic snake: landscape, keys, high score."
+  }
 }

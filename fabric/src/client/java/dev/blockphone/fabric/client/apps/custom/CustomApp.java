@@ -833,6 +833,13 @@ public final class CustomApp extends PhoneApp {
     // --- Для автоскриншотов (DevShots) ---
 
     /** Нажать элемент с действием (id вида «страница:номер»). */
+    /** Для DevShots: клавиша для скрипта (onKey). */
+    public void debugKey(String name) {
+        if (host != null) {
+            host.debugKey(name);
+        }
+    }
+
     /** Для DevShots: клик в содержимом приложения. */
     public void debugClick(double x, double y) {
         mouseClicked(x, y, 0);

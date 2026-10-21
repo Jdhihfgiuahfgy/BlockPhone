@@ -66,6 +66,8 @@ public final class PhoneSettings {
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
     public boolean compactPhone = false;
     /** Уведомления: все вкл/выкл, всплывающие окошки, центр уведомлений и экран блокировки, звук звонка. */
+    /** Источники магазина приложений: ссылки на catalog.json (docs/APP_STORE.md). */
+    public java.util.List<String> storeSources = new java.util.ArrayList<>();
     public boolean notifyAll = true;
     /** Звук в «кружочках» Telegram: микрофон и играющая музыка. */
     public boolean videoNoteMic = true;

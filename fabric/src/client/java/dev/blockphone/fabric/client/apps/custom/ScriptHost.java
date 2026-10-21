@@ -488,6 +488,10 @@ final class ScriptHost {
         return captureKeys;
     }
 
+    void debugKey(String name) {
+        callback("onKey", LuaValue.valueOf(name));
+    }
+
     boolean onBack() {
         if (mouseLocked) {
             unlockMouse(); // Esc сначала отпускает мышь
@@ -1218,6 +1222,15 @@ final class ScriptHost {
                 throw new LuaError("model \"" + path + "\": " + e.getMessage());
             }
         }));
+        // Освободить модель (новый уровень — старые модели больше не нужны; лимит вершин возвращается).
+        g3d.set("free", fn(a -> {
+            int id = a.checkint(1);
+            if (id >= 1 && id <= meshes.size() && meshes.get(id - 1) != null) {
+                meshVertices -= meshes.get(id - 1).vertices();
+                meshes.set(id - 1, null);
+            }
+            return LuaValue.NONE;
+        }));
         g3d.set("camera", fn(a -> {
             raster.camX = (float) a.checkdouble(1);
             raster.camY = (float) a.checkdouble(2);
@@ -1329,8 +1342,8 @@ final class ScriptHost {
     }
 
     private int addMesh(Raster3D.Mesh mesh) {
-        if (meshes.size() >= 2000 || meshVertices + mesh.vertices() > MAX_MESH_VERTICES) {
-            throw new LuaError("too many 3D models (max 2000, " + MAX_MESH_VERTICES + " vertices)");
+        if (meshes.stream().filter(java.util.Objects::nonNull).count() >= 2000 || meshVertices + mesh.vertices() > MAX_MESH_VERTICES) {
+            throw new LuaError("too many 3D models (max 2000, " + MAX_MESH_VERTICES + " vertices; free unused with g3d.free)");
         }
         meshVertices += mesh.vertices();
         meshes.add(mesh);
@@ -1338,7 +1351,7 @@ final class ScriptHost {
     }
 
     private Raster3D.Mesh mesh(int id) {
-        if (id < 1 || id > meshes.size()) {
+        if (id < 1 || id > meshes.size() || meshes.get(id - 1) == null) {
             throw new LuaError("unknown 3D model " + id);
         }
         return meshes.get(id - 1);

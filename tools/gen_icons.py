@@ -261,6 +261,14 @@ def glyph_weather():
     return img
 
 
+def glyph_store():
+    img, d = glyph_canvas()
+    d.rounded_rectangle([58, 92, 198, 214], radius=20, fill=WHITE)
+    d.arc([88, 40, 168, 130], 180, 360, fill=WHITE, width=14)
+    d.polygon([(110, 140), (110, 186), (150, 163)], fill=(0, 0, 0, 0))
+    return img
+
+
 def glyph_settings():
     img, d = glyph_canvas()
     cx = cy = 128
@@ -607,7 +615,7 @@ if __name__ == "__main__":
         "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
         "gallery": glyph_gallery, "music": glyph_music, "notes": glyph_notes,
         "calculator": glyph_calculator, "weather": glyph_weather, "settings": glyph_settings,
-        "feed": glyph_feed,
+        "feed": glyph_feed, "store": glyph_store,
     }
     for name, fn in glyphs.items():
         save(fn(), GLYPH_DIR, name)
