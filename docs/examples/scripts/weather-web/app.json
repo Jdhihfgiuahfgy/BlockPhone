@@ -1,0 +1,10 @@
+{
+  "id": "weather-web",
+  "name": {"ru_ru": "Погода в мире", "en_us": "Real weather"},
+  "version": "1.0",
+  "author": "BlockPhone",
+  "color": "#2AABEE",
+  "permissions": ["internet", "storage"],
+  "hosts": ["api.open-meteo.com"],
+  "script": "main.lua"
+}

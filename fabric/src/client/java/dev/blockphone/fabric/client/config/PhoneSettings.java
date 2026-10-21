@@ -79,6 +79,8 @@ public final class PhoneSettings {
     public boolean lyricsWorld = true;
     /** "world" — строка остаётся там, где появилась; "view" — следует за взглядом. */
     public String lyricsMode = "world";
+    /** Высота текста «в мире» над поверхностью блока (блоки, 0..3). */
+    public float lyricsHeight = 0.25f;
     /** Размер текста 1..4. */
     public int lyricsSize = 2;
     /** Расстояние до текста, блоков. */

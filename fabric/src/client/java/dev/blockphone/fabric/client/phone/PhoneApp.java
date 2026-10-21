@@ -123,10 +123,20 @@ public abstract class PhoneApp {
     }
 
     public final int contentWidth() {
-        return PhoneLayout.APP_W;
+        return PhoneLayout.appW();
     }
 
     public final int contentHeight() {
-        return PhoneLayout.APP_H - (hasHeader() ? PhoneLayout.HEADER_H : 0);
+        return PhoneLayout.appH() - (hasHeader() ? PhoneLayout.HEADER_H : 0);
+    }
+
+    /** Телефон повёрнут набок, пока открыто это приложение (область — 340×132, без заголовка и в полном экране — больше). */
+    public boolean landscape() {
+        return false;
+    }
+
+    /** Полный экран: без строки состояния и навигации; «назад/домой» появляются, если навести мышь на нижний край. */
+    public boolean immersive() {
+        return false;
     }
 }

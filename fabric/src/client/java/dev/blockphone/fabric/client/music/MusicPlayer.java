@@ -203,6 +203,11 @@ public final class MusicPlayer {
         }
     }
 
+    /** Подгрузчик текущей очереди (null — обычный список). */
+    public static @Nullable Supplier<List<Track>> loader() {
+        return more;
+    }
+
     /** Перейти к треку очереди. */
     public static void jump(int i) {
         if (i >= 0 && i < QUEUE.size()) {

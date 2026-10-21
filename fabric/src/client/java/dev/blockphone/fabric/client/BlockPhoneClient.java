@@ -53,6 +53,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             MusicPlayer.tick();
+            dev.blockphone.fabric.client.music.yandex.YandexMusic.tick();
             Spotify.tick();
             dev.blockphone.fabric.client.music.lyrics.LyricsService.tick();
             passMovementThrough(client);

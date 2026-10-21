@@ -178,6 +178,28 @@ public final class LyricsWorld {
         Vec3 right = Vec3.directionFromRotation(0, yaw + 90);
         Vec3 eye = camera.position();
         float wanted = Math.max(2, Math.min(MAX_DISTANCE, settings.lyricsDistance));
+        if (!"view".equals(settings.lyricsMode)) {
+            // «Остаётся в мире»: над поверхностью блока под этим местом, на выбранной высоте (lyricsHeight).
+            Vec3 flat = Vec3.directionFromRotation(0, yaw);
+            for (float d = wanted; d >= 1.5f; d -= 0.5f) {
+                float scale = scaleAt(settings, d);
+                double halfW = widest * scale / 2 + 0.2;
+                double halfH = textH * scale / 2 + 0.15;
+                Vec3 spot = eye.add(flat.scale(d));
+                Double ground = groundBelow(mc.level, spot);
+                if (ground == null) {
+                    continue;
+                }
+                for (float extra = 0; extra <= 2.5f; extra += 0.5f) {
+                    Vec3 center = new Vec3(spot.x, ground + settings.lyricsHeight + extra + halfH, spot.z);
+                    if (free(mc.level, center, right, flat, halfW, halfH) && visible(mc, eye, center)) {
+                        anchor = center;
+                        anchorDist = (float) eye.distanceTo(center);
+                        return;
+                    }
+                }
+            }
+        }
         for (float d = wanted; d >= 1.5f; d -= 0.5f) {
             float scale = scaleAt(settings, d);
             double halfW = widest * scale / 2 + 0.2;
@@ -194,6 +216,25 @@ public final class LyricsWorld {
         // Совсем тесно (узкий лаз) — вплотную перед глазами.
         anchor = eye.add(dir.scale(1.5));
         anchorDist = 1.5f;
+    }
+
+    /** Верх ближайшего твёрдого блока под точкой (до 2 блоков выше глаз и 10 ниже) или null — земли нет (обрыв). */
+    private static Double groundBelow(Level level, Vec3 spot) {
+        int x = net.minecraft.util.Mth.floor(spot.x);
+        int z = net.minecraft.util.Mth.floor(spot.z);
+        int top = net.minecraft.util.Mth.floor(spot.y) + 2;
+        for (int y = top; y >= top - 12; y--) {
+            BlockPos bp = new BlockPos(x, y, z);
+            var shape = level.getBlockState(bp).getCollisionShape(level, bp);
+            if (!shape.isEmpty()) {
+                BlockPos above = bp.above();
+                if (level.getBlockState(above).getCollisionShape(level, above).isEmpty()) {
+                    return y + shape.max(net.minecraft.core.Direction.Axis.Y);
+                }
+                return null; // упёрлись в стену/потолок — тут места нет
+            }
+        }
+        return null;
     }
 
     /** Прямоугольник текста (с небольшой толщиной) не задевает блоки с хитбоксом. */

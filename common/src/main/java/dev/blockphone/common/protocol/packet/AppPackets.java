@@ -100,6 +100,60 @@ public final class AppPackets {
         }
     }
 
+    /** Самое длинное сообщение приложения другому игроку (строка, обычно JSON). */
+    public static final int MAX_RELAY = 8192;
+
+    /**
+     * C→S: сообщение своему приложению у другого игрока (сетевые игры). target — ник; пусто — всем игрокам с BlockPhone
+     * на сервере. Сервер ничего не разбирает — только пересылает (с ограничением частоты).
+     */
+    public record Relay(String appId, String target, String payload) implements Packet {
+        public static Relay read(PacketReader r) {
+            return new Relay(r.readString(32), r.readString(32), r.readString(MAX_RELAY));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeString(appId).writeString(target).writeString(payload);
+        }
+    }
+
+    /** S→C: сообщение от этого же приложения другого игрока. */
+    public record Relayed(String appId, java.util.UUID from, String fromName, String payload) implements Packet {
+        public static Relayed read(PacketReader r) {
+            return new Relayed(r.readString(32), r.readUuid(), r.readString(32), r.readString(MAX_RELAY));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeString(appId).writeUuid(from).writeString(fromName).writeString(payload);
+        }
+    }
+
+    /** C→S: кто сейчас на сервере с BlockPhone (для списка соперников). */
+    public record RequestPlayers(String appId) implements Packet {
+        public static RequestPlayers read(PacketReader r) {
+            return new RequestPlayers(r.readString(32));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeString(appId);
+        }
+    }
+
+    /** S→C: ники игроков с BlockPhone на сервере (кроме себя). */
+    public record Players(String appId, List<String> names) implements Packet {
+        public static Players read(PacketReader r) {
+            return new Players(r.readString(32), r.readList(500, rr -> rr.readString(32)));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeString(appId).writeList(names, PacketWriter::writeString);
+        }
+    }
+
     private AppPackets() {
     }
 }

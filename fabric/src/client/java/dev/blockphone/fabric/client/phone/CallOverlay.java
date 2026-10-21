@@ -23,15 +23,15 @@ final class CallOverlay {
     }
 
     private static int buttonsY() {
-        return PhoneLayout.SCREEN_H - 90;
+        return PhoneLayout.screenH() - 90;
     }
 
     private static int declineX() {
-        return PhoneLayout.SCREEN_W / 2 - 50;
+        return PhoneLayout.screenW() / 2 - 50;
     }
 
     private static int acceptX() {
-        return PhoneLayout.SCREEN_W / 2 + 50 - BUTTON;
+        return PhoneLayout.screenW() / 2 + 50 - BUTTON;
     }
 
     static void render(GuiGraphics g, int mx, int my) {
@@ -39,8 +39,8 @@ final class CallOverlay {
         if (call == null) {
             return;
         }
-        int w = PhoneLayout.SCREEN_W;
-        int h = PhoneLayout.SCREEN_H;
+        int w = PhoneLayout.screenW();
+        int h = PhoneLayout.screenH();
         g.fillGradient(0, 0, w, h, 0xF0142A22, 0xF00B0F18);
         float cx = w / 2f;
         PhoneDraw.centeredText(g, PhoneLang.tr("call.incoming"), cx, 50, 0xFFB0F0C8, 0.75f, false);

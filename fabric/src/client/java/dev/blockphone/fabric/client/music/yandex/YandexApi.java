@@ -241,11 +241,48 @@ public final class YandexApi {
         return list;
     }
 
+    /**
+     * Отзыв для «Моей волны» (как у официальных клиентов): без них станция выдаёт одну и ту же пачку треков.
+     * type: radioStarted | trackStarted | trackFinished | skip.
+     */
+    public void waveFeedback(String type, @Nullable String trackId, double playedSeconds, String batchId) throws IOException {
+        JsonObject body = new JsonObject();
+        body.addProperty("type", type);
+        body.addProperty("timestamp", java.time.Instant.now().toString());
+        if (type.equals("radioStarted")) {
+            body.addProperty("from", "mobile-radio-user-onyourwave");
+        }
+        if (trackId != null) {
+            body.addProperty("trackId", trackId);
+        }
+        if (type.equals("trackFinished") || type.equals("skip")) {
+            body.addProperty("totalPlayedSeconds", playedSeconds);
+        }
+        String url = API + "/rotor/station/" + WAVE + "/feedback" + (batchId.isEmpty() ? "" : "?batch-id=" + Http.encode(batchId));
+        Http.Response r = Http.request("POST", url, headers(), body.toString(), "application/json");
+        if (!r.ok()) {
+            BlockPhoneFabric.LOGGER.info("Yandex wave feedback {} -> HTTP {}", type, r.code());
+        }
+    }
+
     /** Порция «Моей волны». afterTrackId — последний полученный трек (для продолжения), null — начало. */
+    /** Пачка «Моей волны»: треки и batchId (нужен для отзывов). */
+    public record WaveBatch(List<Track> tracks, String batchId) {
+    }
+
+    public static final String WAVE = "user:onyourwave";
+
     public List<Track> wave(@Nullable String afterTrackId) throws IOException {
-        String query = "/rotor/station/user:onyourwave/tracks?settings2=true"
+        return waveBatch(afterTrackId).tracks();
+    }
+
+    /** Следующая пачка волны после трека afterTrackId («id:альбом»; null — начало). */
+    public WaveBatch waveBatch(@Nullable String afterTrackId) throws IOException {
+        String query = "/rotor/station/" + WAVE + "/tracks?settings2=true"
                 + (afterTrackId != null ? "&queue=" + Http.encode(afterTrackId) : "");
-        JsonArray sequence = get(query).getAsJsonObject("result").getAsJsonArray("sequence");
+        JsonObject result = get(query).getAsJsonObject("result");
+        String batchId = result.has("batchId") && !result.get("batchId").isJsonNull() ? result.get("batchId").getAsString() : "";
+        JsonArray sequence = result.getAsJsonArray("sequence");
         List<Track> list = new ArrayList<>();
         for (JsonElement e : sequence) {
             JsonObject item = e.getAsJsonObject();
@@ -256,7 +293,7 @@ public final class YandexApi {
                 }
             }
         }
-        return list;
+        return new WaveBatch(list, batchId);
     }
 
     public void like(String uid, String trackId, boolean like) throws IOException {

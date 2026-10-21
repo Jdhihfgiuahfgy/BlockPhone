@@ -104,9 +104,37 @@ public final class CustomApps {
         }
     }
 
+    /** Сообщение от приложения другого игрока: в открытое приложение или в очередь (и уведомление). */
+    public static void onRelayed(AppPackets.Relayed r) {
+        AppDefinition def = get(r.appId());
+        if (def == null || def.script() == null || !def.has(dev.blockphone.common.apps.AppPermission.MULTIPLAYER) || !allowedHere(def)) {
+            return; // такого приложения у нас нет — сообщение не для нас
+        }
+        dev.blockphone.fabric.client.phone.PhoneApp existing = PhoneState.existing(PREFIX + r.appId());
+        boolean open = existing instanceof CustomApp && PhoneState.current() == existing
+                && net.minecraft.client.Minecraft.getInstance().screen instanceof dev.blockphone.fabric.client.phone.PhoneScreen;
+        if (existing instanceof CustomApp app) {
+            app.onRelayed(r.fromName(), r.payload());
+        } else {
+            ScriptHost.queue(r.appId(), r.fromName(), r.payload());
+        }
+        if (!open) {
+            String name = name(def);
+            dev.blockphone.fabric.client.phone.PhoneNotifications.add("app:" + r.appId(), PREFIX + r.appId(), name,
+                    PhoneLang.tr("app.message_from", r.fromName()), r.from(), phone -> phone.openApp(PREFIX + r.appId()));
+        }
+    }
+
+    public static void onPlayers(AppPackets.Players p) {
+        if (PhoneState.existing(PREFIX + p.appId()) instanceof CustomApp app) {
+            app.onPlayers(p.names());
+        }
+    }
+
     /** Вышли с сервера. */
     public static void reset() {
         policy = null;
+        ScriptHost.resetPending();
     }
 
     // --- Папка ---

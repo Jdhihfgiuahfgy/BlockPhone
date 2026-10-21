@@ -281,6 +281,9 @@ public final class SettingsApp extends PhoneApp {
                                 dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false))));
                 List<Row> look = new ArrayList<>();
                 if (world) {
+                    look.add(new Row(() -> PhoneLang.tr("settings.lyrics_height"),
+                            () -> PhoneLang.tr("settings.lyrics_blocks_f", String.format(Locale.ROOT, "%.2f", s.lyricsHeight)),
+                            dir -> s.lyricsHeight = Math.floorMod(Math.round(s.lyricsHeight * 4) + dir, 13) / 4f, null, false));
                     look.add(new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
                             () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
                             dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 28) + 3, null, false));

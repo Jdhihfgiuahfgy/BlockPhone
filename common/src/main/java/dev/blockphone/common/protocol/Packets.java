@@ -131,6 +131,11 @@ public final class Packets {
         register(91, StickerPackets.EditPack.class, StickerPackets.EditPack::read);
         register(92, StickerPackets.AddSticker.class, StickerPackets.AddSticker::read);
         register(93, StickerPackets.RemoveSticker.class, StickerPackets.RemoveSticker::read);
+
+        register(94, AppPackets.Relay.class, AppPackets.Relay::read);
+        register(95, AppPackets.Relayed.class, AppPackets.Relayed::read);
+        register(96, AppPackets.RequestPlayers.class, AppPackets.RequestPlayers::read);
+        register(97, AppPackets.Players.class, AppPackets.Players::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

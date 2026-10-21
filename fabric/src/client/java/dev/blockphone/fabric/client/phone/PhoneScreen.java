@@ -28,6 +28,10 @@ public class PhoneScreen extends Screen {
     private float originY;
 
     private PhoneApp app;
+    /** Ориентация, в которой телефон нарисован сейчас, и когда её поменяли (для анимации поворота). */
+    private boolean shownLandscape;
+    private long rotatedAt;
+    private static final long ROTATE_MS = 260;
     private PhoneDialog dialog;
     /** Показан экран блокировки (текущее приложение откроется после разблокировки). */
     private boolean locked;
@@ -49,19 +53,31 @@ public class PhoneScreen extends Screen {
         }
     }
 
+    /** Ориентация и полный экран — по текущему приложению (перед отрисовкой и вводом). */
+    private void applyOrientation() {
+        boolean wanted = app != null && !locked && app.landscape();
+        PhoneLayout.immersive = app != null && !locked && app.immersive();
+        if (wanted != shownLandscape) {
+            shownLandscape = wanted;
+            rotatedAt = System.currentTimeMillis();
+        }
+        PhoneLayout.landscape = wanted;
+        layoutPhone();
+    }
+
     /** Размер и положение телефона: по центру или маленький в правом нижнем углу (режим «на ходу»). */
     private void layoutPhone() {
         if (compact()) {
-            scale = Math.max(0.4f, Math.min(1f, height * 0.6f / PHONE_H));
-            originX = width - PHONE_W * scale - 6;
-            originY = height - PHONE_H * scale - 6;
+            scale = Math.max(0.4f, Math.min(1f, Math.min(height * 0.6f / phoneH(), width * 0.5f / phoneW())));
+            originX = width - phoneW() * scale - 6;
+            originY = height - phoneH() * scale - 6;
             return;
         }
-        float fit = (height - 16f) / PHONE_H;
+        float fit = Math.min((height - 16f) / phoneH(), (width - 16f) / phoneW());
         // Если места много — масштаб кратен 0.5, чтобы пиксели шрифта были ровными.
         scale = fit >= 1f ? Math.min(2f, (float) Math.floor(fit * 2) / 2f) : fit;
-        originX = (width - PHONE_W * scale) / 2f;
-        originY = (height - PHONE_H * scale) / 2f;
+        originX = (width - phoneW() * scale) / 2f;
+        originY = (height - phoneH() * scale) / 2f;
     }
 
     /** Режим «на ходу» ({@link PhonePin}): телефон маленький в углу, фон не затемняется, можно ходить и крутить камеру. */
@@ -228,10 +244,20 @@ public class PhoneScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        applyOrientation();
         float py = phoneY();
         g.pose().pushMatrix();
         g.pose().translate(originX, py);
         g.pose().scale(scale, scale);
+        // Поворот набок/обратно: раскладка уже новая, а корпус доворачивается из прежнего положения.
+        float t = PhoneSettings.get().animations ? Math.min(1f, (System.currentTimeMillis() - rotatedAt) / (float) ROTATE_MS) : 1f;
+        if (t < 1f) {
+            float eased = 1f - (1f - t) * (1f - t) * (1f - t);
+            float angle = (float) Math.toRadians((shownLandscape ? 90 : -90) * (1f - eased));
+            g.pose().translate(phoneW() / 2f, phoneH() / 2f);
+            g.pose().rotate(angle);
+            g.pose().translate(-phoneW() / 2f, -phoneH() / 2f);
+        }
 
         int lx = (int) Math.floor((mouseX - originX) / scale);
         int ly = (int) Math.floor((mouseY - py) / scale);
@@ -242,24 +268,24 @@ public class PhoneScreen extends Screen {
 
     private void renderPhone(GuiGraphics g, int mx, int my, float delta) {
         // Корпус: тонкая окантовка, подсвеченная акцентом.
-        PhoneDraw.rawRoundedRect(g, 0, 0, PHONE_W, PHONE_H, BODY_RADIUS, PhoneTheme.bodyEdge());
-        PhoneDraw.rawRoundedRect(g, 1, 1, PHONE_W - 1, PHONE_H - 1, BODY_RADIUS - 1, PhoneTheme.body());
+        PhoneDraw.rawRoundedRect(g, 0, 0, phoneW(), phoneH(), BODY_RADIUS, PhoneTheme.bodyEdge());
+        PhoneDraw.rawRoundedRect(g, 1, 1, phoneW() - 1, phoneH() - 1, BODY_RADIUS - 1, PhoneTheme.body());
 
         g.pose().pushMatrix();
         g.pose().translate(BEZEL, BEZEL);
-        g.enableScissor(0, 0, SCREEN_W, SCREEN_H);
+        g.enableScissor(0, 0, screenW(), screenH());
         int sx = mx - BEZEL;
         int sy = my - BEZEL;
 
         // Фон: обои или цвет приложения.
         if (app.transparentBackground()) {
-            Wallpapers.draw(g, 0, 0, SCREEN_W, SCREEN_H);
+            Wallpapers.draw(g, 0, 0, screenW(), screenH());
         } else {
-            g.fill(0, 0, SCREEN_W, SCREEN_H, app.backgroundColor());
+            g.fill(0, 0, screenW(), screenH(), app.backgroundColor());
         }
 
         // Содержимое приложения.
-        int contentTop = STATUS_H + (app.hasHeader() ? HEADER_H : 0);
+        int contentTop = statusH() + (app.hasHeader() ? HEADER_H : 0);
         g.pose().pushMatrix();
         g.pose().translate(0, contentTop);
         g.enableScissor(0, 0, app.contentWidth(), app.contentHeight());
@@ -270,8 +296,12 @@ public class PhoneScreen extends Screen {
         if (app.hasHeader()) {
             renderHeader(g, sx, sy);
         }
-        renderStatusBar(g);
-        renderNavBar(g, sx, sy);
+        if (!PhoneLayout.immersive) {
+            renderStatusBar(g);
+            renderNavBar(g, sx, sy);
+        } else if (sy >= screenH() - NAV_H - 4 && sy < screenH()) {
+            renderFloatingNav(g, sx, sy);
+        }
         if (dialog != null) {
             dialog.render(g, sx, sy);
         }
@@ -281,9 +311,12 @@ public class PhoneScreen extends Screen {
 
         g.disableScissor();
         // Скруглённые углы экрана и камера-«точка».
-        PhoneDraw.roundCornersMask(g, 0, 0, SCREEN_W, SCREEN_H, SCREEN_RADIUS, PhoneTheme.body());
-        PhoneDraw.rawRoundedRect(g, SCREEN_W / 2 - 3, 3, SCREEN_W / 2 + 3, 9, 3, 0xFF05070C);
-        g.fill(SCREEN_W / 2 - 1, 5, SCREEN_W / 2, 6, 0xFF2A3A5A);
+        PhoneDraw.roundCornersMask(g, 0, 0, screenW(), screenH(), SCREEN_RADIUS, PhoneTheme.body());
+        // Набок — камера сбоку (слева), как у настоящего телефона.
+        int camX = PhoneLayout.landscape ? 6 : screenW() / 2;
+        int camY = PhoneLayout.landscape ? screenH() / 2 : 6;
+        PhoneDraw.rawRoundedRect(g, camX - 3, camY - 3, camX + 3, camY + 3, 3, 0xFF05070C);
+        g.fill(camX - 1, camY - 1, camX, camY, 0xFF2A3A5A);
         g.pose().popMatrix();
     }
 
@@ -292,7 +325,7 @@ public class PhoneScreen extends Screen {
     private static final int HEADER_BUTTON_H = 14;
 
     private int headerButtonY() {
-        return STATUS_H + (HEADER_H - HEADER_BUTTON_H) / 2;
+        return statusH() + (HEADER_H - HEADER_BUTTON_H) / 2;
     }
 
     private static int actionWidth(String action) {
@@ -300,9 +333,9 @@ public class PhoneScreen extends Screen {
     }
 
     private void renderHeader(GuiGraphics g, int sx, int sy) {
-        int top = STATUS_H;
-        g.fill(0, top, SCREEN_W, top + HEADER_H, app.headerColor());
-        g.fill(0, top + HEADER_H - 1, SCREEN_W, top + HEADER_H, PhoneTheme.separator());
+        int top = statusH();
+        g.fill(0, top, screenW(), top + HEADER_H, app.headerColor());
+        g.fill(0, top + HEADER_H - 1, screenW(), top + HEADER_H, PhoneTheme.separator());
         int by = headerButtonY();
         boolean backHovered = PhoneDraw.inside(sx, sy, BACK_X, by, BACK_W, HEADER_BUTTON_H);
         PhoneDraw.card(g, BACK_X, by, BACK_X + BACK_W, by + HEADER_BUTTON_H, backHovered);
@@ -312,15 +345,15 @@ public class PhoneScreen extends Screen {
         int actionWidth = 0;
         if (action != null) {
             actionWidth = actionWidth(action);
-            int ax = SCREEN_W - 4 - actionWidth;
+            int ax = screenW() - 4 - actionWidth;
             boolean hovered = PhoneDraw.inside(sx, sy, ax, by, actionWidth, HEADER_BUTTON_H);
             PhoneDraw.card(g, ax, by, ax + actionWidth, by + HEADER_BUTTON_H, hovered);
             PhoneDraw.centeredText(g, PhoneDraw.ellipsize(action, actionWidth - 4, 0.75f), ax + actionWidth / 2f, by + 4,
                     app.headerActionColor(), 0.75f, false);
         }
-        int titleRoom = SCREEN_W - 2 * (Math.max(BACK_W, actionWidth) + 10);
+        int titleRoom = screenW() - 2 * (Math.max(BACK_W, actionWidth) + 10);
         String title = PhoneDraw.ellipsize(app.title(), titleRoom, 1f);
-        PhoneDraw.centeredText(g, title, SCREEN_W / 2f, top + 6, app.headerTextColor(), 1f, false);
+        PhoneDraw.centeredText(g, title, screenW() / 2f, top + 6, app.headerTextColor(), 1f, false);
     }
 
     /** Текст строки состояния и навигации: белый на обоях и тёмных экранах, иначе по теме. */
@@ -336,13 +369,13 @@ public class PhoneScreen extends Screen {
 
         // «Связь»: по пингу на сервере; в одиночной игре — всегда полная.
         int bars = signalBars();
-        int x = SCREEN_W - 36;
+        int x = screenW() - 36;
         for (int i = 0; i < 4; i++) {
             int h = 2 + i * 2;
             g.fill(x + i * 3, 10 - h, x + i * 3 + 2, 10, i < bars ? color : dim);
         }
         // Батарейка.
-        int bx = SCREEN_W - 22;
+        int bx = screenW() - 22;
         PhoneDraw.outline(g, bx, 4, 13, 7, color);
         g.fill(bx + 13, 6, bx + 14, 9, color);
         g.fill(bx + 2, 6, bx + 11, 9, PhoneTheme.accent());
@@ -365,29 +398,29 @@ public class PhoneScreen extends Screen {
     private static final int NAV_BUTTON_W = 26;
 
     private int navBackX() {
-        return SCREEN_W / 2 - NAV_BUTTON_W - 4;
+        return screenW() / 2 - NAV_BUTTON_W - 4;
     }
 
     private int navHomeX() {
-        return SCREEN_W / 2 + 4;
+        return screenW() / 2 + 4;
     }
 
     /** Нижняя навигация: «назад» и «домой». */
     private void renderNavBar(GuiGraphics g, int sx, int sy) {
-        int top = SCREEN_H - NAV_H;
+        int top = screenH() - navH();
         if (!app.transparentBackground()) {
-            g.fill(0, top, SCREEN_W, SCREEN_H, app.headerColor());
-            g.fill(0, top, SCREEN_W, top + 1, PhoneTheme.separator());
+            g.fill(0, top, screenW(), screenH(), app.headerColor());
+            g.fill(0, top, screenW(), top + 1, PhoneTheme.separator());
         }
         int color = barColor();
-        int cy = top + NAV_H / 2;
+        int cy = top + navH() / 2;
         int backX = navBackX();
         int homeX = navHomeX();
-        if (PhoneDraw.inside(sx, sy, backX, top, NAV_BUTTON_W, NAV_H)) {
-            PhoneDraw.roundedRect(g, backX, top + 1, backX + NAV_BUTTON_W, SCREEN_H - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
+        if (PhoneDraw.inside(sx, sy, backX, top, NAV_BUTTON_W, navH())) {
+            PhoneDraw.roundedRect(g, backX, top + 1, backX + NAV_BUTTON_W, screenH() - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
         }
-        if (PhoneDraw.inside(sx, sy, homeX, top, NAV_BUTTON_W, NAV_H)) {
-            PhoneDraw.roundedRect(g, homeX, top + 1, homeX + NAV_BUTTON_W, SCREEN_H - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
+        if (PhoneDraw.inside(sx, sy, homeX, top, NAV_BUTTON_W, navH())) {
+            PhoneDraw.roundedRect(g, homeX, top + 1, homeX + NAV_BUTTON_W, screenH() - 1, 3, (color & 0x00FFFFFF) | 0x26000000);
         }
         // Стрелка «назад» — треугольник из полосок.
         int ax = backX + NAV_BUTTON_W / 2 - 2;
@@ -397,6 +430,18 @@ public class PhoneScreen extends Screen {
         // «Домой» — квадратик с рамкой.
         int hx = homeX + NAV_BUTTON_W / 2 - 3;
         PhoneDraw.outline(g, hx, cy - 3, 7, 7, color);
+    }
+
+    /** Полный экран: «назад» и «домой» на полупрозрачной полосе, пока мышь у нижнего края. */
+    private void renderFloatingNav(GuiGraphics g, int sx, int sy) {
+        int top = screenH() - NAV_H;
+        g.fill(0, top, screenW(), screenH(), 0xA0000000);
+        int cy = top + NAV_H / 2;
+        int ax = navBackX() + NAV_BUTTON_W / 2 - 2;
+        for (int i = 0; i < 4; i++) {
+            g.fill(ax + i, cy - i, ax + i + 1, cy + i + 1, PhoneTheme.WHITE);
+        }
+        PhoneDraw.outline(g, navHomeX() + NAV_BUTTON_W / 2 - 3, cy - 3, 7, 7, PhoneTheme.WHITE);
     }
 
     // --- Ввод ---
@@ -410,7 +455,7 @@ public class PhoneScreen extends Screen {
     }
 
     private double contentTop() {
-        return STATUS_H + (app.hasHeader() ? HEADER_H : 0);
+        return statusH() + (app.hasHeader() ? HEADER_H : 0);
     }
 
     private boolean inContent(double sx, double sy) {
@@ -423,6 +468,7 @@ public class PhoneScreen extends Screen {
         if (closingAt >= 0) {
             return true;
         }
+        applyOrientation();
         double sx = toScreenX(event.x());
         double sy = toScreenY(event.y());
         if (CallOverlay.mouseClicked(sx, sy)) {
@@ -434,22 +480,26 @@ public class PhoneScreen extends Screen {
             }
             return true;
         }
-        if (sy >= SCREEN_H - NAV_H && sy < SCREEN_H) {
-            if (PhoneDraw.inside(sx, sy, navBackX(), SCREEN_H - NAV_H, NAV_BUTTON_W, NAV_H)) {
-                back();
-            } else if (PhoneDraw.inside(sx, sy, navHomeX(), SCREEN_H - NAV_H, NAV_BUTTON_W, NAV_H)) {
-                goHome();
+        if (sy >= screenH() - NAV_H && sy < screenH()) {
+            boolean onBack = PhoneDraw.inside(sx, sy, navBackX(), screenH() - NAV_H, NAV_BUTTON_W, NAV_H);
+            boolean onHome = PhoneDraw.inside(sx, sy, navHomeX(), screenH() - NAV_H, NAV_BUTTON_W, NAV_H);
+            if (!PhoneLayout.immersive || onBack || onHome) {
+                if (onBack) {
+                    back();
+                } else if (onHome) {
+                    goHome();
+                }
+                return true;
             }
-            return true;
         }
-        if (app.hasHeader() && PhoneDraw.inside(sx, sy, 0, STATUS_H, BACK_X + BACK_W + 2, HEADER_H)) {
+        if (app.hasHeader() && PhoneDraw.inside(sx, sy, 0, statusH(), BACK_X + BACK_W + 2, HEADER_H)) {
             back();
             return true;
         }
         String action = app.hasHeader() ? app.headerAction() : null;
         if (action != null) {
             int actionWidth = actionWidth(action);
-            if (PhoneDraw.inside(sx, sy, SCREEN_W - 6 - actionWidth, STATUS_H, actionWidth + 6, HEADER_H)) {
+            if (PhoneDraw.inside(sx, sy, screenW() - 6 - actionWidth, statusH(), actionWidth + 6, HEADER_H)) {
                 app.onHeaderAction();
                 return true;
             }
@@ -462,6 +512,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        applyOrientation();
         if (dialog != null) {
             return true;
         }
@@ -470,6 +521,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+        applyOrientation();
         if (dialog != null) {
             return true;
         }
@@ -479,6 +531,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        applyOrientation();
         double sx = toScreenX(mouseX);
         double sy = toScreenY(mouseY);
         return inContent(sx, sy) && app.mouseScrolled(sx, sy - contentTop(), scrollY);

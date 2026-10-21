@@ -56,6 +56,8 @@ dependencies {
     }
     // Голосовые Telegram (Opus): Concentus — Opus на чистой Java (BSD).
     include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
+    // Скрипты своих приложений: Lua (LuaJ, MIT) — песочница без доступа к Java, файлам и сети (см. ScriptRuntime).
+    include(implementation("org.luaj:luaj-jse:${rootProject.luaj_version}") { transitive = false })
 
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"

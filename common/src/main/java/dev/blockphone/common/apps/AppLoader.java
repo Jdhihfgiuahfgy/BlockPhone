@@ -73,7 +73,7 @@ public final class AppLoader {
             try {
                 String text = Files.readString(json, StandardCharsets.UTF_8);
                 byte[] iconBytes = Files.isRegularFile(icon) ? Files.readAllBytes(icon) : null;
-                AppDefinition app = parse(text, iconBytes, fallbackId);
+                AppDefinition app = parse(text, iconBytes, fallbackId, Files.isDirectory(entry) ? entry : null);
                 if (seen.put(app.id(), true) != null) {
                     errors.add(file + ": id \"" + app.id() + "\" already used");
                     continue;
@@ -86,8 +86,13 @@ public final class AppLoader {
         return new Result(apps, errors);
     }
 
-    /** Разобрать описание приложения. */
+    /** Разобрать описание приложения (без папки — скрипты недоступны). */
     public static AppDefinition parse(String text, byte[] icon, String fallbackId) throws AppException {
+        return parse(text, icon, fallbackId, null);
+    }
+
+    /** Разобрать описание приложения; folder — папка приложения (для "script": код *.lua и картинки *.png). */
+    public static AppDefinition parse(String text, byte[] icon, String fallbackId, Path folder) throws AppException {
         String sha256 = sha256(text);
         if (text.length() > MAX_JSON_CHARS) {
             throw new AppException("file is too big");
@@ -114,17 +119,34 @@ public final class AppLoader {
                 try {
                     permissions.add(AppPermission.parse(p.getAsString()));
                 } catch (IllegalArgumentException e) {
-                    throw new AppException("unknown permission \"" + p.getAsString() + "\" (storage, links, clipboard, commands, server)");
+                    throw new AppException("unknown permission \"" + p.getAsString() + "\" (storage, links, clipboard, commands, server, internet, multiplayer)");
                 }
             }
         }
         String version = root.has("version") ? root.get("version").getAsString() : "1.0";
         String author = root.has("author") ? root.get("author").getAsString() : "";
         int order = root.has("order") ? root.get("order").getAsInt() : 100;
-        if (!root.has("pages") || !root.get("pages").isJsonObject() || root.getAsJsonObject("pages").size() == 0) {
+        AppScript script = null;
+        if (root.has("script")) {
+            if (folder == null) {
+                throw new AppException("\"script\" works only for an app folder (app.json + *.lua)");
+            }
+            script = loadScript(root, folder, permissions);
+            StringBuilder all = new StringBuilder(text);
+            for (Map.Entry<String, String> e : script.sources().entrySet()) {
+                all.append("\n--").append(e.getKey()).append('\n').append(e.getValue());
+            }
+            sha256 = sha256(all.toString());
+        } else if (root.has("hosts")) {
+            throw new AppException("\"hosts\" needs \"script\"");
+        }
+        if (script == null && (!root.has("pages") || !root.get("pages").isJsonObject() || root.getAsJsonObject("pages").size() == 0)) {
             throw new AppException("\"pages\" must contain at least one page");
         }
-        JsonObject pages = root.getAsJsonObject("pages").deepCopy();
+        JsonObject pages = root.has("pages") && root.get("pages").isJsonObject() ? root.getAsJsonObject("pages").deepCopy() : new JsonObject();
+        if (pages.size() == 0) {
+            pages.add("main", new JsonObject()); // скриптовое приложение без страниц
+        }
         String start = root.has("start") ? root.get("start").getAsString() : pages.keySet().iterator().next();
         if (!pages.has(start)) {
             throw new AppException("start page \"" + start + "\" not found");
@@ -167,7 +189,76 @@ public final class AppLoader {
             }
         }
         return new AppDefinition(id, name, version, author, color, icon, java.util.Collections.unmodifiableSet(permissions), start, order,
-                pages, actions, inputs, sha256);
+                pages, actions, inputs, sha256, script);
+    }
+
+    private static final Pattern HOST = Pattern.compile("(\\*\\.)?[a-z0-9-]+(\\.[a-z0-9-]+)+|localhost");
+
+    /** Код *.lua и картинки *.png из папки приложения (с подпапками, без ссылок наружу), "hosts", ориентация. */
+    private static AppScript loadScript(JsonObject root, Path folder, java.util.Set<AppPermission> permissions) throws AppException {
+        String main = root.get("script").getAsString().replace('\\', '/');
+        Map<String, String> sources = new java.util.TreeMap<>();
+        Map<String, byte[]> assets = new java.util.TreeMap<>();
+        long totalCode = 0;
+        long totalAssets = 0;
+        Path base = folder.toAbsolutePath().normalize();
+        List<Path> files;
+        try (java.util.stream.Stream<Path> walk = Files.walk(base, 6)) {
+            files = walk.filter(f -> Files.isRegularFile(f, java.nio.file.LinkOption.NOFOLLOW_LINKS)).sorted().toList();
+        } catch (IOException e) {
+            throw new AppException("cannot read app folder: " + e.getMessage());
+        }
+        try {
+            for (Path file : files) {
+                String rel = base.relativize(file.toAbsolutePath().normalize()).toString().replace('\\', '/');
+                String lower = rel.toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".lua")) {
+                    String code = Files.readString(file, StandardCharsets.UTF_8);
+                    totalCode += code.length();
+                    if (sources.size() >= AppScript.MAX_SOURCES || code.length() > AppScript.MAX_SOURCE_CHARS
+                            || totalCode > AppScript.MAX_TOTAL_SOURCE) {
+                        throw new AppException("scripts are too big (max " + AppScript.MAX_SOURCES + " files, "
+                                + AppScript.MAX_TOTAL_SOURCE / 1024 + " KB)");
+                    }
+                    sources.put(rel, code);
+                } else if (lower.endsWith(".png") && !lower.equals("icon.png")) {
+                    long size = Files.size(file);
+                    totalAssets += size;
+                    if (assets.size() >= AppScript.MAX_ASSETS || size > AppScript.MAX_ASSET_BYTES || totalAssets > AppScript.MAX_TOTAL_ASSETS) {
+                        throw new AppException("images are too big (max " + AppScript.MAX_ASSETS + " files, 1 MB each)");
+                    }
+                    assets.put(rel, Files.readAllBytes(file));
+                }
+            }
+        } catch (IOException e) {
+            throw new AppException("cannot read app folder: " + e.getMessage());
+        }
+        if (!sources.containsKey(main)) {
+            throw new AppException("script \"" + main + "\" not found");
+        }
+        List<String> hosts = new ArrayList<>();
+        if (root.has("hosts")) {
+            for (JsonElement h : root.getAsJsonArray("hosts")) {
+                String host = h.getAsString().strip().toLowerCase(Locale.ROOT);
+                if (!HOST.matcher(host).matches()) {
+                    throw new AppException("bad host \"" + host + "\" (example: api.example.com or *.example.com)");
+                }
+                hosts.add(host);
+            }
+        }
+        if (!hosts.isEmpty() && !permissions.contains(AppPermission.INTERNET)) {
+            throw new AppException("\"hosts\" needs the \"internet\" permission");
+        }
+        if (permissions.contains(AppPermission.INTERNET) && hosts.isEmpty()) {
+            throw new AppException("\"internet\" needs \"hosts\" (the sites the app may use)");
+        }
+        String orientation = root.has("orientation") ? root.get("orientation").getAsString() : "portrait";
+        if (!orientation.equals("portrait") && !orientation.equals("landscape")) {
+            throw new AppException("\"orientation\" must be portrait or landscape");
+        }
+        boolean fullscreen = root.has("fullscreen") && root.get("fullscreen").getAsBoolean();
+        return new AppScript(main, java.util.Collections.unmodifiableMap(sources), java.util.Collections.unmodifiableMap(assets),
+                orientation.equals("landscape"), fullscreen, List.copyOf(hosts));
     }
 
     /** Какое разрешение нужно действию (null — только переходы и сообщения). */

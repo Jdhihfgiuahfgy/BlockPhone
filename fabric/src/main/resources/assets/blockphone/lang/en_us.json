@@ -726,5 +726,15 @@
   "settings.lyrics_mode.right": "Right of screen",
   "settings.lyrics_mode.actionbar": "Above hotbar",
   "settings.lyrics_mode.subtitles": "Subtitles",
-  "settings.lyrics_mode.top": "Top of screen"
+  "settings.lyrics_mode.top": "Top of screen",
+  "settings.lyrics_height": "Height above block",
+  "settings.lyrics_blocks_f": "%s bl.",
+  "app.script.timeout": "The script ran too long (endless loop?) and was stopped.",
+  "app.script.stack": "Recursion is too deep.",
+  "app.script.memory": "The script ran out of memory.",
+  "app.script.stopped": "The app stopped",
+  "app.script.restart": "Restart",
+  "app.message_from": "Message from %s",
+  "app.perm.internet": "internet",
+  "app.perm.multiplayer": "multiplayer"
 }

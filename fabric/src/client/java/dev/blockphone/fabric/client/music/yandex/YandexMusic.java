@@ -254,6 +254,12 @@ public final class YandexMusic {
         });
     }
 
+    /** Идущая «Моя волна»: загрузчик (по нему узнаём, что играет именно она), batchId, трек для отзывов. */
+    private static @Nullable java.util.function.Supplier<List<Track>> waveLoader;
+    private static volatile String waveBatch = "";
+    private static @Nullable Track waveTrack;
+    private static long waveTrackPos;
+
     /** Запустить «Мою волну»: очередь сама подгружается, когда треки заканчиваются. */
     public static void playWave() {
         if (startingWave) {
@@ -263,11 +269,15 @@ public final class YandexMusic {
         YandexApi api = api();
         ClientFiles.IO.execute(() -> {
             try {
-                List<Track> first = api.wave(null);
+                YandexApi.WaveBatch batch = api.waveBatch(null);
+                waveBatch = batch.batchId();
+                feedback(api, "radioStarted", null, 0);
                 Minecraft.getInstance().execute(() -> {
                     startingWave = false;
-                    if (!first.isEmpty()) {
-                        MusicPlayer.play(first, 0, waveLoader(api), PhoneLang.tr("music.my_wave"));
+                    if (!batch.tracks().isEmpty()) {
+                        waveLoader = waveLoader(api);
+                        waveTrack = null;
+                        MusicPlayer.play(batch.tracks(), 0, waveLoader, PhoneLang.tr("music.my_wave"));
                     }
                 });
             } catch (IOException e) {
@@ -276,17 +286,71 @@ public final class YandexMusic {
         });
     }
 
-    /** Продолжение волны после последнего трека очереди (вызывается в фоне плеером). */
+    /**
+     * Продолжение волны (в фоне, плеером): после последнего трека очереди. Если пачка повторяет уже сыгранное —
+     * ещё раз от другого трека (до 3 попыток), чтобы волна не крутила одно и то же.
+     */
     private static java.util.function.Supplier<List<Track>> waveLoader(YandexApi api) {
         return () -> {
             List<Track> queue = new ArrayList<>(MusicPlayer.queue());
-            String last = queue.isEmpty() ? null : queue.get(queue.size() - 1).remoteId();
-            try {
-                return api.wave(last);
-            } catch (IOException e) {
-                return List.of();
+            java.util.Set<String> known = new java.util.HashSet<>();
+            queue.forEach(t -> known.add(t.key()));
+            List<Track> fresh = new ArrayList<>();
+            for (int attempt = 0; attempt < 3 && fresh.isEmpty(); attempt++) {
+                int from = queue.size() - 1 - attempt * 3;
+                String after = from >= 0 ? queue.get(from).remoteId() : null;
+                try {
+                    YandexApi.WaveBatch batch = api.waveBatch(after);
+                    if (!batch.batchId().isEmpty()) {
+                        waveBatch = batch.batchId();
+                    }
+                    for (Track t : batch.tracks()) {
+                        if (known.add(t.key())) {
+                            fresh.add(t);
+                        }
+                    }
+                } catch (IOException e) {
+                    return List.of();
+                }
             }
+            return fresh;
         };
+    }
+
+    /** Каждый такт: смена трека «Моей волны» → отзывы Яндексу (дослушан или пропущен, начат следующий). */
+    public static void tick() {
+        Track current = MusicPlayer.current();
+        boolean wave = waveLoader != null && MusicPlayer.loader() == waveLoader;
+        if (!wave) {
+            waveTrack = null;
+            return;
+        }
+        if (current == waveTrack) {
+            waveTrackPos = Math.max(waveTrackPos, MusicPlayer.positionMs());
+            return;
+        }
+        YandexApi api = api();
+        Track previous = waveTrack;
+        long played = waveTrackPos;
+        waveTrack = current;
+        waveTrackPos = 0;
+        ClientFiles.IO.execute(() -> {
+            if (previous != null && previous.remoteId() != null) {
+                boolean finished = previous.durationMs() > 0 && played >= previous.durationMs() - 15_000;
+                feedback(api, finished ? "trackFinished" : "skip", previous.remoteId(), played / 1000.0);
+            }
+            if (current != null && current.remoteId() != null) {
+                feedback(api, "trackStarted", current.remoteId(), 0);
+            }
+        });
+    }
+
+    private static void feedback(YandexApi api, String type, @Nullable String trackId, double seconds) {
+        try {
+            api.waveFeedback(type, trackId, seconds, waveBatch);
+        } catch (IOException e) {
+            BlockPhoneFabric.LOGGER.info("Yandex wave feedback {} failed: {}", type, e.toString());
+        }
     }
 
     public static void toggleLike(Track track) {

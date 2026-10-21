@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -100,5 +101,52 @@ class AppLoaderTest {
         assertTrue(AppsSettings.allowed("whitelist", List.of(), List.of("bank"), "bank", "def"));
         assertFalse(AppsSettings.allowed("whitelist", List.of(), List.of("bank"), "tapper", "def"));
         assertFalse(AppsSettings.allowed("none", List.of(), List.of(), "bank", "def"));
+    }
+
+    @Test
+    void loadsScriptAppWithCodeImagesAndHosts(@TempDir Path dir) throws Exception {
+        Path app = dir.resolve("game");
+        Files.createDirectories(app.resolve("lib"));
+        Files.writeString(app.resolve("app.json"), """
+                {"id": "game", "script": "main.lua", "orientation": "landscape", "fullscreen": true,
+                 "permissions": ["internet", "multiplayer"], "hosts": ["api.example.com", "*.cdn.example.org"]}""");
+        Files.writeString(app.resolve("main.lua"), "local u = require('lib.util')");
+        Files.writeString(app.resolve("lib").resolve("util.lua"), "return {}");
+        Files.write(app.resolve("card.png"), new byte[]{(byte) 0x89, 'P', 'N', 'G', 0, 0, 0, 0});
+        AppLoader.Result result = AppLoader.loadDirectory(dir);
+        assertEquals(List.of(), result.errors());
+        AppDefinition def = result.apps().get(0);
+        AppScript script = def.script();
+        assertEquals("main.lua", script.main());
+        assertEquals(java.util.Set.of("main.lua", "lib/util.lua"), script.sources().keySet());
+        assertEquals(java.util.Set.of("card.png"), script.assets().keySet());
+        assertTrue(script.landscape());
+        assertTrue(script.fullscreen());
+        assertTrue(script.hostAllowed("API.example.com"));
+        assertTrue(script.hostAllowed("img.cdn.example.org"));
+        assertTrue(script.hostAllowed("cdn.example.org"));
+        assertFalse(script.hostAllowed("evil.com"));
+        assertFalse(script.hostAllowed("example.com.evil.com"));
+        // Хэш учитывает код: правка скрипта — другая версия для чёрного списка сервера.
+        String before = def.sha256();
+        Files.writeString(app.resolve("main.lua"), "-- changed");
+        assertNotEquals(before, AppLoader.loadDirectory(dir).apps().get(0).sha256());
+    }
+
+    @Test
+    void scriptRulesAreChecked(@TempDir Path dir) throws Exception {
+        Path app = dir.resolve("net");
+        Files.createDirectories(app);
+        Files.writeString(app.resolve("main.lua"), "");
+        Files.writeString(app.resolve("app.json"), "{\"script\": \"main.lua\", \"permissions\": [\"internet\"]}");
+        assertTrue(AppLoader.loadDirectory(dir).errors().get(0).contains("hosts"));
+        Files.writeString(app.resolve("app.json"), "{\"script\": \"main.lua\", \"hosts\": [\"a.com\"]}");
+        assertTrue(AppLoader.loadDirectory(dir).errors().get(0).contains("internet"));
+        Files.writeString(app.resolve("app.json"), "{\"script\": \"missing.lua\"}");
+        assertTrue(AppLoader.loadDirectory(dir).errors().get(0).contains("not found"));
+        Files.writeString(app.resolve("app.json"), "{\"script\": \"main.lua\", \"permissions\": [\"internet\"], \"hosts\": [\"http://x\"]}");
+        assertTrue(AppLoader.loadDirectory(dir).errors().get(0).contains("bad host"));
+        // Одиночный файл <имя>.json не может быть скриптом: кода рядом нет.
+        assertThrows(AppLoader.AppException.class, () -> AppLoader.parse("{\"script\": \"main.lua\"}", null, "x"));
     }
 }

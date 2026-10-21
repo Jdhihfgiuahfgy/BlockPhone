@@ -23,11 +23,11 @@ public record PhoneDialog(String title, String message, String confirmLabel, boo
     }
 
     private int left() {
-        return (PhoneLayout.SCREEN_W - W) / 2;
+        return (PhoneLayout.screenW() - W) / 2;
     }
 
     private int top() {
-        return (PhoneLayout.SCREEN_H - height()) / 2;
+        return (PhoneLayout.screenH() - height()) / 2;
     }
 
     private int buttonsY() {
@@ -40,7 +40,7 @@ public record PhoneDialog(String title, String message, String confirmLabel, boo
 
     /** Координаты — экранные (весь экран телефона). */
     void render(GuiGraphics g, int mx, int my) {
-        g.fill(0, 0, PhoneLayout.SCREEN_W, PhoneLayout.SCREEN_H, 0x99000000);
+        g.fill(0, 0, PhoneLayout.screenW(), PhoneLayout.screenH(), 0x99000000);
         int x = left();
         int y = top();
         int h = height();

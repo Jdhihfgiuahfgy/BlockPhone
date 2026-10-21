@@ -54,6 +54,8 @@ public final class CustomApp extends PhoneApp {
     private AppDefinition app;
     private AppStorage storage;
     private String page;
+    /** Скрипт приложения (app.json: "script") или null — приложение из страниц. */
+    private @org.jetbrains.annotations.Nullable ScriptHost host;
     private boolean loading;
     private JsonObject pendingAction;
     private double scroll;
@@ -79,9 +81,19 @@ public final class CustomApp extends PhoneApp {
             stack.clear();
             page = null;
             storage = latest != null && latest.has(AppPermission.STORAGE) ? new AppStorage(appId) : null;
+            if (host != null) {
+                host.release();
+            }
+            host = latest != null && latest.script() != null ? new ScriptHost(this, latest, storage) : null;
+            if (host != null && phone != null) {
+                host.onShow();
+            }
         }
         if (app == null || !CustomApps.allowedHere(app)) {
             return false;
+        }
+        if (host != null) {
+            return true;
         }
         if (page == null) {
             open(app.start(), false);
@@ -94,12 +106,19 @@ public final class CustomApp extends PhoneApp {
         if (app == null) {
             return PhoneLang.tr("app.custom");
         }
+        if (host != null) {
+            return host.title() != null ? host.title() : CustomApps.name(app);
+        }
         JsonObject p = page != null ? app.pages().getAsJsonObject(page) : null;
         return p != null && p.has("title") ? text(p.get("title")) : CustomApps.name(app);
     }
 
     @Override
     public void onShown() {
+        if (ready() && host != null) {
+            host.onShow();
+            return;
+        }
         if (ready() && page != null && serverPage(page)) {
             requestVariables();
         }
@@ -108,6 +127,63 @@ public final class CustomApp extends PhoneApp {
     @Override
     public void onHidden() {
         inputs.values().forEach(t -> t.setFocused(false));
+        if (host != null) {
+            host.onHide();
+        }
+    }
+
+    @Override
+    public void tick() {
+        if (host != null && ready()) {
+            host.tick();
+        }
+    }
+
+    @Override
+    public boolean landscape() {
+        return host != null && app != null && CustomApps.allowedHere(app) && host.landscape;
+    }
+
+    @Override
+    public boolean immersive() {
+        return host != null && app != null && CustomApps.allowedHere(app) && host.fullscreen && !host.failed();
+    }
+
+    @Override
+    public boolean hasHeader() {
+        return host == null || host.failed() || !host.fullscreen || app == null || !CustomApps.allowedHere(app);
+    }
+
+    /** Телефон, на котором открыто приложение (для скрипта: диалоги, «закрыть»). */
+    @org.jetbrains.annotations.Nullable dev.blockphone.fabric.client.phone.PhoneScreen phone() {
+        return phone;
+    }
+
+    /** «Перезапустить» после ошибки скрипта: новое окружение, главный файл заново. */
+    void restartScript() {
+        if (host != null) {
+            host.release();
+        }
+        host = app != null && app.script() != null ? new ScriptHost(this, app, storage) : null;
+        if (host != null) {
+            host.onShow();
+        }
+    }
+
+    /** Сообщение от этого же приложения другого игрока (net). */
+    void onRelayed(String from, String payload) {
+        if (host != null && ready()) {
+            host.start();
+            host.deliver(from, payload);
+        } else {
+            ScriptHost.queue(appId, from, payload);
+        }
+    }
+
+    void onPlayers(java.util.List<String> names) {
+        if (host != null) {
+            host.onPlayers(names);
+        }
     }
 
     // --- Навигация ---
@@ -152,6 +228,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean onBack() {
+        if (host != null) {
+            return host.onBack();
+        }
         if (!stack.isEmpty()) {
             page = null;
             open(stack.pop(), false);
@@ -173,12 +252,19 @@ public final class CustomApp extends PhoneApp {
     }
 
     void onPolicyChanged() {
+        if (host != null) {
+            return;
+        }
         if (app != null && page != null && serverPage(page)) {
             requestVariables();
         }
     }
 
     void onServerVariables(String forPage, Map<String, String> values) {
+        if (host != null) {
+            host.onServerVariables(values);
+            return;
+        }
         serverVars.putAll(values);
         if (forPage.equals(page)) {
             loading = false;
@@ -186,6 +272,10 @@ public final class CustomApp extends PhoneApp {
     }
 
     void onServerResult(AppPackets.CallResult r) {
+        if (host != null) {
+            host.onServerResult(r);
+            return;
+        }
         serverVars.putAll(r.values());
         JsonObject action = pendingAction;
         pendingAction = null;
@@ -421,6 +511,10 @@ public final class CustomApp extends PhoneApp {
         if (!ready()) {
             String key = app == null ? "app.error.missing" : "app.blocked";
             PhoneDraw.wrapped(g, PhoneLang.tr(key), 12, h / 2f - 12, w - 24, PhoneTheme.secondaryText(), 0.75f, false);
+            return;
+        }
+        if (host != null) {
+            host.render(g, mouseX, mouseY, w, h);
             return;
         }
         JsonObject p = app.pages().getAsJsonObject(page);
@@ -734,6 +828,11 @@ public final class CustomApp extends PhoneApp {
     // --- Для автоскриншотов (DevShots) ---
 
     /** Нажать элемент с действием (id вида «страница:номер»). */
+    /** Для DevShots: клик в содержимом приложения. */
+    public void debugClick(double x, double y) {
+        mouseClicked(x, y, 0);
+    }
+
     public void debugAct(String actionId) {
         if (ready()) {
             act(actionId);
@@ -752,6 +851,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
+        if (host != null) {
+            return ready() && host.mouseClicked(x, y, button, contentWidth(), contentHeight());
+        }
         boolean handled = false;
         for (TextArea area : inputs.values()) {
             if (area.mouseClicked(x, y, button)) {
@@ -778,6 +880,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        if (host != null) {
+            return ready() && host.mouseDragged(x, y, dx, dy);
+        }
         for (TextArea area : inputs.values()) {
             if (area.isFocused() && area.mouseDragged(x, y)) {
                 return true;
@@ -788,6 +893,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
+        if (host != null) {
+            return ready() && host.mouseReleased(x, y, button);
+        }
         for (TextArea area : inputs.values()) {
             area.mouseReleased();
         }
@@ -796,12 +904,18 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean mouseScrolled(double x, double y, double amount) {
+        if (host != null) {
+            return ready() && host.mouseScrolled(x, y, amount);
+        }
         scroll -= amount * 20;
         return true;
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (host != null) {
+            return ready() && host.keyPressed(event);
+        }
         for (TextArea area : inputs.values()) {
             if (area.isFocused()) {
                 return area.keyPressed(event);
@@ -812,6 +926,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        if (host != null) {
+            return ready() && host.charTyped(event);
+        }
         for (TextArea area : inputs.values()) {
             if (area.isFocused()) {
                 return area.charTyped(event);
@@ -822,6 +939,9 @@ public final class CustomApp extends PhoneApp {
 
     @Override
     public boolean capturesKeyboard() {
+        if (host != null) {
+            return host.capturesKeyboard();
+        }
         return inputs.values().stream().anyMatch(TextArea::isFocused);
     }
 }

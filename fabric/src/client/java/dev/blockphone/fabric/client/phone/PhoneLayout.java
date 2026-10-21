@@ -27,6 +27,50 @@ public final class PhoneLayout {
     public static final int APP_W = SCREEN_W;
     public static final int APP_H = SCREEN_H - STATUS_H - NAV_H;
 
+    // --- Текущая ориентация (ставит PhoneScreen перед отрисовкой и вводом; телефон на экране один) ---
+
+    /** Телефон повёрнут набок (приложение попросило альбомную ориентацию). */
+    static boolean landscape;
+    /** Полный экран: без строки состояния и навигации (игры). */
+    static boolean immersive;
+
+    public static boolean landscape() {
+        return landscape;
+    }
+
+    public static int phoneW() {
+        return landscape ? PHONE_H : PHONE_W;
+    }
+
+    public static int phoneH() {
+        return landscape ? PHONE_W : PHONE_H;
+    }
+
+    public static int screenW() {
+        return phoneW() - BEZEL * 2;
+    }
+
+    public static int screenH() {
+        return phoneH() - BEZEL * 2;
+    }
+
+    public static int statusH() {
+        return immersive ? 0 : STATUS_H;
+    }
+
+    public static int navH() {
+        return immersive ? 0 : NAV_H;
+    }
+
+    /** Область приложения (без строки состояния и навигации, с заголовком). */
+    public static int appW() {
+        return screenW();
+    }
+
+    public static int appH() {
+        return screenH() - statusH() - navH();
+    }
+
     private PhoneLayout() {
     }
 }

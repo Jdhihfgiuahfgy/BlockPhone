@@ -91,7 +91,8 @@ Paper скачивает их сам по `libraries:` в plugin.yml. Верси
 Telegram: TDLight (`it.tdlight:tdlight-java` + `tdlight-api` + `tdlight-natives:windows_amd64`, репозиторий mvn.mchv.eu, LGPL-3.0;
 TDLib — Boost) и JCodec (`org.jcodec:jcodec`, BSD) — jar-in-jar; мод из-за нативной библиотеки весит ~25 МБ.
 Стикеры WEBP — TwelveMonkeys ImageIO (`imageio-webp` + core/metadata/common-*, BSD; плагин регистрируется вручную в `ImageOps`),
-голосовые и звук «кружочков» — Concentus (`io.github.jaredmdobson:concentus`, Opus на чистой Java, BSD); jar-in-jar в обоих
+голосовые и звук «кружочков» — Concentus (`io.github.jaredmdobson:concentus`, Opus на чистой Java, BSD), скрипты своих
+приложений — LuaJ (`org.luaj:luaj-jse`, MIT, `luaj_version`); jar-in-jar в обоих
 модулях fabric (список зависимостей у `fabric-1.21.10/build.gradle` свой — новые библиотеки добавлять в оба).
 Версии — `tdlight_*_version`, `jcodec_version`, `twelvemonkeys_version`, `concentus_version` в gradle.properties. Обновлять TDLight целиком (java, api и natives из одного BOM).
 API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозиторий maven.maxhenkel.de) — `compileOnly` в common, fabric и paper;
@@ -118,6 +119,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `StickerPackets` (id 87–93, обрабатывает `StickerService`): C→S RequestMine, RequestPack, EditPack(CREATE/RENAME/DELETE/
     INSTALL/UNINSTALL), AddSticker(pack, imageId — загрузка с Purpose STICKER), RemoveSticker; S→C Mine(Limits, packs), Pack.
     `SendMessage.stickerId`, `MessageInfo.sticker` (StickerRef: id, packId (0 — набор удалён), картинка). Ошибки — sticker.error.*.
+  - `AppPackets` (id 94–97): C→S `Relay`(app, target — ник или «» всем, payload ≤ 8 КБ) → S→C `Relayed`(app, from, fromName,
+    payload) — `AppService.relay`: пересылка игрокам с модом, 40 за 5 с, приложение, запрещённое по id, не пересылается;
+    C→S `RequestPlayers` → S→C `Players` (ники с BlockPhone, кроме себя). Сервер содержимое не разбирает.
   - `AppPackets` (id 82–86): S→C `Policy`(mode, blacklist, whitelist, serverApps — у каких приложений есть серверная часть;
     после рукопожатия и при изменении), C→S `RequestVariables`(app, page) → S→C `Variables`, C→S `Call`(app, function, page,
     inputs) → S→C `CallResult`(toast, error, navigate, values). Телефон не сообщает серверу список своих приложений.
@@ -159,6 +163,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `ServerPart` — серверная часть (`<id>.json` или `<id>/server.json` в папке apps сервера): permission, variables (шаблоны
     с {player}, {uuid}, {online}, %placeholderapi%), functions (inputs — проверка на сервере, command(s), as player|console,
     toast, error, then). `BlockPhoneApps` — Java-API: `handler(appId, AppHandler{variables, call})`, `register(json)`.
+  - `AppScript` (AppDefinition.script, null — без скрипта): app.json `"script"` (главный .lua), все `*.lua` и `*.png` папки
+    (пределы MAX_*), `orientation` (landscape), `fullscreen`, `hosts` (`hostAllowed`, «*.домен»); sha256 приложения со скриптом
+    включает код. Разрешения `INTERNET` (нужны hosts) и `MULTIPLAYER`. `AppLoader.parse(text, icon, id, folder)`.
   - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки id или «sha256:…»; `allowed(...)` — общая для
     клиента и сервера. `AppResult` — итог функции (toast, error, navigate).
 - `server/` — серверная логика для всех платформ:
@@ -264,6 +271,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `phone/` — каркас телефона:
   - `PhoneLayout` — размеры в виртуальных единицах: корпус 176×356 (скругление 14), рамка 8, экран 160×340 (скругление 8),
     статус-бар 14, навигация 14 («назад» и «домой»), заголовок 20. Область приложения `APP_W×APP_H` = 160×312.
+    Текущая ориентация — `phoneW()/phoneH()/screenW()/screenH()/statusH()/navH()/appW()/appH()` (набок — 356×176;
+    полный экран — без строки состояния и навигации); их ставит `PhoneScreen.applyOrientation()` по
+    `PhoneApp.landscape()/immersive()` перед отрисовкой и вводом, смена ориентации — анимация поворота корпуса;
+    в полном экране «назад/домой» всплывают у нижнего края.
   - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<» и кнопкой действия справа, полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`, `closeImmediately()`; диалоги `showDialog(PhoneDialog)`. ESC = закрыть диалог / назад.
   - `PhoneDialog` — модальный диалог (заголовок, текст, «Отмена» + действие); `PhoneDialog.confirmDelete(...)`.
   - `PhoneApp` — базовый класс приложения: `render`, `mouseClicked/Released/Dragged/Scrolled`, `keyPressed`, `charTyped`, `tick`, `onShown/onHidden`, `onBack`, `capturesKeyboard` (не закрывать телефон клавишей при вводе текста), внешний вид (`hasHeader`, `transparentBackground`, `backgroundColor`, `headerColor`, `lightStatusBar`), кнопка в заголовке (`headerAction`, `headerActionColor`, `onHeaderAction`). Координаты — локальные для области содержимого.
@@ -356,7 +367,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (комментарии), `ComposeView` (от себя/от паблика, текст, фото), `ProfileView` («о себе», подписчики, подписка, «Написать»,
   заглушение), `UserListView`, `UserPickView`, `PublicsView` (поиск, мои/подписки/популярные), `PublicView`, `CreatePublicView`,
   `PublicManageView` (название, админы, удаление), `ModerationView` (жалобы), `Rows`. `debug*`-методы — для DevShots.
-- `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, уведомления;
+- `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, карточка музыки
+  (обложка, название, перемотка перетаскиванием, назад/пауза/вперёд), уведомления;
   нажатие на уведомление — открыть, в другом месте — разблокировать),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
   `settings/SettingsApp` (MAIN — меню разделов-плиток (`categories()`: значок, название, кратко — что выбрано);
@@ -392,7 +404,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     (и при скачивании файла). Скачанное проверяет `audio/AudioSniffer` (MP3 или что пришло — в журнал), не MP3 → следующий
     вариант качества; испорченный файл кэша удаляется в `Playback`. `Http.download` → `Download(code, bytes, type, finalUrl)`: перенаправления
     вручную (до 5, https↔http; Authorization на другой хост не уходит), пустой ответ — не файл; при неудаче Яндекс пробует
-    ещё раз без токена. `yandex/YandexMusic` — состояние, вход вставкой адреса
+    ещё раз без токена. «Моя волна»: `waveBatch` (batchId) + отзывы `waveFeedback` (radioStarted, trackStarted,
+    trackFinished/skip — `YandexMusic.tick` по смене трека), без них станция повторяет одну пачку; подгрузка отбрасывает уже
+    бывшие треки и пробует от другого трека (до 3 раз). `yandex/YandexMusic` — состояние, вход вставкой адреса
     со страницы OAuth (`access_token=...`), кэш треков.
   - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
     браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,
@@ -406,7 +420,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     ответили все запросы; «не нашли» и текст без времени ищутся заново через 12 ч; ошибка сети — повторы 3/8/20/45 с, обычный текст
     виден сразу; треки Яндекса — сначала текст самого Яндекса: `YandexApi.lyrics` (`/tracks/<id>/lyrics?format=LRC`, подпись
     HMAC-SHA256 «id+ts» ключом из yandex-music-api; кэш `yandex_<id>.v1.lrc`); свой пул потоков «BlockPhone Lyrics»; следующий трек очереди — заранее; `seekTo(line)`); сдвиг `lyricsOffsetMs`. `lyrics/LyricsWorld` — вывод в мире (`WorldRenderEvents.BEFORE_ENTITIES`,
-    `commandQueue().submitText`, полная яркость, обводка): место — `place()`: от `lyricsDistance` ближе по 0,5 блока и выше
+    `commandQueue().submitText`, полная яркость, обводка): «world» — над поверхностью блока (`groundBelow`) на высоте
+    `lyricsHeight` (0..3, по умолчанию 0,25); «view» и если земли нет — `place()`: от `lyricsDistance` ближе по 0,5 блока и выше
     (`LIFTS`), пока прямоугольник текста свободен от блоков с хитбоксом (`free`) и виден (`clip`); масштаб — по фактическому
     расстоянию; строка шире 190 px — в два ряда (`layout`); строка встаёт перед игроком (взгляд, наклон −25..20°, +0,4 блока) и
     остаётся или следует за взглядом, всегда повёрнута к камере (`camera.rotation()`); текст без времени строк в мире — только
@@ -447,7 +462,19 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   в 2 с; политика сервера; иконки как DynamicTexture; id на телефоне `app.<id>`), `CustomApp` (страницы и элементы: text, title,
   card, row, button, buttons, input, list, progress, divider, spacer; "if"/"unless"; действия open/back/refresh/close/toast/
   confirm/then, set/add (хранилище), copy, url и command — всегда с подтверждением, command не чаще 1/с, server → Call),
-  `AppStorage` (`blockphone/appdata/<id>.json`, 200 значений, 64 КБ). Защита: приложению видны только свои страницы,
+  `AppStorage` (`blockphone/appdata/<id>.json`, 200 значений, 64 КБ). Скрипт — `ScriptHost` (если у приложения `script`;
+  CustomApp передаёт ему всё): песочница LuaJ (Base без load/dofile/loadfile/collectgarbage, Package/Debug — только при
+  загрузке и потом убраны, String без dump, rep ≤ 1 МБ, Table, Math, Bit32; без io/os/coroutine/luajava; свой `require` из
+  файлов приложения); лимит инструкций через `debug.sethook` (счётчик каждые 1000, бюджет 3 млн на вызов, 20 млн на
+  загрузку) — превышение бросает `Error` (`Timeout`), который `pcall` не ловит; ошибка → экран «Приложение остановлено» +
+  «Перезапустить». API: app, gfx (только в onDraw; image — PNG из папки, DynamicTexture без сглаживания), ui (button —
+  immediate-mode по кликам кадра, input — TextArea по id), theme, screen (landscape/fullscreen/title/captureKeys/close),
+  input.down (GLFW, только когда телефон в фокусе), time, timer, json, storage, toast, sound (белый список), clipboard,
+  openUrl/runCommand (подтверждение), http (java.net.http, только hosts, без редиректов, 60/мин, 1 МБ), net
+  (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление), server (Call/RequestVariables
+  со страницей "script"). Обратные вызовы: onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
+  onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web); DevShots `apps`
+  снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,
   хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
   ленты/музыки/Telegram. `AppRegistry.visible()` добавляет их на рабочий стол (Entry.custom, `label()`); «Настройки →
   Свои приложения» (страница APPS: разрешения, статус на сервере, хэш — копируется, ошибки, «Открыть папку»).

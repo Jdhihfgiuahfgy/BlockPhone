@@ -102,6 +102,8 @@ dependencies {
         include(implementation("${group}:${m}:${rootProject.twelvemonkeys_version}") { transitive = false })
     }
     include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
+    // Скрипты своих приложений: Lua (LuaJ, MIT) — песочница без доступа к Java, файлам и сети (см. ScriptRuntime).
+    include(implementation("org.luaj:luaj-jse:${rootProject.luaj_version}") { transitive = false })
 }
 
 processResources {

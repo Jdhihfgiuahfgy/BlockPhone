@@ -51,6 +51,8 @@ public final class AppService {
     private final AppsSettings policy;
     private final Map<UUID, String> players;
     private final RateLimiter callLimit = new RateLimiter(12, 6_000);
+    /** Сообщения между приложениями игроков: не больше 40 за 5 с от одного игрока (игры шлют ходы часто). */
+    private final RateLimiter relayLimit = new RateLimiter(40, 5_000);
     private final ScheduledExecutorService watcher = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "BlockPhone Apps");
         t.setDaemon(true);
@@ -161,7 +163,39 @@ public final class AppService {
                             result.error() ? Map.of() : variables(player, p.appId(), p.page())));
                 });
             }
+            case AppPackets.Relay p -> relay(player, p);
+            case AppPackets.RequestPlayers p -> {
+                List<String> names = new ArrayList<>();
+                players.forEach((uuid, name) -> {
+                    if (!uuid.equals(player)) {
+                        names.add(name);
+                    }
+                });
+                names.sort(String.CASE_INSENSITIVE_ORDER);
+                send(player, new AppPackets.Players(p.appId(), names));
+            }
             default -> {
+            }
+        }
+    }
+
+    /**
+     * Переслать сообщение приложения: адресату по нику или всем с BlockPhone. Приложение, запрещённое на сервере по id,
+     * не пересылается; содержимое сервер не разбирает (у получателя его читает только то же приложение).
+     */
+    private void relay(UUID player, AppPackets.Relay p) {
+        String fromName = players.get(player);
+        if (fromName == null || !AppsSettings.allowed(policy.mode, policy.blacklist, policy.whitelist, p.appId(), null)
+                || !relayLimit.allow(player)) {
+            return;
+        }
+        AppPackets.Relayed out = new AppPackets.Relayed(p.appId(), player, fromName, p.payload());
+        for (Map.Entry<UUID, String> e : players.entrySet()) {
+            if (e.getKey().equals(player)) {
+                continue;
+            }
+            if (p.target().isEmpty() || e.getValue().equalsIgnoreCase(p.target())) {
+                send(e.getKey(), out);
             }
         }
     }

@@ -37,10 +37,15 @@ public final class Http {
     }
 
     public static Response request(String method, String url, Map<String, String> headers, String formBody) throws IOException {
+        return request(method, url, headers, formBody, "application/x-www-form-urlencoded");
+    }
+
+    public static Response request(String method, String url, Map<String, String> headers, String formBody, String contentType)
+            throws IOException {
         HttpURLConnection c = open(method, url, headers);
         if (formBody != null) {
             c.setDoOutput(true);
-            c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+            c.setRequestProperty("Content-Type", contentType);
             try (OutputStream out = c.getOutputStream()) {
                 out.write(formBody.getBytes(StandardCharsets.UTF_8));
             }

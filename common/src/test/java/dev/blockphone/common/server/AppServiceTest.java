@@ -20,6 +20,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Серверные части приложений: политика, переменные, функции с проверкой полей и командами, Java-обработчик. */
@@ -117,5 +118,23 @@ class AppServiceTest {
         AppPackets.CallResult result = platform.last(STEVE, AppPackets.CallResult.class);
         assertTrue(result.error());
         assertEquals("@app.error.no_server", result.toast());
+    }
+
+    @Test
+    void relaysMessagesBetweenPlayersOfTheSameApp() {
+        UUID alex = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+        server.onChannelReady(alex);
+        server.onMessage(alex, "Alex", Packets.encode(new ClientHelloPacket(BlockPhone.PROTOCOL_VERSION, "test")));
+        server.onMessage(STEVE, "Steve", Packets.encode(new AppPackets.Relay("durak", "alex", "{\"move\":1}")));
+        AppPackets.Relayed got = platform.last(alex, AppPackets.Relayed.class);
+        assertEquals("durak", got.appId());
+        assertEquals("Steve", got.fromName());
+        assertEquals("{\"move\":1}", got.payload());
+        assertTrue(platform.of(STEVE, AppPackets.Relayed.class).isEmpty(), "no echo to the sender");
+        // Приложение, запрещённое на сервере, не пересылается.
+        server.onMessage(STEVE, "Steve", Packets.encode(new AppPackets.Relay("blocked", "", "x")));
+        assertEquals("durak", platform.last(alex, AppPackets.Relayed.class).appId());
+        server.onMessage(STEVE, "Steve", Packets.encode(new AppPackets.RequestPlayers("durak")));
+        assertEquals(List.of("Alex"), platform.last(STEVE, AppPackets.Players.class).names());
     }
 }

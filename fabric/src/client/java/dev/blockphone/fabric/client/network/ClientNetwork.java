@@ -91,6 +91,10 @@ public final class ClientNetwork {
             dev.blockphone.fabric.client.apps.custom.CustomApps.onVariables(variables);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.CallResult result) {
             dev.blockphone.fabric.client.apps.custom.CustomApps.onCallResult(result);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Relayed relayed) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onRelayed(relayed);
+        } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Players players) {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onPlayers(players);
         } else if (packet instanceof PhoneUsePackets.State state) {
             PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {

@@ -726,5 +726,15 @@
   "settings.lyrics_mode.right": "Справа на экране",
   "settings.lyrics_mode.actionbar": "Над хотбаром",
   "settings.lyrics_mode.subtitles": "Субтитры снизу",
-  "settings.lyrics_mode.top": "Сверху экрана"
+  "settings.lyrics_mode.top": "Сверху экрана",
+  "settings.lyrics_height": "Высота над блоком",
+  "settings.lyrics_blocks_f": "%s бл.",
+  "app.script.timeout": "Скрипт работал слишком долго (бесконечный цикл?) и остановлен.",
+  "app.script.stack": "Слишком глубокая рекурсия.",
+  "app.script.memory": "Скрипту не хватило памяти.",
+  "app.script.stopped": "Приложение остановлено",
+  "app.script.restart": "Перезапустить",
+  "app.message_from": "Сообщение от %s",
+  "app.perm.internet": "интернет",
+  "app.perm.multiplayer": "игра по сети"
 }

@@ -118,6 +118,25 @@ public final class DevShots {
                 Files.copy(docs, apps.resolve("bank").resolve("app.json"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 Files.writeString(apps.resolve("broken.json"), "{\"pages\": {\"main\": {\"elements\": [{\"type\": \"button\", "
                         + "\"action\": {\"command\": \"spawn\"}}]}}}");
+                // Скриптовые примеры из docs/examples/scripts и приложение с бесконечным циклом (проверка лимита).
+                Path scripts = Path.of("..", "..", "docs", "examples", "scripts");
+                try (var list = Files.list(scripts)) {
+                    for (Path example : list.toList()) {
+                        Path target = apps.resolve(example.getFileName().toString());
+                        Files.createDirectories(target);
+                        try (var files = Files.list(example)) {
+                            for (Path f : files.toList()) {
+                                Files.copy(f, target.resolve(f.getFileName().toString()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            }
+                        }
+                    }
+                }
+                Path loop = apps.resolve("loop");
+                Files.createDirectories(loop);
+                Files.writeString(loop.resolve("app.json"), "{\"id\": \"loop\", \"name\": \"Loop\", \"script\": \"main.lua\"}");
+                Files.writeString(loop.resolve("main.lua"), "function onDraw() gfx.clear() gfx.text('click me', 8, 8) end\n"
+                        + "function onClick() pcall(function() while true do end end) end\n");
+                dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
             } catch (Exception e) {
                 BlockPhoneFabric.LOGGER.warn("[DevShots] apps: {}", e.toString());
             }
@@ -177,6 +196,20 @@ public final class DevShots {
             settingsPage("apps");
         }));
         shot(40, "apps_settings");
+        // Скрипты: «Змейка» (набок, весь экран), «Крестики-нолики» (сеть), «Погода в мире» (HTTP), бесконечный цикл.
+        step(1, mc -> {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.onPolicy(new dev.blockphone.common.protocol.packet.AppPackets.Policy(
+                    "blacklist", List.of(), List.of(), List.of("bank")));
+            phone(mc, p -> p.openApp("app.snake"));
+        });
+        shot(60, "apps_snake");
+        step(1, mc -> phone(mc, p -> p.openApp("app.tictactoe")));
+        shot(50, "apps_tictactoe");
+        step(1, mc -> phone(mc, p -> p.openApp("app.weather-web")));
+        shot(100, "apps_weather_web");
+        step(1, mc -> phone(mc, p -> p.openApp("app.loop")));
+        step(20, mc -> customApp("loop", a -> a.debugClick(20, 20)));
+        shot(30, "apps_script_timeout");
     }
 
     private static void telegramDebug(String what) {
@@ -688,6 +721,9 @@ public final class DevShots {
         shot(30, "settings_menu");
         step(1, mc -> settingsPage("lyrics"));
         shot(30, "settings_lyrics");
+        step(1, mc -> phone(mc, p -> p.openApp(PhoneState.LOCK)));
+        shot(30, "lock_music");
+        step(1, mc -> phone(mc, p -> p.openApp("settings")));
         step(5, mc -> settingsPage("hud"));
         shot(30, "settings_hud");
         // Текст песни на экране: все режимы, кроме «в мире».

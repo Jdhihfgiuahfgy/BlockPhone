@@ -22,11 +22,19 @@ import java.util.Set;
  * @param pages       страницы; у элементов с действием — "_a" (id действия)
  * @param actions     id действия → описание
  * @param inputs      id страницы → (id поля → описание поля)
- * @param sha256      хэш файла app.json (сервер может заблокировать конкретный файл)
+ * @param sha256      хэш файла app.json (+ кода скриптов; сервер может заблокировать конкретную версию)
+ * @param script      скриптовая часть (Lua) или null — приложение только из страниц
  */
 public record AppDefinition(String id, JsonElement name, String version, String author, int color, byte[] icon,
                             Set<AppPermission> permissions, String start, int order, JsonObject pages,
-                            Map<String, JsonObject> actions, Map<String, Map<String, JsonObject>> inputs, String sha256) {
+                            Map<String, JsonObject> actions, Map<String, Map<String, JsonObject>> inputs, String sha256,
+                            AppScript script) {
+
+    public AppDefinition(String id, JsonElement name, String version, String author, int color, byte[] icon,
+                         Set<AppPermission> permissions, String start, int order, JsonObject pages,
+                         Map<String, JsonObject> actions, Map<String, Map<String, JsonObject>> inputs, String sha256) {
+        this(id, name, version, author, color, icon, permissions, start, order, pages, actions, inputs, sha256, null);
+    }
 
     /** Название на нужном языке (ru_ru, en_us…). */
     public String name(String language) {
