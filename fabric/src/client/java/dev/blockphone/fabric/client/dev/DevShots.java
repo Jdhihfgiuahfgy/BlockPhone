@@ -123,10 +123,14 @@ public final class DevShots {
                 try (var list = Files.list(scripts)) {
                     for (Path example : list.toList()) {
                         Path target = apps.resolve(example.getFileName().toString());
-                        Files.createDirectories(target);
-                        try (var files = Files.list(example)) {
+                        try (var files = Files.walk(example)) {
                             for (Path f : files.toList()) {
-                                Files.copy(f, target.resolve(f.getFileName().toString()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                Path to = target.resolve(example.relativize(f).toString());
+                                if (Files.isDirectory(f)) {
+                                    Files.createDirectories(to);
+                                } else {
+                                    Files.copy(f, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                }
                             }
                         }
                     }
@@ -207,6 +211,13 @@ public final class DevShots {
         shot(50, "apps_tictactoe");
         step(1, mc -> phone(mc, p -> p.openApp("app.weather-web")));
         shot(100, "apps_weather_web");
+        // DOOM: «Новая игра» → уровень 1 (мышь захватывается), снимок, Esc → пауза.
+        step(1, mc -> phone(mc, p -> p.openApp("app.doom")));
+        shot(40, "apps_doom_title");
+        step(1, mc -> customApp("doom", a -> a.debugClick(a.contentWidth() / 2.0, a.contentHeight() / 2.0 + 8)));
+        shot(60, "apps_doom_play");
+        step(1, mc -> phone(mc, PhoneScreen::back));
+        shot(30, "apps_doom_pause");
         step(1, mc -> phone(mc, p -> p.openApp("app.loop")));
         step(20, mc -> customApp("loop", a -> a.debugClick(20, 20)));
         shot(30, "apps_script_timeout");

@@ -469,6 +469,9 @@ public class PhoneScreen extends Screen {
             return true;
         }
         applyOrientation();
+        if (dialog == null && app.capturesMouse()) {
+            return app.mouseClicked(app.contentWidth() / 2.0, app.contentHeight() / 2.0, event.button());
+        }
         double sx = toScreenX(event.x());
         double sy = toScreenY(event.y());
         if (CallOverlay.mouseClicked(sx, sy)) {
@@ -515,6 +518,9 @@ public class PhoneScreen extends Screen {
         applyOrientation();
         if (dialog != null) {
             return true;
+        }
+        if (app.capturesMouse()) {
+            return app.mouseReleased(app.contentWidth() / 2.0, app.contentHeight() / 2.0, event.button());
         }
         return app.mouseReleased(toScreenX(event.x()), toScreenY(event.y()) - contentTop(), event.button());
     }

@@ -472,8 +472,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   input.down (GLFW, только когда телефон в фокусе), time, timer, json, storage, toast, sound (белый список), clipboard,
   openUrl/runCommand (подтверждение), http (java.net.http, только hosts, без редиректов, 60/мин, 1 МБ), net
   (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление), server (Call/RequestVariables
-  со страницей "script"). Обратные вызовы: onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
-  onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web); DevShots `apps`
+  со страницей "script"), g3d — `Raster3D` (программная растеризация на Java: текстура с перспективной
+  коррекцией, буфер глубины 1/z, свет граней, туман, отсечение по ближней плоскости, спрайты, буфер id для `pick`; кадр —
+  DynamicTexture по реальным пикселям, до 360 тыс.; модели — box/plane/mesh/obj, 2000 шт., 400 тыс. вершин), захват мыши
+  (`input.lockMouse`: GLFW CURSOR_DISABLED, дельты по glfwGetCursorPos, `PhoneApp.capturesMouse` — клики в центр;
+  Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
+  базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
+  onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`); DevShots `apps`
   снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,
   хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
   ленты/музыки/Telegram. `AppRegistry.visible()` добавляет их на рабочий стол (Entry.custom, `label()`); «Настройки →

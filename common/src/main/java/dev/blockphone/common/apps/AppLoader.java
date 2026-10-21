@@ -221,7 +221,7 @@ public final class AppLoader {
                                 + AppScript.MAX_TOTAL_SOURCE / 1024 + " KB)");
                     }
                     sources.put(rel, code);
-                } else if (lower.endsWith(".png") && !lower.equals("icon.png")) {
+                } else if ((lower.endsWith(".png") && !lower.equals("icon.png")) || lower.endsWith(".obj")) {
                     long size = Files.size(file);
                     totalAssets += size;
                     if (assets.size() >= AppScript.MAX_ASSETS || size > AppScript.MAX_ASSET_BYTES || totalAssets > AppScript.MAX_TOTAL_ASSETS) {

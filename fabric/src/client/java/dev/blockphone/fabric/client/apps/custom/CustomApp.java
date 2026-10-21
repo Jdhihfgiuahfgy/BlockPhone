@@ -150,6 +150,11 @@ public final class CustomApp extends PhoneApp {
     }
 
     @Override
+    public boolean capturesMouse() {
+        return host != null && host.mouseLocked();
+    }
+
+    @Override
     public boolean hasHeader() {
         return host == null || host.failed() || !host.fullscreen || app == null || !CustomApps.allowedHere(app);
     }

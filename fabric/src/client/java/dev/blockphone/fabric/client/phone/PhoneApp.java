@@ -139,4 +139,9 @@ public abstract class PhoneApp {
     public boolean immersive() {
         return false;
     }
+
+    /** Мышь захвачена приложением (игра с обзором мышью): все клики — ему, в центр области. */
+    public boolean capturesMouse() {
+        return false;
+    }
 }
