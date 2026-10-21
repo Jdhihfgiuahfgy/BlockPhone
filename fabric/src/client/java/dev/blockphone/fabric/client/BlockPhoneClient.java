@@ -34,6 +34,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
     public static KeyMapping musicPlayKey;
     public static KeyMapping musicNextKey;
     public static KeyMapping musicPrevKey;
+    /** Пульт музыки: открыт, пока клавиша зажата. */
+    public static KeyMapping musicRemoteKey;
 
     @Override
     public void onInitializeClient() {
@@ -50,6 +52,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
         musicPlayKey = register("key.blockphone.music_play");
         musicNextKey = register("key.blockphone.music_next");
         musicPrevKey = register("key.blockphone.music_prev");
+        musicRemoteKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.music_remote", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, KEY_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             MusicPlayer.tick();
@@ -64,6 +68,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
                 }
             }
             dev.blockphone.fabric.client.phone.PhonePin.tick(client);
+            dev.blockphone.fabric.client.music.MusicRemote.tick(client);
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
@@ -124,7 +129,8 @@ public final class BlockPhoneClient implements ClientModInitializer {
      * передаются игроку (обычно экран их перехватывает).
      */
     private static void passMovementThrough(net.minecraft.client.Minecraft client) {
-        if (!(client.screen instanceof PhoneScreen phone) || !phone.compact() || phone.capturesKeyboard()) {
+        boolean remote = client.screen instanceof dev.blockphone.fabric.client.music.MusicRemote;
+        if (!remote && (!(client.screen instanceof PhoneScreen phone) || !phone.compact() || phone.capturesKeyboard())) {
             return;
         }
         var options = client.options;

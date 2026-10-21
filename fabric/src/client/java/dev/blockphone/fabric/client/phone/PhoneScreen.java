@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.phone;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.fabric.client.BlockPhoneClient;
 import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.network.ClientNetwork;
@@ -289,7 +290,9 @@ public class PhoneScreen extends Screen {
         g.pose().pushMatrix();
         g.pose().translate(0, contentTop);
         g.enableScissor(0, 0, app.contentWidth(), app.contentHeight());
+        Scrollbar.begin(g, app.contentWidth());
         app.render(g, sx, sy - contentTop, delta);
+        Scrollbar.end(g, sx, sy - contentTop);
         g.disableScissor();
         g.pose().popMatrix();
 
@@ -508,6 +511,9 @@ public class PhoneScreen extends Screen {
             }
         }
         if (inContent(sx, sy)) {
+            if (event.button() == 0 && Scrollbar.mouseClicked(sx, sy - contentTop())) {
+                return true;
+            }
             return app.mouseClicked(sx, sy - contentTop(), event.button());
         }
         return false;
@@ -522,6 +528,9 @@ public class PhoneScreen extends Screen {
         if (app.capturesMouse()) {
             return app.mouseReleased(app.contentWidth() / 2.0, app.contentHeight() / 2.0, event.button());
         }
+        if (Scrollbar.mouseReleased()) {
+            return true;
+        }
         return app.mouseReleased(toScreenX(event.x()), toScreenY(event.y()) - contentTop(), event.button());
     }
 
@@ -529,6 +538,9 @@ public class PhoneScreen extends Screen {
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         applyOrientation();
         if (dialog != null) {
+            return true;
+        }
+        if (Scrollbar.mouseDragged(toScreenY(event.y()) - contentTop())) {
             return true;
         }
         return app.mouseDragged(toScreenX(event.x()), toScreenY(event.y()) - contentTop(), event.button(),

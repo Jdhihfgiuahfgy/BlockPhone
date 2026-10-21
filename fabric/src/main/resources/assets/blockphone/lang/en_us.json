@@ -801,5 +801,15 @@
   "store.published": "\"%s\" was sent for review. Once approved, it will appear in the Store.",
   "store.publish_off": "Publishing is not set up by the catalog owner yet.",
   "store.publish_failed": "Could not send: %s",
-  "store.publish_not_author": "This app was downloaded from the Store — only its author can publish it."
+  "store.publish_not_author": "This app was downloaded from the Store — only its author can publish it.",
+  "key.blockphone.music_remote": "Music remote (hold)",
+  "settings.section.music_remote": "Music remote",
+  "settings.remote.key": "Key (hold)",
+  "music.remote.empty": "Nothing is playing",
+  "music.remote.hint": "Start a track in the Music app",
+  "telegram.attach_clipboard": "From clipboard",
+  "telegram.clip_title": "Clipboard",
+  "telegram.clip_empty": "There is no image or file in the clipboard. Copy a photo or files (Ctrl+C in Explorer) and try again.",
+  "telegram.clip_message": "Send (%s): %s? Text in the field becomes the caption.",
+  "telegram.clip_send": "Send"
 }

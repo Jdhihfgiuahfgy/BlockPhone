@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.custom;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -524,6 +525,7 @@ public final class CustomApp extends PhoneApp {
         }
         JsonObject p = app.pages().getAsJsonObject(page);
         scroll = Math.max(0, Math.min(Math.max(0, contentHeight - h), scroll));
+        Scrollbar.report(0, h, scroll, Math.max(0, contentHeight - h), false, v -> scroll = v);
         g.enableScissor(0, 0, w, h);
         int y = 6 - (int) scroll;
         JsonArray elements = p.has("elements") ? p.getAsJsonArray("elements") : new JsonArray();

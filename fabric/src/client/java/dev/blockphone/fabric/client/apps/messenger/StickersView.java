@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.StickerData;
 import dev.blockphone.common.protocol.data.StickerData.Limits;
 import dev.blockphone.common.protocol.data.StickerData.PackInfo;
@@ -61,6 +62,7 @@ final class StickersView extends MessengerView {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, total - height()), scroll));
+        Scrollbar.report(0, height(), scroll, Math.max(0, total - height()), false, v -> scroll = v);
         g.enableScissor(0, 0, w, height());
         int y = 6 - (int) scroll;
         int top = y;

@@ -322,6 +322,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   списки «Всегда можно»/«Заблокированы» через `UserPickView`). `SocialView.hitDir` — клик с направлением (ЛКМ +1, ПКМ −1).
 - `ui/PhotoPicker` (выбор фото из галереи поверх приложения; неподходящие под политику — затемнены), `ui/ImageViewer`
   (просмотр фото на весь экран), `ui/Images` (фото с сервера: `draw` с обрезкой, `drawFit`, `height`), `ui/PopupMenu` (меню-пункты).
+- `ui/Scrollbar` — общий ползунок прокрутки: приложение во время отрисовки вызывает `Scrollbar.report(top, bottom, scroll, max,
+  inverted, setter)` (обычно из своего clampScroll; вне отрисовки — ничего), `PhoneScreen` рисует полосу у правого края
+  и ловит нажатие/перетаскивание (зона — 6 px справа). Новые прокручиваемые экраны — тоже через него.
 - `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
@@ -340,7 +343,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (без ключа — «только автор»); `build_catalog.py --check` ищет копии (одинаковые .lua/.obj ≥ 300 байт). Файлы репозитория — `store-repo/` (build_catalog.py, workflows catalog/check, стартовые
   apps-src), настройка владельцем — docs/STORE_SETUP.md. Инструкция авторам — docs/APP_STORE.md,
   пример каталога — docs/examples/store (DevShots `apps`: `store_catalog`, `store_detail`, `store_installed`).
-- `storage/ClipboardImage` — картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
+- `storage/ClipboardImage` — `paste` — файлы или картинка из буфера (Telegram: «+» → «Из буфера обмена», Ctrl+V без текста →
+  `Telegram.sendPhotos`/`sendDocuments`); картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
   osascript, Linux — wl-copy/xclip; путь — через переменную окружения. В галерее — кнопка «Копировать».
 - `PhoneClock`: в 12-часовом формате — «AM/PM» (`time()`; крупные часы — `drawBig`, AM/PM мельче). `PhoneScreen.signalBars()` —
   деления связи по пингу (`PlayerInfo.getLatency`: <80 — 4, <150 — 3, <300 — 2, <600 — 1), в одиночной игре — 4.
@@ -360,7 +364,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   пересылаются в поток рендера; вход: SetTdlibParameters → номер → код → облачный пароль; чаты основного списка по `order`,
   пользователи, файлы с докачкой (`localFile`), история по 40, отправка текста и «кружочков», «прочитано», выход, `shutdown` при
   закрытии игры; подписи вложений), `TelegramAvatars`, `TelegramNotifications` (тосты), `VideoNoteEncoder` (JCodec: квадрат ARGB →
-  MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 15 к/с, до 15 с; кольцо и таймер
+  MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 30 к/с, до 60 с; кольцо и таймер
   на экране; клавиша телефона — отправить, меню — отмена; звук — микрофон (`VoiceRecorder`) + копия играющей музыки
   (`music/AudioTap`: `Playback` отдаёт записанные куски, моно 48 кГц по часам) по настройкам `videoNoteMic`/`videoNoteMusic`,
   `soundtrack()` сводит, Opus 64 кбит/с), `Mp4Audio` (дописывает в MP4 от JCodec дорожку Opus: sample entry «Opus» + dOps,
@@ -458,6 +462,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `lyrics/LyricsHud` — текст на экране (`HudElementRegistry`), режимы `MODES` (настройка `lyricsMode`): left/right — столбик
     строк сбоку (плавная прокрутка), actionbar — над хотбаром, subtitles — снизу с подложкой и следующей строкой, top — крупно
     сверху (под виджетом музыки, если тот вверху); слова загораются по времени (караоке), размер — `lyricsSize`, обводка.
+  - `MusicRemote` — пульт музыки (Screen, не телефон): открыт, пока зажата `musicRemoteKey` (по умолчанию M; движение
+    проходит игроку), назад/пауза/вперёд, перемотка, громкость, перемешивание/повтор; место/размер — `remoteAnchor`,
+    `remoteOffsetX/Y`, `remoteScale` (Настройки → Музыка). DevShots music: `settings_music`, `music_remote`.
   - `MusicHud` — виджет «сейчас играет»: оформления `STYLES` (card, compact — строка-«таблетка», large, minimal — без фона,
     cover — квадрат-обложка), цвет `COLORS` (dark/light/accent) и непрозрачность подложки, угол/край `ANCHORS` (8 мест) + отступы,
     масштаб 50–200 %, что показывать (обложка, исполнитель, полоска, время, строка текста песни, показ на паузе). `current()` →

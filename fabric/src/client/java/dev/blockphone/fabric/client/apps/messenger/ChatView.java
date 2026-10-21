@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.StickerData;
 import dev.blockphone.fabric.client.messenger.StickerClient;
 
@@ -786,6 +787,7 @@ final class ChatView extends MessengerView {
         int area = areaBottom() - areaTop();
         double max = Math.max(0, total - area);
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(areaTop(), areaBottom(), scroll, max, true, v -> scroll = v);
     }
 
     // --- Действия ---

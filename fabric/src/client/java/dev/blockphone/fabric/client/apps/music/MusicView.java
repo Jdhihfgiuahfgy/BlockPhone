@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.music;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
@@ -136,6 +137,7 @@ abstract class MusicView {
 
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
+        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v);
     }
 
     boolean keyPressed(KeyEvent event) {

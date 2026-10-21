@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.social;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -156,6 +157,7 @@ abstract class SocialView {
     /** Ограничить прокрутку: содержимое высотой total в окне высотой viewport. */
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
+        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v);
     }
 
     boolean keyPressed(KeyEvent event) {

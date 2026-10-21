@@ -749,6 +749,11 @@ public final class DevShots {
         step(1, mc -> phone(mc, p -> p.openApp("settings")));
         step(5, mc -> settingsPage("hud"));
         shot(30, "settings_hud");
+        step(1, mc -> settingsPage("music"));
+        shot(30, "settings_music");
+        step(1, mc -> dev.blockphone.fabric.client.music.MusicRemote.debugOpen(mc, true));
+        shot(30, "music_remote");
+        step(1, mc -> dev.blockphone.fabric.client.music.MusicRemote.debugOpen(mc, false));
         // Текст песни на экране: все режимы, кроме «в мире».
         for (String mode : new String[]{"left", "right", "actionbar", "subtitles", "top"}) {
             step(1, mc -> {

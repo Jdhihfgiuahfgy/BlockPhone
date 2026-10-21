@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.protocol.data.MessengerData.ChatInfo;
 import dev.blockphone.common.protocol.data.MessengerData.ChatType;
@@ -179,6 +180,7 @@ final class ChatInfoView extends MessengerView {
         contentHeight = total;
         double max = Math.max(0, total - height());
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(0, height(), scroll, max, false, v -> scroll = v);
     }
 
     @Override

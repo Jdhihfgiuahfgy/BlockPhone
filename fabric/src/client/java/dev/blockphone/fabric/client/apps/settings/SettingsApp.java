@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.settings;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 import dev.blockphone.fabric.BlockPhoneFabric;
 import dev.blockphone.fabric.client.BlockPhoneClient;
@@ -265,6 +266,21 @@ public final class SettingsApp extends PhoneApp {
                                 () -> BlockPhoneClient.musicPlayKey.getTranslatedKeyMessage().getString(), null, null, false),
                         new Row(() -> PhoneLang.tr("settings.music_key_next"),
                                 () -> BlockPhoneClient.musicNextKey.getTranslatedKeyMessage().getString(), null, null, false))));
+                result.add(new Section("settings.section.music_remote", List.of(
+                        new Row(() -> PhoneLang.tr("settings.remote.key"),
+                                () -> BlockPhoneClient.musicRemoteKey.getTranslatedKeyMessage().getString(), null, null, false),
+                        new Row(() -> PhoneLang.tr("settings.hud.anchor"),
+                                () -> PhoneLang.tr("settings.hud.anchor." + s.remoteAnchor),
+                                dir -> s.remoteAnchor = cycle(MusicHud.ANCHORS, s.remoteAnchor, dir), null, false),
+                        new Row(() -> PhoneLang.tr("settings.hud.offset_x"),
+                                () -> String.valueOf(s.remoteOffsetX),
+                                dir -> s.remoteOffsetX = Math.floorMod(s.remoteOffsetX / 8 + dir, 41) * 8, null, false),
+                        new Row(() -> PhoneLang.tr("settings.hud.offset_y"),
+                                () -> String.valueOf(s.remoteOffsetY),
+                                dir -> s.remoteOffsetY = Math.floorMod(s.remoteOffsetY / 8 + dir, 41) * 8, null, false),
+                        new Row(() -> PhoneLang.tr("settings.hud.scale"),
+                                () -> s.remoteScale + "%",
+                                dir -> s.remoteScale = Math.floorMod((s.remoteScale - 50) / 10 + dir, 16) * 10 + 50, null, false))));
             }
             case LYRICS -> {
                 boolean world = !dev.blockphone.fabric.client.music.lyrics.LyricsHud.screenMode(s.lyricsMode);
@@ -358,6 +374,7 @@ public final class SettingsApp extends PhoneApp {
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v);
     }
 
     // --- Виджет музыки ---

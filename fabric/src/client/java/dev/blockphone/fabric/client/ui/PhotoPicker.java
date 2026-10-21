@@ -144,6 +144,7 @@ public final class PhotoPicker {
         int rows = (items.size() + COLUMNS - 1) / COLUMNS;
         double max = Math.max(0, rows * (cell() + GAP) - (h - TOP));
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(TOP, h, scroll, max, false, v -> scroll = v);
     }
 
     public boolean mouseClicked(double x, double y, int button) {

@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.lock;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.messenger.Avatars;
@@ -196,6 +197,7 @@ public final class LockApp extends PhoneApp {
             int bottom = listBottom();
             double max = Math.max(0, notices.size() * (CARD_H + 4) - (bottom - listTop()));
             scroll = Math.max(0, Math.min(max, scroll));
+            Scrollbar.report(listTop(), bottom, scroll, max, false, v -> scroll = v);
             g.enableScissor(0, listTop(), w, bottom);
             int y = listTop() - (int) scroll;
             for (PhoneNotifications.Notice n : notices) {

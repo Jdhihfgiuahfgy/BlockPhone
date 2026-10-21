@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.MessengerData;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
@@ -166,6 +167,7 @@ final class UserPickerView extends MessengerView {
     private void clampScroll(int count) {
         double max = Math.max(0, count * UserRows.ROW_H - (height() - listTop()));
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(listTop(), height(), scroll, max, false, v -> scroll = v);
     }
 
     @Override

@@ -99,6 +99,11 @@ public final class PhoneSettings {
     public int lyricsOffsetMs = 0;
     /** Искать текст в интернете (LRCLIB), если его нет в файлах. */
     public boolean lyricsOnline = true;
+    /** Пульт музыки (зажатая клавиша): угол/край как у виджета на HUD, отступы и размер в %. */
+    public String remoteAnchor = "bottom_center";
+    public int remoteOffsetX = 0;
+    public int remoteOffsetY = 48;
+    public int remoteScale = 100;
 
     public static PhoneSettings get() {
         if (instance == null) {

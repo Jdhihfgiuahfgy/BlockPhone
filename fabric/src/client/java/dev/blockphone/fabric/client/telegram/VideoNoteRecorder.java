@@ -37,8 +37,8 @@ import java.util.concurrent.TimeUnit;
  */
 public final class VideoNoteRecorder {
     public static final int SIZE = 320;
-    private static final int FPS = 15;
-    private static final long MAX_MS = 15_000;
+    private static final int FPS = 30;
+    private static final long MAX_MS = 60_000;
 
     private static volatile boolean active;
     private static volatile boolean finishing;
@@ -76,7 +76,7 @@ public final class VideoNoteRecorder {
         chatId = chat;
         cancelled = false;
         finishing = false;
-        queue = new ArrayBlockingQueue<>(60);
+        queue = new ArrayBlockingQueue<>(90);
         file = ClientFiles.root().resolve("telegram").resolve("videonotes")
                 .resolve("note_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".mp4");
         BlockingQueue<int[]> frames = queue;

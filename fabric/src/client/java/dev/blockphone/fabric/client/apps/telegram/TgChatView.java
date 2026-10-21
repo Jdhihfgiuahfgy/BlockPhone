@@ -140,6 +140,11 @@ final class TgChatView extends TgView {
     }
 
     @Override
+    protected boolean invertedScroll() {
+        return true;
+    }
+
+    @Override
     String title() {
         TdApi.Chat chat = Telegram.chat(chatId);
         return chat != null ? Telegram.title(chat) : "Telegram";
@@ -913,7 +918,8 @@ final class TgChatView extends TgView {
         menuTarget = null;
         menu = new PopupMenu();
         menu.add(tr("telegram.attach_photo"), picker::open);
-        int rows = 1;
+        menu.add(tr("telegram.attach_clipboard"), this::pasteFromClipboard);
+        int rows = 2;
         if (VideoNoteRecorder.SIZE > 0) {
             dev.blockphone.fabric.client.config.PhoneSettings s = dev.blockphone.fabric.client.config.PhoneSettings.get();
             menu.add(tr("telegram.attach_video_note"), () -> VideoNoteRecorder.start(chatId));
@@ -925,7 +931,7 @@ final class TgChatView extends TgView {
                 s.videoNoteMusic = !s.videoNoteMusic;
                 s.save();
             });
-            rows = 4;
+            rows = 5;
         }
         menu.show(30, inputTop() - 14 * rows - 10, width(), height());
     }
@@ -1008,6 +1014,44 @@ final class TgChatView extends TgView {
         }
         editing = 0;
         replyTo = 0;
+    }
+
+    /** Фото или файлы из буфера обмена (Ctrl+V при пустом текстовом буфере или «+» → «Из буфера обмена»). */
+    private void pasteFromClipboard() {
+        if (editing != 0 || recorder != null) {
+            return;
+        }
+        dev.blockphone.fabric.client.storage.ClipboardImage.paste(files -> {
+            if (files.isEmpty()) {
+                app.showDialog(new PhoneDialog(tr("telegram.clip_title"), tr("telegram.clip_empty"), "OK", false, () -> {
+                }));
+                return;
+            }
+            List<java.nio.file.Path> list = files.subList(0, Math.min(10, files.size()));
+            String names = String.join(", ", list.stream().map(f -> f.getFileName().toString()).toList());
+            app.showDialog(new PhoneDialog(tr("telegram.clip_title"), tr("telegram.clip_message", list.size(), names),
+                    tr("telegram.clip_send"), false, () -> sendClipboard(list)));
+        });
+    }
+
+    private void sendClipboard(List<java.nio.file.Path> files) {
+        List<java.nio.file.Path> images = new java.util.ArrayList<>();
+        List<java.nio.file.Path> docs = new java.util.ArrayList<>();
+        for (java.nio.file.Path f : files) {
+            String n = f.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+            (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".webp") ? images : docs).add(f);
+        }
+        String caption = input.text().strip();
+        if (!images.isEmpty()) {
+            Telegram.sendPhotos(chatId, images, caption, replyTo);
+            caption = "";
+        }
+        if (!docs.isEmpty()) {
+            Telegram.sendDocuments(chatId, docs, caption, images.isEmpty() ? replyTo : 0);
+        }
+        replyTo = 0;
+        input.setText("");
+        scroll = 0;
     }
 
     private void submit() {
@@ -1148,6 +1192,10 @@ final class TgChatView extends TgView {
             } else {
                 submit();
             }
+            return true;
+        }
+        if (event.isPaste() && Minecraft.getInstance().keyboardHandler.getClipboard().isEmpty()) {
+            pasteFromClipboard();
             return true;
         }
         return input.keyPressed(event);

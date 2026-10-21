@@ -48,6 +48,26 @@ class VideoNoteEncoderTest {
         }
     }
 
+    /** Скорость кодирования 320×320 — должна быть заметно выше 30 к/с (иначе «кружочек» отстаёт). */
+    @Test
+    void encodesFastEnough() throws Exception {
+        int size = 320;
+        java.util.Random random = new java.util.Random(1);
+        int[] frame = new int[size * size];
+        long start = System.nanoTime();
+        int frames = 90;
+        try (VideoNoteEncoder encoder = new VideoNoteEncoder(dir.resolve("speed.mp4"), size, 30)) {
+            for (int f = 0; f < frames; f++) {
+                for (int i = 0; i < frame.length; i++) {
+                    frame[i] = 0xFF000000 | (((i % size) + f * 3) & 0xFF) << 16 | ((i / size + f) & 0xFF) << 8 | random.nextInt(32);
+                }
+                encoder.addFrame(frame);
+            }
+        }
+        double fps = frames / ((System.nanoTime() - start) / 1e9);
+        System.out.println("video note encoder: " + Math.round(fps) + " fps");
+    }
+
     @Test
     void cropsCenterSquare() {
         int w = 40;

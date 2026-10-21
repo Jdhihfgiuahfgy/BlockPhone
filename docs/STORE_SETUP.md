@@ -32,6 +32,14 @@
 
 С этого момента «Магазин» в телефоне у всех показывает ваш каталог.
 
+### Если папка `.github` не загрузилась (приложения не появляются в Магазине)
+
+Браузер часто пропускает папки с точкой. Проверка: в репозитории есть вкладка **Actions** с запусками «Build catalog».
+Нет — создайте два файла вручную: **Add file → Create new file**, в поле имени введите путь целиком
+`.github/workflows/catalog.yml`, вставьте содержимое одноимённого файла из `store-repo/.github/workflows/` →
+**Commit changes**. Так же — `.github/workflows/check.yml`. Затем **Actions → Build catalog → Run workflow** —
+каталог соберётся сразу (иначе — при следующем одобрении).
+
 ## Шаг 2. Разрешите автоматике сохранять каталог
 
 Репозиторий → **Settings → Actions → General** → внизу **Workflow permissions** → **Read and write permissions** → **Save**.

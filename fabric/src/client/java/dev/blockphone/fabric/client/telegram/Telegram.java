@@ -582,6 +582,16 @@ public final class Telegram {
         }
     }
 
+    /** Файлы документами (как «Файл» в Telegram); подпись — у первого. */
+    public static void sendDocuments(long chatId, List<Path> files, String caption, long replyTo) {
+        for (int i = 0; i < files.size(); i++) {
+            TdApi.InputMessageDocument content = new TdApi.InputMessageDocument();
+            content.document = new TdApi.InputDocument(new TdApi.InputFileLocal(files.get(i).toAbsolutePath().toString()), null, false);
+            content.caption = new TdApi.FormattedText(i == 0 ? caption : "", new TdApi.TextEntity[0]);
+            sendContent(chatId, content, i == 0 ? replyTo : 0);
+        }
+    }
+
     /** Изменить текст своего сообщения. */
     public static void editText(long chatId, long messageId, String text) {
         TdApi.InputMessageText content = new TdApi.InputMessageText();

@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.notes;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneApp;
 import dev.blockphone.fabric.client.phone.PhoneClock;
@@ -179,6 +180,7 @@ public final class NotesApp extends PhoneApp {
     private void clampScroll(int count, int top) {
         double max = Math.max(0, count * ROW_H - (contentHeight() - top) + 4);
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(top, contentHeight(), scroll, max, false, v -> scroll = v);
     }
 
     private static String formatDate(long millis, boolean full) {

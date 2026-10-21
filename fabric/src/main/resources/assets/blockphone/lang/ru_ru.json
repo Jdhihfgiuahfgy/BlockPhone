@@ -801,5 +801,15 @@
   "store.published": "«%s» отправлено на проверку. Когда его одобрят, оно появится в Магазине.",
   "store.publish_off": "Публикация пока не настроена владельцем каталога.",
   "store.publish_failed": "Не удалось отправить: %s",
-  "store.publish_not_author": "Это приложение скачано из Магазина — опубликовать его может только автор."
+  "store.publish_not_author": "Это приложение скачано из Магазина — опубликовать его может только автор.",
+  "key.blockphone.music_remote": "Пульт музыки (зажать)",
+  "settings.section.music_remote": "Пульт музыки",
+  "settings.remote.key": "Клавиша (зажать)",
+  "music.remote.empty": "Ничего не играет",
+  "music.remote.hint": "Включите трек в приложении «Музыка»",
+  "telegram.attach_clipboard": "Из буфера обмена",
+  "telegram.clip_title": "Буфер обмена",
+  "telegram.clip_empty": "В буфере обмена нет картинки или файлов. Скопируйте фото или файлы (в проводнике — Ctrl+C) и попробуйте ещё раз.",
+  "telegram.clip_message": "Отправить (%s): %s? Текст из поля станет подписью.",
+  "telegram.clip_send": "Отправить"
 }

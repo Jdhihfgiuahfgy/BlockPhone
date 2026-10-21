@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.messenger;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.protocol.data.MessengerData.UserInfo;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
 import dev.blockphone.fabric.client.messenger.MessengerClient;
@@ -94,6 +95,7 @@ final class NewChatView extends MessengerView {
     private void clampScroll(int count) {
         double max = Math.max(0, count * UserRows.ROW_H - (height() - LIST_TOP));
         scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(LIST_TOP, height(), scroll, max, false, v -> scroll = v);
     }
 
     @Override

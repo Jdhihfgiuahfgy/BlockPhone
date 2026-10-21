@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.telegram;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -118,6 +119,12 @@ abstract class TgView {
 
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
+        Scrollbar.report((invertedScroll() ? viewport : height()) - viewport, invertedScroll() ? viewport : height(), scroll, Math.max(0, total - viewport), invertedScroll(), v -> scroll = v);
+    }
+
+    /** Прокрутка от низа (переписка). */
+    protected boolean invertedScroll() {
+        return false;
     }
 
     boolean keyPressed(KeyEvent event) {

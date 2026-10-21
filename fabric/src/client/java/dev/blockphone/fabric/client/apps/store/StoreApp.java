@@ -1,5 +1,6 @@
 package dev.blockphone.fabric.client.apps.store;
 
+import dev.blockphone.fabric.client.ui.Scrollbar;
 import dev.blockphone.common.apps.AppDefinition;
 import dev.blockphone.fabric.client.apps.custom.CustomApps;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
@@ -164,6 +165,7 @@ public final class StoreApp extends PhoneApp {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, list.size() * ROW_H - (h - top)), scroll));
+        Scrollbar.report(top, h, scroll, Math.max(0, list.size() * ROW_H - (h - top)), false, v -> scroll = v);
         g.enableScissor(0, top, w, h);
         for (int i = 0; i < list.size(); i++) {
             int y = top + i * ROW_H - (int) scroll;
@@ -272,6 +274,7 @@ public final class StoreApp extends PhoneApp {
         }
         PhoneDraw.wrapped(g, PhoneLang.tr("store.source", e.catalog()), 10, y, w - 20, PhoneTheme.secondaryText(), 0.55f, false);
         scroll = Math.max(0, Math.min(Math.max(0, y + (int) scroll + 30 - h), scroll));
+        Scrollbar.report(0, h, scroll, Math.max(0, y + (int) scroll + 30 - h), false, v -> scroll = v);
     }
 
     private void askRemove(String id, String name) {
@@ -307,6 +310,7 @@ public final class StoreApp extends PhoneApp {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, apps.size() * ROW_H - h), scroll));
+        Scrollbar.report(0, h, scroll, Math.max(0, apps.size() * ROW_H - h), false, v -> scroll = v);
         g.enableScissor(0, 0, w, h);
         for (int i = 0; i < apps.size(); i++) {
             AppDefinition app = apps.get(i);
