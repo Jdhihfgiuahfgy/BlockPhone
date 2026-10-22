@@ -64,6 +64,7 @@
   `fabric/run/blockphone/dev_sticker.webp` (если есть) — WEBP-стикер; в лог — проход Opus внутри игры.
   Сценарий снимает только свою часть: общие снимки (все приложения в меню, мир, «на ходу») — только `all`/`design`/`hand`.
   Telegram дополнительно: `telegram_list`, `telegram_viewer`, `telegram_profile`.
+  Сценарий `store` — только магазин (каталог-пример, полоса хода, выдуманные отзывы `AppStore.debugFakeReviews`).
   Сценарий `strike`: копирует пример `blockstrike`, заставка → «Игра с ботами» → покупка → бой → пауза (`strike_*`).
   Логику Block Strike можно гонять без игры: LuaJ-jar из кэша Gradle, `java -cp luaj-jse.jar lua <скрипт>` в папке примера
   (`require("sim")` — матч ботов; main.lua — только с заглушками gfx/g3d/ui/net).
@@ -337,7 +338,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `refresh`, `parseCatalog` (ссылки относительно каталога), `install` — скачать zip (≤ 30 МБ), сверить sha256, распаковать
   во временную папку (только .json/.lua/.png/.obj/.txt/.md, без «../», ≤ 400 файлов, ≤ 40 МБ), проверить app.json
   (`AppLoader.parse`, id = id каталога), заменить `blockphone/apps/<id>`; `uninstall`; `installed` — версия; иконки — кэш
-  `blockphone/cache/store/`; `allowFiles` — file: только для DevShots). `apps/store/StoreApp` — вкладки Каталог (поиск) /
+  `blockphone/cache/store/`; `allowFiles` — file: только для DevShots).
+  Ход установки — `progress(id)` (0..1, 1 — распаковка), `formatSize`. Оценки и отзывы (только `OFFICIAL`, `reviewable`):
+  `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
+  `sendReview` — `services().sessionService().joinServer` со случайным serverId → POST `PUBLISH_URL/review`; приёмник
+  проверяет Mojang `hasJoined`, пишет в main; сводку собирает `build_catalog.py` (Actions на reviews/**). `apps/store/StoreApp` — вкладки Каталог (поиск) /
   Установленные / Источники, страница приложения, подтверждение с разрешениями. Официальный каталог владельца — `AppStore.OFFICIAL` (github.com/Jdhihfgiuahfgy/blockphone-apps,
   всегда в источниках), публикация с телефона — «↑» во вкладке «Установленные» → `AppStore.publish` (zip папки → POST на
   `PUBLISH_URL` — «приёмник» Cloudflare Worker `store-repo/worker.js`, ключ GitHub только в нём → Pull Request; пока URL

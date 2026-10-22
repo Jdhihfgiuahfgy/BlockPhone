@@ -269,27 +269,45 @@ public final class DevShots {
         shot(20, "apps_doom_map");
         step(1, mc -> phone(mc, PhoneScreen::back));
         shot(30, "apps_doom_pause");
-        // Магазин: каталог-пример из docs/examples/store (file:), установка «Крестиков-ноликов» через магазин.
+        planStore();
+        step(1, mc -> phone(mc, p -> p.openApp("app.loop")));
+        step(20, mc -> customApp("loop", a -> a.debugClick(20, 20)));
+        shot(30, "apps_script_timeout");
+    }
+
+    /** Магазин: каталог-пример из docs/examples/store (file:), ход установки, отзывы (выдуманные), установка. */
+    private void planStore() {
         step(1, mc -> {
             dev.blockphone.fabric.client.store.AppStore.allowFiles = true;
             PhoneSettings.get().storeSources.clear();
             PhoneSettings.get().storeSources.add(Path.of("..", "..", "docs", "examples", "store", "catalog.json").toAbsolutePath().normalize().toUri().toString());
             dev.blockphone.fabric.client.store.AppStore.uninstall("tictactoe");
+            if (mc.screen == null) {
+                mc.setScreen(new PhoneScreen());
+            }
             phone(mc, p -> p.openApp("store"));
             dev.blockphone.fabric.client.store.AppStore.refresh();
         });
-        shot(40, "store_catalog");
-        step(1, mc -> storeDebug("detail"));
+        step(30, mc -> {
+            dev.blockphone.fabric.client.store.AppStore.debugFakeReviews();
+            dev.blockphone.fabric.client.store.AppStore.debugProgress("snake", 0.42f);
+        });
+        shot(20, "store_catalog");
+        step(1, mc -> {
+            dev.blockphone.fabric.client.store.AppStore.debugProgress("snake", -1);
+            storeDebug("detail");
+        });
         shot(20, "store_detail");
         step(1, mc -> dev.blockphone.fabric.client.store.AppStore.entries().stream().filter(e -> e.id().equals("tictactoe")).findFirst()
                 .ifPresent(e -> dev.blockphone.fabric.client.store.AppStore.install(e,
                         err -> BlockPhoneFabric.LOGGER.info("[DevShots] store install: {}", err == null ? "ok" : err))));
-        step(40, mc -> storeDebug("installed"));
+        step(40, mc -> storeDebug("detail:tictactoe"));
+        shot(20, "store_detail_installed");
+        step(1, mc -> storeDebug("scroll"));
+        shot(20, "store_reviews");
+        step(1, mc -> storeDebug("installed"));
         shot(20, "store_installed");
         step(1, mc -> PhoneSettings.get().storeSources.clear());
-        step(1, mc -> phone(mc, p -> p.openApp("app.loop")));
-        step(20, mc -> customApp("loop", a -> a.debugClick(20, 20)));
-        shot(30, "apps_script_timeout");
     }
 
     private static void storeDebug(String what) {
@@ -452,6 +470,8 @@ public final class DevShots {
             planTelegram();
         } else if (scenario.equals("apps")) {
             planApps();
+        } else if (scenario.equals("store")) {
+            planStore();
         } else if (scenario.equals("strike")) {
             planStrike();
         } else if (scenario.equals("hand")) {

@@ -35,11 +35,18 @@ public final class StoreApp extends PhoneApp {
     }
 
     private static final int TABS_H = 20;
-    private static final int ROW_H = 34;
+    private static final int ROW_H = 46;
+    /** Ширина кнопки в строке каталога (одна для всех — текст слева не налезает). */
+    private static final int ROW_BTN = 42;
+    private static final int STAR = 0xFFFFC233;
 
     private final List<Hit> hits = new ArrayList<>();
     private final TextArea search = new TextArea(false, 0.75f);
     private final TextArea sourceInput = new TextArea(false, 0.7f);
+    private final TextArea reviewInput = new TextArea(true, 0.65f);
+    /** Выбранная оценка в форме отзыва (0 — не выбрана). */
+    private int myStars;
+    private @Nullable String reviewFor;
     private Tab tab = Tab.CATALOG;
     private @Nullable AppStore.Entry detail;
     private double scroll;
@@ -52,6 +59,8 @@ public final class StoreApp extends PhoneApp {
         search.setPlaceholder(PhoneLang.tr("store.search"));
         sourceInput.setPlaceholder("https://raw.githubusercontent.com/…/catalog.json");
         sourceInput.setMaxLength(300);
+        reviewInput.setPlaceholder(PhoneLang.tr("store.review_placeholder"));
+        reviewInput.setMaxLength(500);
     }
 
     @Override
@@ -81,6 +90,8 @@ public final class StoreApp extends PhoneApp {
     public boolean onBack() {
         if (detail != null) {
             detail = null;
+            reviewInput.setFocused(false);
+            scroll = 0;
             return true;
         }
         return false;
@@ -88,7 +99,7 @@ public final class StoreApp extends PhoneApp {
 
     @Override
     public boolean capturesKeyboard() {
-        return search.isFocused() || sourceInput.isFocused();
+        return search.isFocused() || sourceInput.isFocused() || reviewInput.isFocused();
     }
 
     private void toast(String text) {
@@ -179,36 +190,88 @@ public final class StoreApp extends PhoneApp {
     }
 
     private void row(GuiGraphics g, AppStore.Entry e, int y, int w, int mx, int my, int top, int bottom) {
-        if (PhoneDraw.inside(mx, my, 0, y, w, ROW_H) && my >= top && my < bottom) {
-            g.fill(0, y, w, y + ROW_H, PhoneTheme.cardHover());
-        }
-        drawIcon(g, e, 6, y + 5, 24);
-        String installed = AppStore.installed(e.id());
-        String state = AppStore.busy(e.id()) != null ? PhoneLang.tr("store.installing")
-                : installed == null ? PhoneLang.tr("store.get")
-                : installed.equals(e.version()) ? PhoneLang.tr("store.open") : PhoneLang.tr("store.update");
-        int bw = (int) PhoneDraw.width(state, 0.65f) + 12;
-        PhoneDraw.text(g, PhoneDraw.ellipsize(e.name(), w - 40 - bw, 0.8f), 36, y + 6, PhoneTheme.text(), 0.8f, false);
-        String sub = (e.author().isEmpty() ? "" : e.author() + " · ") + e.version();
-        PhoneDraw.text(g, PhoneDraw.ellipsize(sub, w - 40 - bw, 0.6f), 36, y + 18, PhoneTheme.secondaryText(), 0.6f, false);
-        PhoneDraw.button(g, w - 6 - bw, y + 9, bw, 15, state, mx, my,
-                installed == null || !installed.equals(e.version()) ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
-        if (my >= top && my < bottom) {
-            hits.add(new Hit(0, Math.max(top, y), w, ROW_H, () -> {
+        boolean visible = my >= top && my < bottom;
+        int cy = y + 2;
+        int ch = ROW_H - 4;
+        boolean hover = visible && PhoneDraw.inside(mx, my, 6, cy, w - 12, ch);
+        PhoneDraw.card(g, 6, cy, w - 6, cy + ch, hover);
+        drawIcon(g, e, 10, cy + (ch - 28) / 2, 28, hover ? PhoneTheme.cardHover() : PhoneTheme.card());
+        int bx = w - 10 - ROW_BTN;
+        int by = cy + (ch - 16) / 2;
+        int tx = 43;
+        int tw = bx - 4 - tx;
+        PhoneDraw.text(g, PhoneDraw.ellipsize(e.name(), tw, 0.72f), tx, cy + 6, PhoneTheme.text(), 0.72f, false);
+        PhoneDraw.text(g, PhoneDraw.ellipsize(e.author().isEmpty() ? e.catalog() : e.author(), tw, 0.6f), tx, cy + 16,
+                PhoneTheme.secondaryText(), 0.6f, false);
+        meta(g, e, tx, cy + 27, tw, 0.55f);
+        actionButton(g, e, bx, by, ROW_BTN, 16, mx, my, visible);
+        if (visible) {
+            hits.add(new Hit(6, Math.max(top, cy), w - 12, ch, () -> {
                 detail = e;
                 scroll = 0;
             }));
-            hits.add(new Hit(w - 6 - bw, y + 9, bw, 15, () -> primary(e)));
         }
-        g.fill(36, y + ROW_H - 1, w, y + ROW_H, PhoneTheme.separator());
+    }
+
+    /** Строка «★ 4.6 · 1.2 MB · v1.0». */
+    private void meta(GuiGraphics g, AppStore.Entry e, int x, int y, int maxW, float scale) {
+        AppStore.Rating r = AppStore.rating(e.id());
+        if (r != null && r.count() > 0) {
+            String stars = "★ " + String.format(Locale.ROOT, "%.1f", r.average());
+            PhoneDraw.text(g, stars, x, y, STAR, scale, false);
+            x += (int) PhoneDraw.width(stars + "  ", scale);
+            maxW -= (int) PhoneDraw.width(stars + "  ", scale);
+        }
+        String size = AppStore.formatSize(e.size());
+        String rest = (size.isEmpty() ? "" : size + " · ") + "v" + e.version();
+        PhoneDraw.text(g, PhoneDraw.ellipsize(rest, maxW, scale), x, y, PhoneTheme.secondaryText(), scale, false);
+    }
+
+    /** Подпись главного действия. */
+    private static String actionLabel(AppStore.Entry e) {
+        String installed = AppStore.installed(e.id());
+        return installed == null ? PhoneLang.tr("store.get")
+                : installed.equals(e.version()) ? PhoneLang.tr("store.open") : PhoneLang.tr("store.update");
+    }
+
+    /** Кнопка «Установить/Обновить/Открыть»; во время установки — полоса хода с процентами. */
+    private void actionButton(GuiGraphics g, AppStore.Entry e, int x, int y, int w, int h, int mx, int my, boolean clickable) {
+        float progress = AppStore.progress(e.id());
+        if (progress >= 0) {
+            PhoneDraw.rawRoundedRect(g, x, y, x + w, y + h, h / 2, PhoneTheme.accentTint(0x40));
+            int fill = Math.max(h, Math.round(w * progress));
+            PhoneDraw.rawRoundedRect(g, x, y, x + fill, y + h, h / 2, PhoneTheme.accent());
+            String label = progress >= 1 ? PhoneLang.tr("store.unpacking") : Math.round(progress * 100) + "%";
+            // Текст — цветом, который виден и на заливке, и на пустой части полосы.
+            int color = progress >= 0.5f ? PhoneTheme.onAccent() : PhoneTheme.text();
+            PhoneDraw.centeredText(g, PhoneDraw.ellipsize(label, w - 6, 0.6f), x + w / 2f, y + (h - 6) / 2f, color, 0.6f, false);
+            return;
+        }
+        String installed = AppStore.installed(e.id());
+        boolean primary = installed == null || !installed.equals(e.version());
+        String label = actionLabel(e);
+        boolean hover = clickable && PhoneDraw.inside(mx, my, x, y, w, h);
+        int bg = primary ? (hover ? PhoneTheme.accentHover() : PhoneTheme.accent()) : (hover ? PhoneTheme.cardHover() : PhoneTheme.field());
+        PhoneDraw.rawRoundedRect(g, x, y, x + w, y + h, h / 2, bg);
+        float scale = h >= 18 ? 0.75f : 0.55f;
+        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(label, w - 8, scale), x + w / 2f, y + (h - 8 * scale) / 2f,
+                primary ? PhoneTheme.onAccent() : PhoneTheme.accent(), scale, false);
+        if (clickable) {
+            hits.add(new Hit(x, y, w, h, () -> primary(e)));
+        }
     }
 
     private void drawIcon(GuiGraphics g, AppStore.Entry e, int x, int y, int size) {
+        drawIcon(g, e, x, y, size, PhoneTheme.background());
+    }
+
+    /** under — цвет под иконкой (им закрашиваются углы картинки). */
+    private void drawIcon(GuiGraphics g, AppStore.Entry e, int x, int y, int size, int under) {
         Path icon = AppStore.icon(e);
         PhotoTextures.Image image = icon != null ? PhotoTextures.preview(new PhotoStore.Photo(icon, 0), 64) : null;
         if (image != null) {
             PhoneDraw.textureCover(g, image.id(), x, y, size, size, image.width(), image.height());
-            PhoneDraw.roundCornersMask(g, x, y, x + size, y + size, 5, PhoneTheme.background());
+            PhoneDraw.roundCornersMask(g, x, y, x + size, y + size, Math.max(5, size / 6), under);
         } else {
             AppDefinition def = CustomApps.get(e.id());
             int color = def != null ? def.color() : 0xFF4C8DF6;
@@ -242,39 +305,198 @@ public final class StoreApp extends PhoneApp {
 
     private void renderDetail(GuiGraphics g, AppStore.Entry e, int mx, int my, int w, int h) {
         int y = 8 - (int) scroll;
-        drawIcon(g, e, 8, y, 40);
-        PhoneDraw.text(g, PhoneDraw.ellipsize(e.name(), w - 60, 1f), 54, y + 4, PhoneTheme.text(), 1f, false);
-        PhoneDraw.text(g, PhoneDraw.ellipsize(e.author().isEmpty() ? e.catalog() : e.author(), w - 60, 0.65f), 54, y + 17,
-                PhoneTheme.secondaryText(), 0.65f, false);
-        PhoneDraw.text(g, PhoneLang.tr("store.version", e.version()) + (e.size() > 0 ? "  ·  " + (e.size() + 1023) / 1024 + " KB" : ""),
-                54, y + 27, PhoneTheme.secondaryText(), 0.6f, false);
-        y += 48;
+        drawIcon(g, e, 10, y, 48);
+        int tx = 66;
+        PhoneDraw.text(g, PhoneDraw.ellipsize(e.name(), w - tx - 8, 0.95f), tx, y + 4, PhoneTheme.text(), 0.95f, false);
+        PhoneDraw.text(g, PhoneDraw.ellipsize(e.author().isEmpty() ? PhoneLang.tr("store.unknown_author") : e.author(), w - tx - 8, 0.65f),
+                tx, y + 17, PhoneTheme.accent(), 0.65f, false);
+        PhoneDraw.text(g, PhoneDraw.ellipsize(e.catalog(), w - tx - 8, 0.55f), tx, y + 28, PhoneTheme.secondaryText(), 0.55f, false);
+        y += 56;
+
+        // Сводка: оценка · размер · версия.
+        AppStore.Rating rating = AppStore.rating(e.id());
+        String[][] stats = {
+                {rating != null && rating.count() > 0 ? String.format(Locale.ROOT, "%.1f ★", rating.average()) : "—",
+                        rating != null && rating.count() > 0 ? PhoneLang.tr("store.reviews_count", rating.count()) : PhoneLang.tr("store.no_rating")},
+                {e.size() > 0 ? AppStore.formatSize(e.size()) : "—", PhoneLang.tr("store.size")},
+                {e.version(), PhoneLang.tr("store.version_label")}};
+        PhoneDraw.card(g, 8, y, w - 8, y + 30, false);
+        int cw = (w - 16) / 3;
+        for (int i = 0; i < 3; i++) {
+            float cx = 8 + cw * i + cw / 2f;
+            PhoneDraw.centeredText(g, PhoneDraw.ellipsize(stats[i][0], cw - 6, 0.8f), cx, y + 6,
+                    i == 0 && rating != null && rating.count() > 0 ? STAR : PhoneTheme.text(), 0.8f, false);
+            PhoneDraw.centeredText(g, PhoneDraw.ellipsize(stats[i][1], cw - 6, 0.55f), cx, y + 19, PhoneTheme.secondaryText(), 0.55f, false);
+            if (i > 0) {
+                g.fill(8 + cw * i, y + 6, 9 + cw * i, y + 24, PhoneTheme.separator());
+            }
+        }
+        y += 38;
+
+        // Кнопки.
         String installed = AppStore.installed(e.id());
-        int half = (w - 20) / 2;
-        String label = AppStore.busy(e.id()) != null ? PhoneLang.tr("store.installing")
-                : installed == null ? PhoneLang.tr("store.get")
-                : installed.equals(e.version()) ? PhoneLang.tr("store.open") : PhoneLang.tr("store.update");
-        int mainW = installed != null ? half : w - 16;
-        PhoneDraw.button(g, 8, y, mainW, 18, label, mx, my, PhoneDraw.ButtonStyle.PRIMARY);
-        hits.add(new Hit(8, y, mainW, 18, () -> primary(e)));
-        if (installed != null) {
-            PhoneDraw.button(g, 12 + half, y, half, 18, PhoneLang.tr("store.remove"), mx, my, PhoneDraw.ButtonStyle.DANGER);
-            hits.add(new Hit(12 + half, y, half, 18, () -> askRemove(e.id(), e.name())));
+        boolean busy = AppStore.progress(e.id()) >= 0;
+        if (installed != null && !busy) {
+            int half = (w - 22) / 2;
+            actionButton(g, e, 8, y, half, 20, mx, my, true);
+            PhoneDraw.button(g, 14 + half, y, half, 20, PhoneLang.tr("store.remove"), mx, my, PhoneDraw.ButtonStyle.DANGER);
+            hits.add(new Hit(14 + half, y, half, 20, () -> askRemove(e.id(), e.name())));
+        } else {
+            actionButton(g, e, 8, y, w - 16, 20, mx, my, true);
         }
-        y += 26;
-        PhoneDraw.text(g, PhoneLang.tr("store.permissions").toUpperCase(Locale.ROOT), 8, y, PhoneTheme.secondaryText(), 0.6f, false);
-        y += 10;
-        String perms = e.permissions().isEmpty() ? PhoneLang.tr("store.no_permissions")
-                : String.join("\n", e.permissions().stream().map(p -> "• " + PhoneLang.tr("app.perm." + p)).toList());
-        y += PhoneDraw.wrapped(g, perms, 10, y, w - 20, PhoneTheme.text(), 0.7f, false) + 8;
+        y += 28;
+
         if (!e.description().isEmpty()) {
-            PhoneDraw.text(g, PhoneLang.tr("store.about").toUpperCase(Locale.ROOT), 8, y, PhoneTheme.secondaryText(), 0.6f, false);
-            y += 10;
-            y += PhoneDraw.wrapped(g, e.description(), 10, y, w - 20, PhoneTheme.text(), 0.7f, false) + 8;
+            y = section(g, PhoneLang.tr("store.about"), y);
+            y += PhoneDraw.wrapped(g, e.description(), 10, y, w - 20, PhoneTheme.text(), 0.7f, false) + 10;
         }
-        PhoneDraw.wrapped(g, PhoneLang.tr("store.source", e.catalog()), 10, y, w - 20, PhoneTheme.secondaryText(), 0.55f, false);
-        scroll = Math.max(0, Math.min(Math.max(0, y + (int) scroll + 30 - h), scroll));
-        Scrollbar.report(0, h, scroll, Math.max(0, y + (int) scroll + 30 - h), false, v -> scroll = v);
+        y = section(g, PhoneLang.tr("store.permissions"), y);
+        if (e.permissions().isEmpty()) {
+            y += PhoneDraw.wrapped(g, PhoneLang.tr("store.no_permissions"), 10, y, w - 20, PhoneTheme.text(), 0.65f, false) + 10;
+        } else {
+            // «Таблетки» разрешений, переносятся по ширине.
+            int px = 10;
+            for (String perm : e.permissions()) {
+                String label = PhoneLang.tr("app.perm." + perm);
+                int pw = (int) PhoneDraw.width(label, 0.6f) + 12;
+                if (px + pw > w - 10 && px > 10) {
+                    px = 10;
+                    y += 16;
+                }
+                PhoneDraw.rawRoundedRect(g, px, y, px + pw, y + 13, 6, PhoneTheme.accentTint(0x30));
+                PhoneDraw.text(g, label, px + 6, y + 3, PhoneTheme.accent(), 0.6f, false);
+                px += pw + 4;
+            }
+            y += 22;
+        }
+        if (AppStore.reviewable(e)) {
+            y = renderReviews(g, e, mx, my, w, y);
+        }
+        y += 4;
+        y += PhoneDraw.wrapped(g, PhoneLang.tr("store.source", e.catalog()), 10, y, w - 20, PhoneTheme.secondaryText(), 0.5f, false);
+        double max = Math.max(0, y + (int) scroll + 12 - h);
+        scroll = Math.max(0, Math.min(max, scroll));
+        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v);
+    }
+
+    /** Заголовок раздела страницы приложения; возвращает y под ним. */
+    private static int section(GuiGraphics g, String title, int y) {
+        PhoneDraw.text(g, title.toUpperCase(Locale.ROOT), 10, y, PhoneTheme.secondaryText(), 0.55f, false);
+        return y + 10;
+    }
+
+    /** Оценки и отзывы: средняя и распределение, своя оценка (звёзды + текст), список отзывов. */
+    private int renderReviews(GuiGraphics g, AppStore.Entry e, int mx, int my, int w, int y) {
+        y = section(g, PhoneLang.tr("store.reviews"), y);
+        List<AppStore.Review> reviews = AppStore.reviews(e.id());
+        AppStore.Rating rating = AppStore.rating(e.id());
+        int[] counts = new int[6];
+        if (reviews != null) {
+            for (AppStore.Review r : reviews) {
+                counts[r.stars()]++;
+            }
+        }
+        int total = reviews != null && !reviews.isEmpty() ? reviews.size() : rating != null ? rating.count() : 0;
+        double avg = reviews != null && !reviews.isEmpty() ? reviews.stream().mapToInt(AppStore.Review::stars).average().orElse(0)
+                : rating != null ? rating.average() : 0;
+        PhoneDraw.card(g, 8, y, w - 8, y + 50, false);
+        PhoneDraw.centeredText(g, total > 0 ? String.format(Locale.ROOT, "%.1f", avg) : "—", 30, y + 9, PhoneTheme.text(), 1.6f, false);
+        drawStars(g, 13, y + 30, (int) Math.round(avg), 0.55f);
+        PhoneDraw.centeredText(g, PhoneLang.tr("store.reviews_count", total), 30, y + 39, PhoneTheme.secondaryText(), 0.45f, false);
+        int bx = 56;
+        int bw = w - 16 - bx;
+        for (int s = 5; s >= 1; s--) {
+            int ry = y + 6 + (5 - s) * 8;
+            PhoneDraw.text(g, String.valueOf(s), bx, ry, PhoneTheme.secondaryText(), 0.45f, false);
+            g.fill(bx + 6, ry + 1, bx + bw, ry + 4, PhoneTheme.field());
+            int max = 0;
+            for (int c : counts) {
+                max = Math.max(max, c);
+            }
+            if (counts[s] > 0) {
+                g.fill(bx + 6, ry + 1, bx + 6 + Math.max(2, (bw - 6) * counts[s] / Math.max(1, max)), ry + 4, STAR);
+            }
+        }
+        y += 56;
+
+        // Своя оценка.
+        if (!e.id().equals(reviewFor)) {
+            reviewFor = e.id();
+            AppStore.Review mine = AppStore.myReview(e.id());
+            myStars = mine != null ? mine.stars() : 0;
+            reviewInput.setText(mine != null ? mine.text() : "");
+        }
+        if (AppStore.installed(e.id()) == null) {
+            y += PhoneDraw.wrapped(g, PhoneLang.tr("store.review_install_first"), 10, y, w - 20, PhoneTheme.secondaryText(), 0.6f, false) + 8;
+        } else {
+            PhoneDraw.text(g, PhoneLang.tr(AppStore.myReview(e.id()) != null ? "store.review_yours" : "store.review_rate"), 10, y,
+                    PhoneTheme.text(), 0.65f, false);
+            y += 11;
+            for (int s = 1; s <= 5; s++) {
+                int sx = 10 + (s - 1) * 18;
+                boolean hover = PhoneDraw.inside(mx, my, sx, y, 16, 16);
+                boolean on = s <= myStars;
+                PhoneDraw.text(g, on ? "★" : "☆", sx + 2, y + 2, on || hover ? STAR : PhoneTheme.secondaryText(), 1.3f, false);
+                int value = s;
+                hits.add(new Hit(sx, y, 16, 16, () -> myStars = value));
+            }
+            y += 20;
+            reviewInput.setBounds(8, y, w - 16, 32);
+            reviewInput.render(g, mx, my);
+            y += 36;
+            boolean sending = AppStore.sendingReview(e.id());
+            boolean ready = myStars > 0 && !sending;
+            String label = PhoneLang.tr(sending ? "store.review_sending" : "store.review_send");
+            int sw = (int) PhoneDraw.width(label, 0.7f) + 16;
+            PhoneDraw.button(g, w - 8 - sw, y, sw, 16, label, mx, my, ready ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
+            if (ready) {
+                hits.add(new Hit(w - 8 - sw, y, sw, 16, () -> sendReview(e)));
+            }
+            y += 24;
+        }
+
+        // Отзывы.
+        if (reviews == null) {
+            PhoneDraw.text(g, PhoneLang.tr("messenger.loading"), 10, y, PhoneTheme.secondaryText(), 0.6f, false);
+            return y + 14;
+        }
+        if (reviews.isEmpty()) {
+            PhoneDraw.text(g, PhoneLang.tr("store.no_reviews"), 10, y, PhoneTheme.secondaryText(), 0.6f, false);
+            return y + 14;
+        }
+        java.time.format.DateTimeFormatter date = java.time.format.DateTimeFormatter.ofPattern("d.MM.yyyy");
+        for (AppStore.Review r : reviews.subList(0, Math.min(30, reviews.size()))) {
+            int th = r.text().isEmpty() ? 0 : PhoneDraw.wrappedHeight(r.text(), w - 32, 0.6f) + 3;
+            int ch = 22 + th;
+            PhoneDraw.card(g, 8, y, w - 8, y + ch, false);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(r.player(), w - 90, 0.65f), 14, y + 5, PhoneTheme.text(), 0.65f, false);
+            String when = r.time() > 0 ? java.time.Instant.ofEpochMilli(r.time()).atZone(java.time.ZoneId.systemDefault()).format(date) : "";
+            PhoneDraw.rightText(g, when, w - 14, y + 5, PhoneTheme.secondaryText(), 0.5f);
+            drawStars(g, 14, y + 13, r.stars(), 0.5f);
+            if (!r.version().isEmpty()) {
+                PhoneDraw.text(g, "v" + r.version(), 48, y + 14, PhoneTheme.secondaryText(), 0.45f, false);
+            }
+            if (th > 0) {
+                PhoneDraw.wrapped(g, r.text(), 14, y + 22, w - 32, PhoneTheme.text(), 0.6f, false);
+            }
+            y += ch + 4;
+        }
+        return y;
+    }
+
+    private static void drawStars(GuiGraphics g, int x, int y, int stars, float scale) {
+        int step = Math.round(12 * scale) + 1;
+        for (int i = 1; i <= 5; i++) {
+            PhoneDraw.text(g, i <= stars ? "★" : "☆", x + (i - 1) * step, y, i <= stars ? STAR : PhoneTheme.secondaryText(), scale, false);
+        }
+    }
+
+    private void sendReview(AppStore.Entry e) {
+        reviewInput.setFocused(false);
+        AppStore.sendReview(e, myStars, reviewInput.text().strip(), error -> toast(error == null ? PhoneLang.tr("store.review_sent")
+                : error.equals("offline") ? PhoneLang.tr("store.review_offline")
+                : error.equals("not_configured") ? PhoneLang.tr("store.review_off")
+                : PhoneLang.tr("store.review_failed", error)));
     }
 
     private void askRemove(String id, String name) {
@@ -315,28 +537,57 @@ public final class StoreApp extends PhoneApp {
         for (int i = 0; i < apps.size(); i++) {
             AppDefinition app = apps.get(i);
             int y = i * ROW_H - (int) scroll;
+            int cy = y + 2;
+            int ch = ROW_H - 4;
+            PhoneDraw.card(g, 6, cy, w - 6, cy + ch, PhoneDraw.inside(mx, my, 6, cy, w - 12, ch));
             AppRegistry.Entry entry = AppRegistry.get(CustomApps.PREFIX + app.id());
             if (entry != null) {
-                entry.drawIcon(g, 6, y + 5, 24);
+                entry.drawIcon(g, 11, cy + (ch - 28) / 2, 28);
             }
-            PhoneDraw.text(g, PhoneDraw.ellipsize(CustomApps.name(app), w - 120, 0.8f), 36, y + 6, PhoneTheme.text(), 0.8f, false);
-            PhoneDraw.text(g, PhoneDraw.ellipsize((app.author().isEmpty() ? "" : app.author() + " · ") + app.version(), w - 120, 0.6f), 36, y + 18,
-                    PhoneTheme.secondaryText(), 0.6f, false);
-            int ow = (int) PhoneDraw.width(PhoneLang.tr("store.open"), 0.75f) + 10;
-            PhoneDraw.button(g, w - 26 - ow, y + 9, ow, 15, PhoneLang.tr("store.open"), mx, my, PhoneDraw.ButtonStyle.NORMAL);
-            hits.add(new Hit(w - 26 - ow, y + 9, ow, 15, () -> {
+            int by = cy + (ch - 16) / 2;
+            int bx = w - 10 - 16 - 4 - 16;
+            int tw = bx - 4 - 45;
+            PhoneDraw.text(g, PhoneDraw.ellipsize(CustomApps.name(app), tw, 0.72f), 45, cy + 7, PhoneTheme.text(), 0.72f, false);
+            Path folder = CustomApps.folder().resolve(app.id());
+            PhoneDraw.text(g, PhoneDraw.ellipsize((app.author().isEmpty() ? "" : app.author() + " · ") + "v" + app.version(), tw, 0.55f),
+                    45, cy + 18, PhoneTheme.secondaryText(), 0.55f, false);
+            String size = AppStore.formatSize(folderSize(folder));
+            if (!size.isEmpty()) {
+                PhoneDraw.text(g, size, 45, cy + 27, PhoneTheme.secondaryText(), 0.5f, false);
+            }
+            // Нажатие на карточку — открыть; «↑» — опубликовать, «✕» — удалить.
+            hits.add(new Hit(6, cy, w - 12, ch, () -> {
                 if (phone != null) {
                     phone.openApp(CustomApps.PREFIX + app.id());
                 }
             }));
-            int pw = 16;
-            PhoneDraw.button(g, w - 44 - ow, y + 9, pw, 15, "↑", mx, my, PhoneDraw.ButtonStyle.PRIMARY);
-            hits.add(new Hit(w - 44 - ow, y + 9, pw, 15, () -> askPublish(app)));
-            PhoneDraw.button(g, w - 22, y + 9, 16, 15, "✕", mx, my, PhoneDraw.ButtonStyle.DANGER);
-            hits.add(new Hit(w - 22, y + 9, 16, 15, () -> askRemove(app.id(), CustomApps.name(app))));
-            g.fill(36, y + ROW_H - 1, w, y + ROW_H, PhoneTheme.separator());
+            PhoneDraw.button(g, bx, by, 16, 16, "↑", mx, my, PhoneDraw.ButtonStyle.NORMAL);
+            hits.add(new Hit(bx, by, 16, 16, () -> askPublish(app)));
+            PhoneDraw.button(g, w - 10 - 16, by, 16, 16, "✕", mx, my, PhoneDraw.ButtonStyle.DANGER);
+            hits.add(new Hit(w - 10 - 16, by, 16, 16, () -> askRemove(app.id(), CustomApps.name(app))));
         }
         g.disableScissor();
+    }
+
+    /** Размер папки приложения (кэш на 10 с — считается при отрисовке). */
+    private final java.util.Map<Path, long[]> sizes = new java.util.HashMap<>();
+
+    private long folderSize(Path folder) {
+        long[] cached = sizes.get(folder);
+        long now = System.currentTimeMillis();
+        if (cached != null && now - cached[1] < 10_000) {
+            return cached[0];
+        }
+        long total = 0;
+        try (java.util.stream.Stream<Path> walk = java.nio.file.Files.walk(folder)) {
+            for (Path f : walk.filter(java.nio.file.Files::isRegularFile).toList()) {
+                total += java.nio.file.Files.size(f);
+            }
+        } catch (java.io.IOException ignored) {
+            // нет папки
+        }
+        sizes.put(folder, new long[]{total, now});
+        return total;
     }
 
     private void renderSources(GuiGraphics g, int mx, int my, int w, int h) {
@@ -380,9 +631,10 @@ public final class StoreApp extends PhoneApp {
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         // Поле ввода — только своей вкладки (иначе невидимое поле поиска «съедало» клики по кнопкам «Установленных»).
-        TextArea active = detail != null ? null : tab == Tab.CATALOG ? search : tab == Tab.SOURCES ? sourceInput : null;
+        TextArea active = detail != null ? (AppStore.installed(detail.id()) != null && AppStore.reviewable(detail) ? reviewInput : null)
+                : tab == Tab.CATALOG ? search : tab == Tab.SOURCES ? sourceInput : null;
         boolean field = false;
-        for (TextArea t : new TextArea[]{search, sourceInput}) {
+        for (TextArea t : new TextArea[]{search, sourceInput, reviewInput}) {
             if (t == active && t.mouseClicked(x, y, button)) {
                 field = true;
             } else {
@@ -417,6 +669,9 @@ public final class StoreApp extends PhoneApp {
         if (search.isFocused()) {
             return search.keyPressed(event);
         }
+        if (reviewInput.isFocused()) {
+            return reviewInput.keyPressed(event);
+        }
         return sourceInput.isFocused() && sourceInput.keyPressed(event);
     }
 
@@ -426,6 +681,9 @@ public final class StoreApp extends PhoneApp {
             scroll = 0;
             return search.charTyped(event);
         }
+        if (reviewInput.isFocused()) {
+            return reviewInput.charTyped(event);
+        }
         return sourceInput.isFocused() && sourceInput.charTyped(event);
     }
 
@@ -433,9 +691,15 @@ public final class StoreApp extends PhoneApp {
     public void debug(String what) {
         switch (what) {
             case "detail" -> detail = AppStore.entries().isEmpty() ? null : AppStore.entries().get(0);
+            case "detail:tictactoe" -> {
+                detail = AppStore.entries().stream().filter(e -> e.id().equals("tictactoe")).findFirst().orElse(null);
+                scroll = 0;
+            }
+            case "scroll" -> scroll = 170;
             case "installed" -> {
                 detail = null;
                 tab = Tab.INSTALLED;
+                scroll = 0;
             }
             case "sources" -> tab = Tab.SOURCES;
             default -> {

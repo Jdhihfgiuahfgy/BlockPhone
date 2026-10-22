@@ -70,6 +70,20 @@ public final class AppStore {
     private static List<String> errors = List.of();
     private static State state = State.IDLE;
     private static final java.util.Map<String, String> BUSY = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Ход установки: 0..1 — скачано, 1 — распаковка. */
+    private static final java.util.Map<String, Float> PROGRESS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Отзыв в официальном каталоге (reviews/&lt;id&gt;.json репозитория). */
+    public record Review(String uuid, String player, int stars, String text, String version, long time) {
+    }
+
+    /** Средняя оценка и число отзывов (reviews/summary.json — собирает GitHub Actions). */
+    public record Rating(double average, int count) {
+    }
+
+    private static java.util.Map<String, Rating> ratings = java.util.Map.of();
+    private static final java.util.Map<String, List<Review>> REVIEWS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String, String> REVIEW_ERRORS = new java.util.concurrent.ConcurrentHashMap<>();
     /** Только для автоснимков: разрешить file: ссылки (локальный каталог). */
     public static boolean allowFiles;
 
@@ -134,8 +148,24 @@ public final class AppStore {
                 }
             }
             found.sort(Comparator.comparing(e -> e.name().toLowerCase(Locale.ROOT)));
+            java.util.Map<String, Rating> loaded = new java.util.HashMap<>();
+            try {
+                JsonObject summary = JsonParser.parseString(new String(fetch(reviewsUrl("summary.json"), 1L << 20),
+                        StandardCharsets.UTF_8)).getAsJsonObject();
+                for (var e : summary.entrySet()) {
+                    JsonObject r = e.getValue().getAsJsonObject();
+                    loaded.put(e.getKey(), new Rating(r.get("avg").getAsDouble(), r.get("count").getAsInt()));
+                }
+            } catch (Exception ignored) {
+                // отзывов ещё нет
+            }
             Minecraft.getInstance().execute(() -> {
+                ratings = loaded;
+                REVIEWS.clear();
                 entries = found;
+                if (debugReviews) {
+                    debugFakeReviews();
+                }
                 errors = problems;
                 state = State.READY;
             });
@@ -176,6 +206,12 @@ public final class AppStore {
 
     /** Скачать (https; в автоснимках — и file:), не больше max байт. */
     static byte[] fetch(String url, long max) throws IOException, InterruptedException {
+        return fetch(url, max, 0, null);
+    }
+
+    /** То же с ходом скачивания: progress(0..1) по Content-Length или по ожидаемому размеру expected. */
+    static byte[] fetch(String url, long max, long expected, java.util.function.@Nullable DoubleConsumer progress)
+            throws IOException, InterruptedException {
         URI uri = URI.create(url);
         if ("file".equals(uri.getScheme()) && allowFiles) {
             return Files.readAllBytes(Path.of(uri));
@@ -189,12 +225,21 @@ public final class AppStore {
         if (response.statusCode() != 200) {
             throw new IOException("HTTP " + response.statusCode());
         }
+        long total = response.headers().firstValueAsLong("Content-Length").orElse(expected);
         try (InputStream in = response.body()) {
-            byte[] data = in.readNBytes((int) max + 1);
-            if (data.length > max) {
-                throw new IOException("file is too big");
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream((int) Math.min(Math.max(total, 8192), max));
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                if (out.size() > max) {
+                    throw new IOException("file is too big");
+                }
+                if (progress != null && total > 0) {
+                    progress.accept(Math.min(1.0, out.size() / (double) total));
+                }
             }
-            return data;
+            return out.toByteArray();
         }
     }
 
@@ -204,6 +249,23 @@ public final class AppStore {
     public static @Nullable String installed(String id) {
         AppDefinition app = CustomApps.get(id);
         return app != null && Files.isDirectory(CustomApps.folder().resolve(id)) ? app.version() : null;
+    }
+
+    /** Ход установки 0..1 (скачивание; 1 — распаковка) или −1, если не устанавливается. */
+    public static float progress(String id) {
+        Float p = PROGRESS.get(id);
+        return p == null ? -1 : p;
+    }
+
+    /** Размер «1.2 MB» / «340 KB». */
+    public static String formatSize(long bytes) {
+        if (bytes <= 0) {
+            return "";
+        }
+        if (bytes < 1024 * 1024) {
+            return Math.max(1, (bytes + 1023) / 1024) + " KB";
+        }
+        return String.format(Locale.ROOT, "%.1f MB", bytes / 1048576.0);
     }
 
     /** Что сейчас происходит с приложением (скачивание…) или null. */
@@ -216,10 +278,12 @@ public final class AppStore {
         if (BUSY.putIfAbsent(entry.id(), "download") != null) {
             return;
         }
+        PROGRESS.put(entry.id(), 0f);
         ClientFiles.IO.execute(() -> {
             String error = null;
             try {
-                byte[] zip = fetch(entry.download(), MAX_ZIP);
+                byte[] zip = fetch(entry.download(), MAX_ZIP, entry.size(), p -> PROGRESS.put(entry.id(), (float) Math.min(0.99, p)));
+                PROGRESS.put(entry.id(), 1f);
                 if (entry.sha256() != null && !entry.sha256().isBlank()) {
                     String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(zip));
                     if (!hash.equalsIgnoreCase(entry.sha256().strip())) {
@@ -234,6 +298,7 @@ public final class AppStore {
             String result = error;
             Minecraft.getInstance().execute(() -> {
                 BUSY.remove(entry.id());
+                PROGRESS.remove(entry.id());
                 CustomApps.scan(true);
                 done.accept(result);
             });
@@ -422,6 +487,167 @@ public final class AppStore {
             throw new IOException("the app is too big to publish (max 10 MB)");
         }
         return bytes.toByteArray();
+    }
+
+    // --- Оценки и отзывы (только официальный каталог) ---
+
+    private static boolean debugReviews;
+
+    /** Отзывы есть только у приложений официального каталога. */
+    public static boolean reviewable(Entry entry) {
+        return debugReviews || OFFICIAL.equals(entry.source()) && !PUBLISH_URL.isEmpty();
+    }
+
+    /** DevShots: выдуманные оценки и отзывы для снимков. */
+    public static void debugFakeReviews() {
+        debugReviews = true;
+        java.util.Map<String, Rating> fake = new java.util.HashMap<>();
+        long now = System.currentTimeMillis();
+        for (Entry e : entries) {
+            fake.put(e.id(), new Rating(3.5 + (Math.abs(e.id().hashCode()) % 15) / 10.0, 3 + Math.abs(e.id().hashCode()) % 40));
+            REVIEWS.put(e.id(), List.of(
+                    new Review("1", "Steve", 5, "Отличное приложение, играю каждый день!", e.version(), now - 3_600_000L),
+                    new Review("2", "Alex", 4, "Хорошо, но хотелось бы больше уровней.", e.version(), now - 86_400_000L * 2),
+                    new Review("3", "Notch", 3, "", e.version(), now - 86_400_000L * 9)));
+        }
+        ratings = fake;
+    }
+
+    /** DevShots: показать ход установки (−1 — убрать). */
+    public static void debugProgress(String id, float value) {
+        if (value < 0) {
+            PROGRESS.remove(id);
+        } else {
+            PROGRESS.put(id, value);
+        }
+    }
+
+    /** Файл папки reviews/ репозитория официального каталога (с меткой времени — мимо кэша raw.githubusercontent). */
+    private static String reviewsUrl(String file) {
+        return OFFICIAL.substring(0, OFFICIAL.lastIndexOf('/') + 1) + "reviews/" + file + "?t=" + System.currentTimeMillis() / 60_000;
+    }
+
+    public static @Nullable Rating rating(String id) {
+        return ratings.get(id);
+    }
+
+    /** Отзывы приложения (null — ещё грузятся; первый вызов начинает загрузку). */
+    public static @Nullable List<Review> reviews(String id) {
+        List<Review> list = REVIEWS.get(id);
+        if (list == null && BUSY.putIfAbsent("reviews:" + id, "") == null) {
+            ClientFiles.IO.execute(() -> {
+                List<Review> loaded = new ArrayList<>();
+                try {
+                    JsonObject root = JsonParser.parseString(new String(fetch(reviewsUrl(id + ".json"), 2L << 20),
+                            StandardCharsets.UTF_8)).getAsJsonObject();
+                    for (JsonElement el : root.getAsJsonArray("reviews")) {
+                        JsonObject r = el.getAsJsonObject();
+                        loaded.add(new Review(str(r, "uuid", ""), str(r, "player", "?"), Math.max(1, Math.min(5, r.get("stars").getAsInt())),
+                                str(r, "text", ""), str(r, "version", ""), r.has("time") ? r.get("time").getAsLong() : 0));
+                    }
+                } catch (Exception ignored) {
+                    // 404 — отзывов нет
+                }
+                loaded.sort(Comparator.comparingLong(Review::time).reversed());
+                Minecraft.getInstance().execute(() -> {
+                    REVIEWS.put(id, loaded);
+                    BUSY.remove("reviews:" + id);
+                });
+            });
+        }
+        return list;
+    }
+
+    /** Свой отзыв в загруженном списке или null. */
+    public static @Nullable Review myReview(String id) {
+        List<Review> list = REVIEWS.get(id);
+        String me = Minecraft.getInstance().getUser().getProfileId().toString().replace("-", "");
+        if (list != null) {
+            for (Review r : list) {
+                if (r.uuid().replace("-", "").equalsIgnoreCase(me)) {
+                    return r;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static boolean sendingReview(String id) {
+        return BUSY.containsKey("review:" + id);
+    }
+
+    /**
+     * Отправить оценку (1–5) и текст. Кто пишет, подтверждает сервер Mojang: игра «входит» на выдуманный сервер
+     * (как при входе на любой сервер — пароль и токен никуда не уходят), приёмник проверяет это у Mojang. Поэтому
+     * отзыв может оставить только лицензионный аккаунт, один на приложение (новый заменяет старый).
+     * done(null) — принято, иначе текст ошибки. На потоке рендера.
+     */
+    public static void sendReview(Entry entry, int stars, String text, Consumer<String> done) {
+        String id = entry.id();
+        if (BUSY.putIfAbsent("review:" + id, "") != null) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        var user = mc.getUser();
+        String player = user.getName();
+        java.util.UUID profile = user.getProfileId();
+        String token = user.getAccessToken();
+        String version = installed(id) != null ? installed(id) : entry.version();
+        ClientFiles.IO.execute(() -> {
+            String error = null;
+            try {
+                byte[] random = new byte[16];
+                new java.security.SecureRandom().nextBytes(random);
+                String serverId = HexFormat.of().formatHex(random);
+                try {
+                    mc.services().sessionService().joinServer(profile, token, serverId);
+                } catch (Exception e) {
+                    throw new IOException("offline");
+                }
+                JsonObject body = new JsonObject();
+                body.addProperty("app", id);
+                body.addProperty("stars", stars);
+                body.addProperty("text", text);
+                body.addProperty("player", player);
+                body.addProperty("serverId", serverId);
+                body.addProperty("version", version);
+                HttpRequest request = HttpRequest.newBuilder(URI.create(PUBLISH_URL + "/review")).timeout(Duration.ofSeconds(30))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build();
+                HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (response.statusCode() != 200) {
+                    String message = response.body();
+                    try {
+                        message = JsonParser.parseString(message).getAsJsonObject().get("error").getAsString();
+                    } catch (RuntimeException ignored) {
+                        // как есть
+                    }
+                    error = response.statusCode() == 404 || message.contains("author key") ? "not_configured" : message;
+                }
+            } catch (Exception e) {
+                error = e.getMessage() == null ? e.toString() : e.getMessage();
+            }
+            String result = error;
+            mc.execute(() -> {
+                BUSY.remove("review:" + id);
+                if (result == null) {
+                    // Сразу показать свой отзыв (файл на GitHub обновится через минуту-другую).
+                    List<Review> list = new ArrayList<>(REVIEWS.getOrDefault(id, List.of()));
+                    String me = profile.toString().replace("-", "");
+                    list.removeIf(r -> r.uuid().replace("-", "").equalsIgnoreCase(me));
+                    list.add(0, new Review(me, player, stars, text, version, System.currentTimeMillis()));
+                    REVIEWS.put(id, list);
+                    double sum = 0;
+                    for (Review r : list) {
+                        sum += r.stars();
+                    }
+                    java.util.Map<String, Rating> copy = new java.util.HashMap<>(ratings);
+                    copy.put(id, new Rating(sum / list.size(), list.size()));
+                    ratings = copy;
+                }
+                done.accept(result);
+            });
+        });
     }
 
     /** Удалить установленное приложение (папку blockphone/apps/&lt;id&gt;). */
