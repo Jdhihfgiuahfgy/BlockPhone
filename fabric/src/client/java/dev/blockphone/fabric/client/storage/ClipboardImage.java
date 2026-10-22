@@ -66,15 +66,28 @@ public final class ClipboardImage {
         });
     }
 
+    /**
+     * Чтение буфера в Windows. Буфер бывает занят другой программой — несколько попыток. Порядок: файлы (проводник) →
+     * PNG (браузеры, Discord, Telegram) → картинка (Bitmap/DIB: скриншоты, Paint) → текст-путь к файлу («Копировать как
+     * путь»). Сначала строка FORMATS (для журнала). Вывод — UTF-8 без BOM; двойных кавычек в скрипте нет (аргумент процесса).
+     */
     private static final String WINDOWS_PASTE = String.join("; ",
-            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+            "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
             "Add-Type -AssemblyName System.Windows.Forms, System.Drawing",
-            "$files = [System.Windows.Forms.Clipboard]::GetFileDropList()",
-            "if ($files.Count -gt 0) { foreach ($f in $files) { 'FILE:' + $f } }",
-            "elseif ([System.Windows.Forms.Clipboard]::ContainsImage()) {"
-                    + " $img = [System.Windows.Forms.Clipboard]::GetImage();"
-                    + " $img.Save($env:BLOCKPHONE_CLIP, [System.Drawing.Imaging.ImageFormat]::Png); $img.Dispose();"
-                    + " 'FILE:' + $env:BLOCKPHONE_CLIP }");
+            "$d = $null",
+            "for ($i = 0; $i -lt 8 -and -not $d; $i++) { try { $d = [System.Windows.Forms.Clipboard]::GetDataObject() }"
+                    + " catch { Start-Sleep -Milliseconds 120 } }",
+            "if (-not $d) { 'FORMATS:none'; exit }",
+            "'FORMATS:' + ($d.GetFormats() -join ',')",
+            "$out = $env:BLOCKPHONE_CLIP",
+            "function o($p) { 'FILE64:' + [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes([string]$p)) }",
+            "if ($d.GetDataPresent('FileDrop')) { foreach ($f in $d.GetData('FileDrop')) { (o $f) } }"
+                    + " elseif ($d.GetDataPresent('PNG')) { $s = $d.GetData('PNG'); $fs = [System.IO.File]::Create($out);"
+                    + " $s.CopyTo($fs); $fs.Close(); (o $out) }"
+                    + " elseif ([System.Windows.Forms.Clipboard]::ContainsImage()) { $img = [System.Windows.Forms.Clipboard]::GetImage();"
+                    + " if ($img) { $img.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $img.Dispose(); (o $out) } }"
+                    + " elseif ($d.GetDataPresent('UnicodeText')) { $t = ([string]$d.GetData('UnicodeText')).Trim().Trim([char]34);"
+                    + " if ($t.Length -lt 400 -and (Test-Path -LiteralPath $t -PathType Leaf)) { (o $t) } }");
 
     /**
      * Что лежит в буфере обмена — файлы (скопированные в проводнике) или картинка (сохраняется во временный PNG).
@@ -111,17 +124,30 @@ public final class ClipboardImage {
                 if (!process.waitFor(15, TimeUnit.SECONDS)) {
                     process.destroyForcibly();
                 }
+                String formats = "";
                 for (String line : output.split("\\R")) {
-                    line = line.strip();
                     Path path = null;
-                    if (line.startsWith("FILE:")) {
-                        path = Path.of(line.substring(5));
-                    } else if (line.startsWith("URI:file:")) {
-                        path = Path.of(java.net.URI.create(line.substring(4)));
+                    int file = line.indexOf("FILE:");
+                    int file64 = line.indexOf("FILE64:");
+                    int uri = line.indexOf("URI:file:");
+                    if (line.contains("FORMATS:")) {
+                        formats = line.substring(line.indexOf("FORMATS:") + 8).strip();
+                    } else if (file64 >= 0) {
+                        path = Path.of(new String(java.util.Base64.getDecoder().decode(line.substring(file64 + 7).strip()),
+                                java.nio.charset.StandardCharsets.UTF_8));
+                    } else if (file >= 0) {
+                        path = Path.of(line.substring(file + 5).strip());
+                    } else if (uri >= 0) {
+                        path = Path.of(java.net.URI.create(line.substring(uri + 4).strip()));
                     }
                     if (path != null && java.nio.file.Files.isRegularFile(path) && java.nio.file.Files.size(path) > 0) {
                         result.add(path);
                     }
+                }
+                if (result.isEmpty()) {
+                    String shown = output.strip();
+                    BlockPhoneFabric.LOGGER.info("Clipboard: nothing to attach (formats: {}); output: {}", formats,
+                            shown.length() > 400 ? shown.substring(0, 400) : shown);
                 }
             } catch (Exception e) {
                 BlockPhoneFabric.LOGGER.warn("Reading clipboard failed", e);

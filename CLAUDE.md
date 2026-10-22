@@ -348,7 +348,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   apps-src), настройка владельцем — docs/STORE_SETUP.md. Инструкция авторам — docs/APP_STORE.md,
   пример каталога — docs/examples/store (DevShots `apps`: `store_catalog`, `store_detail`, `store_installed`).
 - `storage/ClipboardImage` — `paste` — файлы или картинка из буфера (Telegram: «+» → «Из буфера обмена», Ctrl+V без текста →
-  `Telegram.sendPhotos`/`sendDocuments`); картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
+  прикрепляются к сообщению (`TgChatView.photos`/`files`), Windows: FileDrop → PNG → Bitmap → текст-путь, пути в Base64); картинка в буфер обмена (в игре AWT headless): Windows — PowerShell (картинка + файл), macOS —
   osascript, Linux — wl-copy/xclip; путь — через переменную окружения. В галерее — кнопка «Копировать».
 - `PhoneClock`: в 12-часовом формате — «AM/PM» (`time()`; крупные часы — `drawBig`, AM/PM мельче). `PhoneScreen.signalBars()` —
   деления связи по пингу (`PlayerInfo.getLatency`: <80 — 4, <150 — 3, <300 — 2, <600 — 1), в одиночной игре — 4.
@@ -368,7 +368,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   пересылаются в поток рендера; вход: SetTdlibParameters → номер → код → облачный пароль; чаты основного списка по `order`,
   пользователи, файлы с докачкой (`localFile`), история по 40, отправка текста и «кружочков», «прочитано», выход, `shutdown` при
   закрытии игры; подписи вложений), `TelegramAvatars`, `TelegramNotifications` (тосты), `VideoNoteEncoder` (JCodec: квадрат ARGB →
-  MP4 H.264 без звука; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 30 к/с, до 60 с; кольцо и таймер
+  MP4 H.264 без звука; своё управление качеством `TargetRate` ~1 Мбит/с через отражение в SinkImpl.videoEncoder; `cropSquare`), `VideoNoteRecorder` (кадры мира — первым элементом HUD, 320×320, 30 к/с, до 60 с; кольцо и таймер
   на экране; клавиша телефона — отправить, меню — отмена; звук — микрофон (`VoiceRecorder`) + копия играющей музыки
   (`music/AudioTap`: `Playback` отдаёт записанные куски, моно 48 кГц по часам) по настройкам `videoNoteMic`/`videoNoteMusic`,
   `soundtrack()` сводит, Opus 64 кбит/с), `Mp4Audio` (дописывает в MP4 от JCodec дорожку Opus: sample entry «Opus» + dOps,

@@ -178,6 +178,7 @@ public final class Telegram {
     }
 
     private static void showError(TdApi.Error error) {
+        BlockPhoneFabric.LOGGER.info("Telegram error {}: {}", error.code, error.message);
         String key = "telegram.error." + error.message.toLowerCase(Locale.ROOT);
         String text = PhoneLang.tr(key);
         message = text.equals(key) ? PhoneLang.tr("telegram.error.generic", error.message) : text;
@@ -262,6 +263,13 @@ public final class Telegram {
             }
             case TdApi.UpdateNewMessage u -> onNewMessage(u.message);
             case TdApi.UpdateMessageSendSucceeded u -> replaceMessage(u.message.chatId, u.oldMessageId, u.message);
+            case TdApi.UpdateMessageSendFailed u -> {
+                // Например, Telegram не принял файл: сообщение остаётся с «!», причина — в журнал и в приложение.
+                BlockPhoneFabric.LOGGER.warn("Telegram: message not sent ({}): {} {}", u.message.content.getClass().getSimpleName(),
+                        u.error.code, u.error.message);
+                showError(u.error);
+                replaceMessage(u.message.chatId, u.oldMessageId, u.message);
+            }
             case TdApi.UpdateMessageContent u -> {
                 ChatMessages m = MESSAGES.get(u.chatId);
                 if (m != null) {

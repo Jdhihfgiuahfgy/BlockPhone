@@ -56,7 +56,8 @@ class VideoNoteEncoderTest {
         int[] frame = new int[size * size];
         long start = System.nanoTime();
         int frames = 90;
-        try (VideoNoteEncoder encoder = new VideoNoteEncoder(dir.resolve("speed.mp4"), size, 30)) {
+        Path file = dir.resolve("speed.mp4");
+        try (VideoNoteEncoder encoder = new VideoNoteEncoder(file, size, 30)) {
             for (int f = 0; f < frames; f++) {
                 for (int i = 0; i < frame.length; i++) {
                     frame[i] = 0xFF000000 | (((i % size) + f * 3) & 0xFF) << 16 | ((i / size + f) & 0xFF) << 8 | random.nextInt(32);
@@ -65,7 +66,10 @@ class VideoNoteEncoderTest {
             }
         }
         double fps = frames / ((System.nanoTime() - start) / 1e9);
-        System.out.println("video note encoder: " + Math.round(fps) + " fps");
+        long bytes = Files.size(file);
+        System.out.println("video note encoder: " + Math.round(fps) + " fps, " + bytes / 1024 + " KB for 3 s");
+        // 3 с при ~1 Мбит/с ≈ 375 КБ; шумный кадр сжимается хуже — даём запас, но не мегабайты.
+        assertTrue(bytes < 900_000, "too big: " + bytes);
     }
 
     @Test

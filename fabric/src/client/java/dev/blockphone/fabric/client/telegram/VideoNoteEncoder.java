@@ -1,6 +1,10 @@
 package dev.blockphone.fabric.client.telegram;
 
 import org.jcodec.api.SequenceEncoder;
+import org.jcodec.codecs.h264.H264Encoder;
+import org.jcodec.codecs.h264.encode.RateControl;
+import org.jcodec.codecs.h264.io.model.SliceType;
+import org.jcodec.common.model.Size;
 import org.jcodec.common.model.ColorSpace;
 import org.jcodec.common.model.Picture;
 
@@ -13,6 +17,7 @@ import java.nio.file.Path;
  */
 public final class VideoNoteEncoder implements AutoCloseable {
     private final SequenceEncoder encoder;
+    private final TargetRate rate;
     private final int size;
     private final Picture picture;
     private int frames;
@@ -20,7 +25,75 @@ public final class VideoNoteEncoder implements AutoCloseable {
     public VideoNoteEncoder(Path file, int size, int fps) throws IOException {
         this.size = size;
         this.encoder = SequenceEncoder.createSequenceEncoder(file.toFile(), fps);
+        this.rate = new TargetRate(size, fps);
+        useRateControl(encoder, rate);
         this.picture = Picture.create(size, size, ColorSpace.RGB);
+    }
+
+    /** Целевой поток видео, бит/с: ~1 Мбит/с — минута «кружочка» ≈ 8 МБ (стандартный JCodec давал в 3–4 раза больше). */
+    static final int BITRATE = 1_000_000;
+
+    /**
+     * JCodec по умолчанию почти не ограничивает размер кадра. Подменяем управление качеством: QP кадра подстраивается
+     * по размеру прошлого кадра того же типа под {@link #BITRATE} (ключевым кадрам — вчетверо больше).
+     */
+    private static void useRateControl(SequenceEncoder encoder, RateControl control) throws IOException {
+        try {
+            java.lang.reflect.Field sinkField = SequenceEncoder.class.getDeclaredField("sink");
+            sinkField.setAccessible(true);
+            Object sink = sinkField.get(encoder);
+            java.lang.reflect.Field videoField = sink.getClass().getDeclaredField("videoEncoder");
+            videoField.setAccessible(true);
+            videoField.set(sink, new H264Encoder(control));
+        } catch (ReflectiveOperationException e) {
+            throw new IOException("JCodec: cannot set rate control", e);
+        }
+    }
+
+    static final class TargetRate implements RateControl {
+        private final int frameBits;
+        private int qpP = 30;
+        private int qpI = 28;
+        private boolean key;
+        private int bits;
+
+        TargetRate(int size, int fps) {
+            this.frameBits = BITRATE / Math.max(1, fps);
+        }
+
+        @Override
+        public int startPicture(Size size, int maxSize, SliceType type) {
+            key = type == SliceType.I;
+            bits = 0;
+            return key ? qpI : qpP;
+        }
+
+        @Override
+        public int initialQpDelta() {
+            return 0;
+        }
+
+        @Override
+        public int accept(int mbBits) {
+            bits += mbBits;
+            return 0;
+        }
+
+        /** После кадра: поправить QP следующего кадра того же типа. */
+        void frameDone() {
+            int target = key ? frameBits * 4 : frameBits;
+            int qp = key ? qpI : qpP;
+            if (bits > target * 1.15) {
+                qp = Math.min(46, qp + (bits > target * 2 ? 2 : 1));
+            } else if (bits < target * 0.7) {
+                qp = Math.max(20, qp - 1);
+            }
+            if (key) {
+                qpI = qp;
+            } else {
+                qpP = qp;
+            }
+        }
     }
 
     /** Добавить кадр (argb.length = size × size). */
@@ -33,6 +106,7 @@ public final class VideoNoteEncoder implements AutoCloseable {
             data[o++] = (byte) ((c & 0xFF) - 128);
         }
         encoder.encodeNativeFrame(picture);
+        rate.frameDone();
         frames++;
     }
 

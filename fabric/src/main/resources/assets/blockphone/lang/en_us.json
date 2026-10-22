@@ -809,7 +809,5 @@
   "music.remote.hint": "Start a track in the Music app",
   "telegram.attach_clipboard": "From clipboard",
   "telegram.clip_title": "Clipboard",
-  "telegram.clip_empty": "There is no image or file in the clipboard. Copy a photo or files (Ctrl+C in Explorer) and try again.",
-  "telegram.clip_message": "Send (%s): %s? Text in the field becomes the caption.",
-  "telegram.clip_send": "Send"
+  "telegram.clip_empty": "There is no image or file in the clipboard. Copy a photo or files (Ctrl+C in Explorer) and try again."
 }

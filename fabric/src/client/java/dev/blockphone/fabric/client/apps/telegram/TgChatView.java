@@ -115,6 +115,8 @@ final class TgChatView extends TgView {
     private final TextArea input = new TextArea(true, TEXT);
     private final Map<String, List<FormattedCharSequence>> wrapCache = new HashMap<>();
     private final List<PhotoStore.Photo> photos = new ArrayList<>();
+    /** Прикреплённые файлы (не картинки) — из буфера обмена; уходят документами. */
+    private final List<java.nio.file.Path> files = new ArrayList<>();
     private final PhotoPicker picker = new PhotoPicker(this::togglePhoto, true, photos::contains);
     private final List<Bubble> bubbles = new ArrayList<>();
     private PopupMenu menu = new PopupMenu();
@@ -205,7 +207,7 @@ final class TgChatView extends TgView {
 
     /** Высота полос над полем ввода: ответ/правка и выбранные фото. */
     private int barsHeight() {
-        return (replyTo != 0 || editing != 0 ? 18 : 0) + (photos.isEmpty() ? 0 : 30);
+        return (replyTo != 0 || editing != 0 ? 18 : 0) + (photos.isEmpty() && files.isEmpty() ? 0 : 30);
     }
 
     private int areaBottom() {
@@ -799,6 +801,29 @@ final class TgChatView extends TgView {
             }
             PhoneDraw.rightText(g, photos.size() + "/" + MAX_PHOTOS, w - 6, y + 10, TgTheme.secondaryText(), SMALL);
         }
+        if (!files.isEmpty()) {
+            // Файлы — «плашками» с именем (после фото, в той же полосе).
+            int x = 6 + Math.min(photos.size(), 4) * 28;
+            for (java.nio.file.Path file : List.copyOf(files)) {
+                int cw = 58;
+                if (x + cw > w - 26) {
+                    PhoneDraw.text(g, "+" + (files.size() - files.indexOf(file)), x, y + 9, TgTheme.secondaryText(), SMALL, false);
+                    break;
+                }
+                PhoneDraw.roundedRect(g, x, y, x + cw, y + 26, 4, TgTheme.card());
+                String name = file.getFileName().toString();
+                int dot = name.lastIndexOf('.');
+                String ext = dot > 0 && name.length() - dot <= 5 ? name.substring(dot + 1).toUpperCase(java.util.Locale.ROOT) : "?";
+                PhoneDraw.roundedRect(g, x + 2, y + 6, x + 14, y + 20, 2, TgTheme.accent());
+                PhoneDraw.centeredText(g, ext, x + 8, y + 11, 0xFFFFFFFF, 0.35f, false);
+                PhoneDraw.wrapped(g, PhoneDraw.ellipsize(file.getFileName().toString(), (cw - 18) * 2f, 0.5f), x + 15, y + 4,
+                        cw - 18, TgTheme.text(), 0.5f, false);
+                PhoneDraw.roundedRect(g, x + cw - 9, y + 1, x + cw - 1, y + 9, 4, 0xC0000000);
+                PhoneDraw.centeredText(g, "×", x + cw - 5, y + 1, 0xFFFFFFFF, 0.6f, false);
+                hit(x + cw - 11, y, 11, 11, () -> files.remove(file));
+                x += cw + 2;
+            }
+        }
     }
 
     private void renderInput(GuiGraphics g, int mouseX, int mouseY) {
@@ -818,9 +843,9 @@ final class TgChatView extends TgView {
             ix += 20;
         }
         input.setBounds(ix, top, w - 28 - ix, INPUT_H);
-        input.setPlaceholder(tr(photos.isEmpty() ? "messenger.message_placeholder" : "telegram.caption_placeholder"));
+        input.setPlaceholder(tr(photos.isEmpty() && files.isEmpty() ? "messenger.message_placeholder" : "telegram.caption_placeholder"));
         input.render(g, mouseX, mouseY);
-        boolean canSend = !input.text().isBlank() || (!photos.isEmpty() && editing == 0);
+        boolean canSend = !input.text().isBlank() || ((!photos.isEmpty() || !files.isEmpty()) && editing == 0);
         int bx = w - 24;
         boolean hovered = PhoneDraw.inside(mouseX, mouseY, bx, top + 1, 18, 18);
         if (!canSend && ready && editing == 0) {
@@ -988,6 +1013,7 @@ final class TgChatView extends TgView {
             menu.add(tr("telegram.edit"), () -> {
                 replyTo = 0;
                 photos.clear();
+                files.clear();
                 editing = m.id;
                 input.setText(t.text.text);
                 input.setFocused(true);
@@ -1016,42 +1042,49 @@ final class TgChatView extends TgView {
         replyTo = 0;
     }
 
-    /** Фото или файлы из буфера обмена (Ctrl+V при пустом текстовом буфере или «+» → «Из буфера обмена»). */
+    /**
+     * Фото или файлы из буфера обмена (Ctrl+V при пустом текстовом буфере или «+» → «Из буфера обмена»): прикрепляются
+     * к сообщению, как через «+» → фото; отправка — обычной кнопкой (текст поля — подпись).
+     */
     private void pasteFromClipboard() {
         if (editing != 0 || recorder != null) {
             return;
         }
-        dev.blockphone.fabric.client.storage.ClipboardImage.paste(files -> {
-            if (files.isEmpty()) {
+        dev.blockphone.fabric.client.storage.ClipboardImage.paste(found -> {
+            if (found.isEmpty()) {
                 app.showDialog(new PhoneDialog(tr("telegram.clip_title"), tr("telegram.clip_empty"), "OK", false, () -> {
                 }));
                 return;
             }
-            List<java.nio.file.Path> list = files.subList(0, Math.min(10, files.size()));
-            String names = String.join(", ", list.stream().map(f -> f.getFileName().toString()).toList());
-            app.showDialog(new PhoneDialog(tr("telegram.clip_title"), tr("telegram.clip_message", list.size(), names),
-                    tr("telegram.clip_send"), false, () -> sendClipboard(list)));
+            for (java.nio.file.Path f : found) {
+                String n = f.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                boolean image = n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".webp")
+                       ;
+                if (image && photos.size() < MAX_PHOTOS) {
+                    PhotoStore.Photo photo = new PhotoStore.Photo(f, 0);
+                    if (!photos.contains(photo)) {
+                        photos.add(photo);
+                    }
+                } else if (!image && files.size() < MAX_PHOTOS && !files.contains(f)) {
+                    files.add(f);
+                }
+            }
+            input.setFocused(true);
         });
     }
 
-    private void sendClipboard(List<java.nio.file.Path> files) {
-        List<java.nio.file.Path> images = new java.util.ArrayList<>();
-        List<java.nio.file.Path> docs = new java.util.ArrayList<>();
-        for (java.nio.file.Path f : files) {
-            String n = f.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
-            (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".webp") ? images : docs).add(f);
+    /** Ctrl+V вставляет текст, только если в буфере обычный текст (не пусто и не путь к файлу). */
+    private static boolean pastesText() {
+        String text = Minecraft.getInstance().keyboardHandler.getClipboard().strip();
+        if (text.isEmpty()) {
+            return false;
         }
-        String caption = input.text().strip();
-        if (!images.isEmpty()) {
-            Telegram.sendPhotos(chatId, images, caption, replyTo);
-            caption = "";
+        try {
+            String path = text.startsWith("\"") && text.endsWith("\"") && text.length() > 1 ? text.substring(1, text.length() - 1) : text;
+            return text.length() > 400 || text.contains("\n") || !java.nio.file.Files.isRegularFile(java.nio.file.Path.of(path));
+        } catch (RuntimeException e) {
+            return true;
         }
-        if (!docs.isEmpty()) {
-            Telegram.sendDocuments(chatId, docs, caption, images.isEmpty() ? replyTo : 0);
-        }
-        replyTo = 0;
-        input.setText("");
-        scroll = 0;
     }
 
     private void submit() {
@@ -1064,9 +1097,15 @@ final class TgChatView extends TgView {
             input.setText("");
             return;
         }
-        if (!photos.isEmpty()) {
-            Telegram.sendPhotos(chatId, photos.stream().map(PhotoStore.Photo::file).toList(), text, replyTo);
+        if (!photos.isEmpty() || !files.isEmpty()) {
+            if (!photos.isEmpty()) {
+                Telegram.sendPhotos(chatId, photos.stream().map(PhotoStore.Photo::file).toList(), text, replyTo);
+            }
+            if (!files.isEmpty()) {
+                Telegram.sendDocuments(chatId, List.copyOf(files), photos.isEmpty() ? text : "", photos.isEmpty() ? replyTo : 0);
+            }
             photos.clear();
+            files.clear();
         } else if (!text.isEmpty()) {
             Telegram.sendText(chatId, text, replyTo);
         } else {
@@ -1171,6 +1210,7 @@ final class TgChatView extends TgView {
             menu.close();
             replyTo = 0;
             photos.clear();
+            files.clear();
             panel = true;
         } else if (what.equals("gifs")) {
             panelTab = 1;
@@ -1194,7 +1234,7 @@ final class TgChatView extends TgView {
             }
             return true;
         }
-        if (event.isPaste() && Minecraft.getInstance().keyboardHandler.getClipboard().isEmpty()) {
+        if (event.isPaste() && !pastesText()) {
             pasteFromClipboard();
             return true;
         }
