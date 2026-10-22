@@ -494,7 +494,7 @@ public final class StoreApp extends PhoneApp {
     private void sendReview(AppStore.Entry e) {
         reviewInput.setFocused(false);
         AppStore.sendReview(e, myStars, reviewInput.text().strip(), error -> toast(error == null ? PhoneLang.tr("store.review_sent")
-                : error.startsWith("offline") ? PhoneLang.tr("store.review_offline") + (error.length() > 8 ? " (" + error.substring(8) + ")" : "")
+                : error.equals("one_per_ip") ? PhoneLang.tr("store.review_one_per_ip")
                 : error.equals("not_configured") ? PhoneLang.tr("store.review_off")
                 : PhoneLang.tr("store.review_failed", error)));
     }

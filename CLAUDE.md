@@ -343,8 +343,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `blockphone/cache/store/`; `allowFiles` — file: только для DevShots).
   Ход установки — `progress(id)` (0..1, 1 — распаковка), `formatSize`. Оценки и отзывы (только `OFFICIAL`, `reviewable`):
   `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
-  `sendReview` — `services().sessionService().joinServer` со случайным serverId → POST `PUBLISH_URL/review`; приёмник
-  проверяет Mojang `hasJoined`, пишет в main; сводку собирает `build_catalog.py` (Actions на reviews/**). `apps/store/StoreApp` — вкладки Каталог (поиск) /
+  `sendReview` → POST `PUBLISH_URL/review` (app, stars, text, player, version); приёмник: один отзыв на приложение с ника
+  и с подсети (IPv4 /24, IPv6 /64, в файле — HMAC), пишет в main; сводку собирает `build_catalog.py` (Actions на reviews/**).
+  Проверка Mojang невозможна: Mojang отвечает 403 на запросы с Cloudflare. Выкладка приёмника — `wrangler deploy` в
+  store-repo (wrangler.toml, keep_vars); wrangler и gh стоят в `%LOCALAPPDATA%\Programs` (вход владельца). `apps/store/StoreApp` — вкладки Каталог (поиск) /
   Установленные / Источники, страница приложения, подтверждение с разрешениями. Официальный каталог владельца — `AppStore.OFFICIAL` (github.com/Jdhihfgiuahfgy/blockphone-apps,
   всегда в источниках), публикация с телефона — «↑» во вкладке «Установленные» → `AppStore.publish` (zip папки → POST на
   `PUBLISH_URL` — «приёмник» Cloudflare Worker `store-repo/worker.js`, ключ GitHub только в нём → Pull Request; пока URL

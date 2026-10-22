@@ -825,7 +825,6 @@
   "store.review_sending": "Sending…",
   "store.no_reviews": "No reviews yet — be the first.",
   "store.review_sent": "Thanks! Everyone will see your review in a couple of minutes.",
-  "store.review_offline": "Only a licensed Minecraft account (Microsoft sign-in) can rate apps.",
   "store.review_off": "Reviews are not enabled by the store owner yet.",
   "store.review_failed": "Could not send the review: %s",
   "app.clock": "Clock",
@@ -868,5 +867,6 @@
   "clock.stop": "Stop",
   "clock.timer_done": "Timer: time is up",
   "clock.alarm": "Alarm",
-  "clock.open_to_stop": "Open Clock to turn it off"
+  "clock.open_to_stop": "Open Clock to turn it off",
+  "store.review_one_per_ip": "Someone with another nickname has already reviewed this app from your IP."
 }

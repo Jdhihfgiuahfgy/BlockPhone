@@ -825,7 +825,6 @@
   "store.review_sending": "Отправка…",
   "store.no_reviews": "Отзывов пока нет — будьте первым.",
   "store.review_sent": "Спасибо! Отзыв появится у всех через пару минут.",
-  "store.review_offline": "Оценивать можно только с лицензионного аккаунта Minecraft (вход через Microsoft).",
   "store.review_off": "Отзывы ещё не включены владельцем магазина.",
   "store.review_failed": "Не удалось отправить отзыв: %s",
   "app.clock": "Часы",
@@ -868,5 +867,6 @@
   "clock.stop": "Стоп",
   "clock.timer_done": "Таймер: время вышло",
   "clock.alarm": "Будильник",
-  "clock.open_to_stop": "Откройте «Часы», чтобы выключить"
+  "clock.open_to_stop": "Откройте «Часы», чтобы выключить",
+  "store.review_one_per_ip": "С вашего IP уже оставлен отзыв к этому приложению от другого ника."
 }

@@ -561,10 +561,10 @@ public final class AppStore {
     /** Свой отзыв в загруженном списке или null. */
     public static @Nullable Review myReview(String id) {
         List<Review> list = REVIEWS.get(id);
-        String me = Minecraft.getInstance().getUser().getProfileId().toString().replace("-", "");
+        String me = Minecraft.getInstance().getUser().getName();
         if (list != null) {
             for (Review r : list) {
-                if (r.uuid().replace("-", "").equalsIgnoreCase(me)) {
+                if (r.player().equalsIgnoreCase(me)) {
                     return r;
                 }
             }
@@ -577,10 +577,8 @@ public final class AppStore {
     }
 
     /**
-     * Отправить оценку (1–5) и текст. Кто пишет, подтверждает сервер Mojang: игра «входит» на выдуманный сервер
-     * (как при входе на любой сервер — пароль и токен никуда не уходят), приёмник проверяет это у Mojang. Поэтому
-     * отзыв может оставить только лицензионный аккаунт, один на приложение (новый заменяет старый).
-     * done(null) — принято, иначе текст ошибки. На потоке рендера.
+     * Отправить оценку (1–5) и текст. Один отзыв на приложение с одного ника и с одного IP (новый от того же ника
+     * заменяет старый) — это проверяет приёмник. done(null) — принято, иначе текст ошибки. На потоке рендера.
      */
     public static void sendReview(Entry entry, int stars, String text, Consumer<String> done) {
         String id = entry.id();
@@ -590,28 +588,15 @@ public final class AppStore {
         Minecraft mc = Minecraft.getInstance();
         var user = mc.getUser();
         String player = user.getName();
-        java.util.UUID profile = user.getProfileId();
-        String token = user.getAccessToken();
         String version = installed(id) != null ? installed(id) : entry.version();
         ClientFiles.IO.execute(() -> {
             String error = null;
             try {
-                byte[] random = new byte[16];
-                new java.security.SecureRandom().nextBytes(random);
-                String serverId = HexFormat.of().formatHex(random);
-                try {
-                    mc.services().sessionService().joinServer(profile, token, serverId);
-                } catch (Exception e) {
-                    // Игра не смогла подтвердить вход у Mojang (нет лицензии, вход устарел, лаунчер без входа Microsoft).
-                    BlockPhoneFabric.LOGGER.warn("App store: Mojang session check failed for {}", player, e);
-                    throw new IOException("offline:" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-                }
                 JsonObject body = new JsonObject();
                 body.addProperty("app", id);
                 body.addProperty("stars", stars);
                 body.addProperty("text", text);
                 body.addProperty("player", player);
-                body.addProperty("serverId", serverId);
                 body.addProperty("version", version);
                 HttpRequest request = HttpRequest.newBuilder(URI.create(PUBLISH_URL + "/review")).timeout(Duration.ofSeconds(30))
                         .header("Content-Type", "application/json")
@@ -636,9 +621,8 @@ public final class AppStore {
                 if (result == null) {
                     // Сразу показать свой отзыв (файл на GitHub обновится через минуту-другую).
                     List<Review> list = new ArrayList<>(REVIEWS.getOrDefault(id, List.of()));
-                    String me = profile.toString().replace("-", "");
-                    list.removeIf(r -> r.uuid().replace("-", "").equalsIgnoreCase(me));
-                    list.add(0, new Review(me, player, stars, text, version, System.currentTimeMillis()));
+                    list.removeIf(r -> r.player().equalsIgnoreCase(player));
+                    list.add(0, new Review(player.toLowerCase(Locale.ROOT), player, stars, text, version, System.currentTimeMillis()));
                     REVIEWS.put(id, list);
                     double sum = 0;
                     for (Review r : list) {
