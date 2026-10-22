@@ -209,21 +209,31 @@ function H.crosshair(G, sw, sh, spread, enemyName)
   local w = D.WEAPONS[G.me.wpn]
   local c = G.set.cross or "#FF4CFF6A"
   if G.me.zoom > 0 then return end
+  -- Рисуем в четвертях точки экрана: тонкие линии и маленький зазор (раскрывается от разброса, но немного).
+  gfx.push()
+  gfx.translate(cx, cy)
+  gfx.scale(0.25)
   if w.id == D.AWP then
-    gfx.rect(cx, cy, 1, 1, c)
+    gfx.rect(-1, -1, 3, 3, c)
   else
-    local gap = 2 + floor(spread * 160)
-    gfx.rect(cx - gap - 3, cy, 3, 1, c)
-    gfx.rect(cx + gap + 1, cy, 3, 1, c)
-    gfx.rect(cx, cy - gap - 3, 1, 3, c)
-    gfx.rect(cx, cy + gap + 1, 1, 3, c)
+    local gap = 3 + min(12, floor(spread * 120))
+    local len = 6
+    gfx.rect(-gap - len, 0, len, 2, c)
+    gfx.rect(gap + 2, 0, len, 2, c)
+    gfx.rect(0, -gap - len, 2, len, c)
+    gfx.rect(0, gap + 2, 2, len, c)
   end
+  gfx.pop()
   if G.hitT > 0 then
     local hc = G.hitHead and "#FFFF4040" or "#FFFFFFFF"
-    gfx.line(cx - 6, cy - 6, cx - 3, cy - 3, hc, 1)
-    gfx.line(cx + 6, cy - 6, cx + 3, cy - 3, hc, 1)
-    gfx.line(cx - 6, cy + 6, cx - 3, cy + 3, hc, 1)
-    gfx.line(cx + 6, cy + 6, cx + 3, cy + 3, hc, 1)
+    gfx.push()
+    gfx.translate(cx, cy)
+    gfx.scale(0.25)
+    gfx.line(-18, -18, -8, -8, hc, 2)
+    gfx.line(18, -18, 8, -8, hc, 2)
+    gfx.line(-18, 18, -8, 8, hc, 2)
+    gfx.line(18, 18, 8, 8, hc, 2)
+    gfx.pop()
   end
   if enemyName then center(enemyName, cx, cy + 10, "#FFFF5050", 0.5) end
 end

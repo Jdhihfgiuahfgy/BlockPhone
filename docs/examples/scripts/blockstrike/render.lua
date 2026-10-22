@@ -214,7 +214,7 @@ end
 
 -- --- Кадр ---
 
--- cam = {x, y, z, yaw, pitch, fov}; hide — id игрока, которого не рисовать (свой персонаж / за кем следим).
+-- Кадр мира без g3d.finish. cam = {x, y, z, yaw, pitch, fov}; hide — id игрока, которого не рисовать (свой персонаж / за кем следим).
 function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
   local map = V.map
   local def = map.def
@@ -275,7 +275,7 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
       if k < 0.3 then g3d.sprite(R.T("spark"), f.x, f.y, f.z, 1.2, 1.2) end
     end
   end
-  g3d.finish()
+  -- g3d.finish() — в main.lua: после мира ещё рисуется оружие в руках
 end
 
 -- Камера внутри дыма — сплошная серая пелена (клубы вблизи не рисуются).

@@ -13,7 +13,10 @@ local Sim = require("sim")
 local N = require("netcode")
 local R = require("render")
 local H = require("hud")
-local MUZZLE = require("muzzles")
+local SND = require("sounds")
+local VM = require("viewmodel")
+-- dev.lua кладёт только сценарий автоснимков (DevShots) — выдаёт оружие для снимков; у игроков его нет.
+local hasDev, DEV = pcall(require, "dev")
 
 local floor, min, max, abs, sqrt, random = math.floor, math.min, math.max, math.abs, math.sqrt, math.random
 local sin, cos, rad, tan = math.sin, math.cos, math.rad, math.tan
@@ -43,9 +46,29 @@ local function saveSettings() storage.set("settings", G.set) end
 
 -- --- Звук ---
 
-local function play(name, vol, pitch)
-  vol = vol * (G.set.volume or 1)
-  if vol > 0.02 then sound.play(name, min(1, vol), pitch or 1) end
+-- Свои звуки (sounds/*.wav). Телефон играет не больше 8 одновременно: следим сами — тихие и частые (шаги,
+-- попадания в стену) пропускаем, если звучит много, а важный звук вытесняет самый старый.
+local LOW = {step1 = true, step2 = true, step3 = true, impact = true, ricochet = true, nade_bounce = true, land = true}
+local playing = {}
+
+local function sfx(name, vol)
+  vol = (vol or 1) * (G.set.volume or 1)
+  if vol < 0.03 then return end
+  local now = time.clock()
+  for i = #playing, 1, -1 do
+    if playing[i].t < now then table.remove(playing, i) end
+  end
+  if #playing >= 7 then
+    if LOW[name] then return end
+    local victim = 1
+    for i, p in ipairs(playing) do
+      if LOW[p.name] then victim = i break end
+    end
+    sound.stop(playing[victim].id)
+    table.remove(playing, victim)
+  end
+  local id = sound.play("sounds/" .. name .. ".wav", min(1, vol))
+  if id and id > 0 then playing[#playing + 1] = {id = id, name = name, t = now + (SND[name] or 1)} end
 end
 
 local function camPos()
@@ -54,12 +77,15 @@ local function camPos()
   return G.me.x, G.me.z
 end
 
-local function play3d(name, x, z, vol, pitch, range)
+-- Звук в мире: тише с расстоянием (k² — как на слух).
+local function sfx3d(name, x, z, vol, range)
   local cx, cz = camPos()
   local d = sqrt((x - cx) ^ 2 + (z - cz) ^ 2)
   local k = 1 - d / (range or 40)
-  if k > 0 then play(name, vol * k, pitch) end
+  if k > 0 then sfx(name, vol * (0.25 + 0.75 * k * k)) end
 end
+
+local function shotSound(w) return w.slot == 3 and "knife_swing" or "shot_" .. w.key end
 
 -- --- Свой игрок (управление на этом телефоне) ---
 
@@ -92,7 +118,7 @@ local function selectWeapon(wid)
   me.wpn = wid
   me.switchT = 0.35
   me.reload, me.zoom = 0, 0
-  play("ui.button.click", 0.25, 1.6)
+  sfx("deploy", 0.5)
 end
 
 local function pushAction(...)
@@ -136,7 +162,7 @@ local function syncMe(P)
   end
   if P.hp < G.lastHp and P.alive then
     G.hurtT = 0.5
-    play("entity.arrow.hit_player", 0.7, 0.9)
+    sfx("hurt", 0.8)
   end
   G.lastHp = P.hp
   if P.flash > G.flash + 0.25 then G.flash = P.flash end
@@ -207,7 +233,7 @@ local function updateMove(dt, P)
     me.vy = me.vy - Sim.GRAVITY * dt
     me.y = me.y + me.vy * dt
     if me.y <= g then
-      if me.vy < -6 then play("block.wooden_button.click_off", 0.4, 0.5) end
+      if me.vy < -4 then sfx("land", 0.6) end
       me.y, me.vy = g, 0
     end
   else
@@ -223,7 +249,7 @@ local function updateMove(dt, P)
     me.stepT = me.stepT + dt
     if me.stepT > 0.36 then
       me.stepT = 0
-      play("block.wooden_button.click_off", 0.12, 0.6 + random() * 0.15)
+      sfx("step" .. random(1, 3), 0.35)
     end
   end
   -- Подсказка про оружие на земле.
@@ -248,7 +274,8 @@ local function startReload()
   local am = me.ammo[me.wpn]
   if not w.clip or not am or am[2] <= 0 or am[1] >= w.clip or me.reload > 0 then return end
   me.reload, me.reloadFor, me.zoom = w.reload, me.wpn, 0
-  play("block.chest.open", 0.35, 1.8)
+  me.reloadSnd = false
+  sfx("reload_out", 0.7)
 end
 
 local function finishReload()
@@ -259,7 +286,6 @@ local function finishReload()
     local take = min(w.clip - am[1], am[2])
     am[1], am[2] = am[1] + take, am[2] - take
   end
-  play("block.chest.close", 0.3, 1.8)
 end
 
 local function rayDir(yaw, pitch, ax, ay)
@@ -277,7 +303,7 @@ local function registerHit(pid, part, dist, wid)
   me.hitSeq = me.hitSeq + 1
   me.hits[#me.hits + 1] = {me.hitSeq, pid, part, wid, floor(dist * 10)}
   G.hitT, G.hitHead = 0.18, part == D.HEAD
-  play(part == D.HEAD and "block.note_block.bell" or "entity.arrow.hit_player", 0.5, part == D.HEAD and 2 or 1.4)
+  sfx(wid == D.KNIFE and "knife_hit" or (part == D.HEAD and "hit_head" or "hit_body"), 0.7)
 end
 
 local function currentSpread(w)
@@ -299,7 +325,7 @@ local function throwNade(cam)
   pushAction("nade", me.wpn, floor(cam.x * 100), floor(cam.y * 100), floor(cam.z * 100),
     floor((fx * v + me.vx * 0.5) * 100), floor((fy * v) * 100), floor((fz * v + me.vz * 0.5) * 100))
   me.nadeCool = 0.8
-  play("entity.villager.no", 0.2, 2)
+  sfx("nade_throw", 0.7)
   -- после броска — к последнему оружию (граната кончится у хоста)
   local left = P[f] - 1
   if left <= 0 then
@@ -336,7 +362,7 @@ local function fire(sw, sh, now, cam)
   if w.slot == 3 then
     me.cool = w.cool
     me.shots = me.shots + 1
-    play(w.sound, 0.5, w.pitch)
+    sfx("knife_swing", 0.6)
     local id, dist = g3d.pick(sw / 2, sh / 2)
     if id and id >= 4 and dist and dist < w.reach then
       local pid, part = floor(id / 4), id % 4
@@ -348,7 +374,7 @@ local function fire(sw, sh, now, cam)
   local am = me.ammo[me.wpn]
   if not am or am[1] <= 0 then
     me.cool = 0.25
-    play("block.wooden_button.click_on", 0.4, 2)
+    sfx("dry", 0.6)
     if am and am[2] > 0 then startReload() end
     return
   end
@@ -357,7 +383,7 @@ local function fire(sw, sh, now, cam)
   me.cool = w.cool
   me.lastShot = now
   me.flashT = now
-  play(w.sound, 0.55, w.pitch)
+  sfx(shotSound(w), 0.75)
   local spread = currentSpread(w)
   for _ = 1, w.pellets or 1 do
     local a = random() * math.pi * 2
@@ -418,7 +444,7 @@ local function updateOthers(dt, now)
     if p.id ~= me.id then
       if p.lastShots and p.shots > p.lastShots and p.alive then
         local w = D.WEAPONS[p.wpn] or D.WEAPONS[1]
-        if w.sound then play3d(w.sound, p.rx, p.rz, 0.55, w.pitch, 50) end
+        sfx3d(shotSound(w), p.rx, p.rz, w.slot == 3 and 0.4 or 0.75, w.slot == 3 and 12 or 60)
         p.flashT = now
       end
       p.lastShots = p.shots
@@ -426,7 +452,7 @@ local function updateOthers(dt, now)
         p.stepT = (p.stepT or 0) + dt
         if p.stepT > 0.38 then
           p.stepT = 0
-          play3d("block.wooden_button.click_off", p.rx, p.rz, 0.25, 0.55, 16)
+          sfx3d("step" .. random(1, 3), p.rx, p.rz, 0.45, 18)
         end
       end
     end
@@ -453,47 +479,43 @@ local function onEvent(e, now)
     G.feed[#G.feed + 1] = {killer = e[3], victim = e[4], kn = kn, kt = kt, vn = vn, vt = vt, wn = w and w.name or "?",
       head = e[6] == 1, t = now}
     while #G.feed > 6 do table.remove(G.feed, 1) end
-    if e[3] == me.id and e[4] ~= me.id then play("entity.experience_orb.pickup", 0.7, e[6] == 1 and 1.5 or 1.1) end
+    if e[3] == me.id and e[4] ~= me.id then sfx("kill", 0.6) end
     if e[4] == me.id then
       G.center = {text = e[3] > 0 and e[3] ~= me.id and ("Вас убил " .. kn) or "Вы погибли", color = "#FFFF6060", t = now}
       me.spec, me.zoom = nil, 0
-      play("entity.villager.death", 0.7, 0.8)
+      sfx("death", 0.8)
     end
   elseif kind == "round" then
     G.center = {text = "Раунд " .. e[3], sub = "Покупка — B · " .. D.TEAM_NAME[myTeam ~= 0 and myTeam or 1], t = now, life = 2.5}
     G.buyCat = nil
   elseif kind == "go" then
     G.small = {text = myTeam == D.T and "Вперёд! Заложите бомбу на A или B" or "Вперёд! Защитите точки A и B", t = now}
-    play("block.note_block.pling", 0.5, 1.4)
-    if G.menu == "buy" then
-      G.menu = nil
-      input.lockMouse(true)
-    end
+    sfx("round_start", 0.6)
   elseif kind == "end" then
     local win = e[3]
     G.center = {text = D.TEAM_NAME[win] .. " победили", sub = D.ROUND_REASON[e[4]] or "", color = D.TEAM_COLOR[win], t = now, life = 4.5}
-    if win == myTeam then play("entity.player.levelup", 0.6, 1.2) else play("block.note_block.bass", 0.7, 0.6) end
+    sfx(win == myTeam and "round_win" or "round_lose", 0.6)
   elseif kind == "plant" then
     G.center = {text = "Бомба заложена на точке " .. (e[4] == 1 and "A" or "B"), color = "#FFFF5050", t = now, life = 2.5}
-    play("block.note_block.bit", 0.8, 0.7)
+    sfx("bomb_planted", 0.8)
   elseif kind == "defuse" then
-    play("block.note_block.chime", 0.8, 1.2)
+    sfx("defused", 0.8)
   elseif kind == "boom" then
     local x, z = e[3] / 100, e[4] / 100
     R.addFx("boom", x, 0, z, 1.2, 6)
-    play3d("entity.generic.explode", x, z, 1.4, 0.55, 90)
+    sfx3d("bomb_explode", x, z, 1, 120)
     local cx, cz = camPos()
     if (cx - x) ^ 2 + (cz - z) ^ 2 < 400 then G.flash = max(G.flash, 1.2) end
   elseif kind == "he" then
     local x, y, z = e[3] / 100, e[4] / 100, e[5] / 100
     R.addFx("boom", x, y, z, 0.5, 2.6)
-    play3d("entity.generic.explode", x, z, 0.9, 1.0, 50)
+    sfx3d("he_explode", x, z, 1, 70)
   elseif kind == "fl" then
     local x, y, z = e[3] / 100, e[4] / 100, e[5] / 100
     R.addFx("flash", x, y, z, 0.3)
-    play3d("entity.generic.explode", x, z, 0.6, 1.9, 40)
+    sfx3d("flash_bang", x, z, 1, 60)
   elseif kind == "sm" then
-    play3d("entity.generic.explode", e[3] / 100, e[4] / 100, 0.35, 0.5, 30)
+    sfx3d("smoke_hiss", e[3] / 100, e[4] / 100, 0.8, 35)
   elseif kind == "half" then
     G.center = {text = "Смена сторон", sub = "Теперь вы — " .. D.TEAM_NAME[myTeam ~= 0 and myTeam or 1], t = now, life = 4}
   elseif kind == "over" then
@@ -503,16 +525,16 @@ local function onEvent(e, now)
   elseif kind == "join" then
     local n = feedName(e[3])
     G.small = {text = n .. " в игре", t = now}
-    play("block.note_block.pling", 0.3, 2)
+    sfx("pickup", 0.4)
   elseif kind == "left" then
     G.small = {text = "Игрок вышел, его место занял бот", t = now}
   elseif kind == "pick" then
-    if e[3] == me.id then play("entity.item.pickup", 0.6, 1) end
+    if e[3] == me.id then sfx("pickup", 0.6) end
   elseif kind == "bomb" then
     if e[3] == me.id then G.small = {text = "Вы подобрали бомбу (5 — в руки, E на точке — заложить)", t = now} end
   elseif kind == "planting" or kind == "defusing" then
     local p = V.players[e[3]]
-    if p and p.rx then play3d("block.stone_button.click_on", p.rx, p.rz, 0.6, kind == "planting" and 1.2 or 0.8, 25) end
+    if p and p.rx then sfx3d(kind == "planting" and "bomb_plant" or "defuse", p.rx, p.rz, 0.8, 30) end
   end
 end
 
@@ -834,36 +856,10 @@ end
 
 local function buy(item)
   pushAction("buy", item)
-  play("entity.item.pickup", 0.5, 1.3)
+  sfx("buy", 0.6)
 end
 
 -- --- Кадр игры ---
-
-local function viewmodel(sw, sh, now)
-  local me = G.me
-  local w = D.WEAPONS[me.wpn]
-  local vh = floor(sh * ((w.slot == 2 or w.slot == 3) and 0.5 or 0.62))
-  local vw = floor(vh * 1.6)
-  local sp = sqrt(me.vx * me.vx + me.vz * me.vz)
-  local bobX = sin(me.walkT * 3.2) * 3 * min(1, sp / 3)
-  local bobY = abs(cos(me.walkT * 3.2)) * 3 * min(1, sp / 3)
-  local kick = 0
-  if w.cool and w.clip and me.cool > 0 then kick = (me.cool / w.cool) * min(8, 2 + w.recoil * 1.5) end
-  local off = me.switchT / 0.35 * vh * 0.8
-  if me.reload > 0 then
-    local wr = D.WEAPONS[me.reloadFor]
-    local k = 1 - me.reload / (wr.reload or 1)
-    off = off + sin(math.pi * k) * vh * 0.45
-  end
-  local x = floor(sw - vw + 8 + bobX)
-  local y = floor(sh - vh + 6 + bobY + kick + off)
-  gfx.image("textures/v_" .. w.key .. ".png", x, y, vw, vh)
-  local mz = MUZZLE[w.key]
-  if w.clip and mz and now - me.flashT < 0.05 then
-    local fs = floor(vh * 0.32)
-    gfx.image("textures/v_flash.png", floor(x + vw * mz[1] - fs / 2), floor(y + vh * mz[2] - fs / 2), fs, fs)
-  end
-end
 
 local function spectateTarget()
   local V, me = G.V, G.me
@@ -928,6 +924,11 @@ local function gameFrame(dt, sw, sh)
   me.switchT = max(0, me.switchT - dt)
   me.nadeCool = max(0, me.nadeCool - dt)
   if me.reload > 0 then
+    local wr = D.WEAPONS[me.reloadFor]
+    if not me.reloadSnd and me.reload < (wr.reload or 1) * 0.45 then
+      me.reloadSnd = true
+      sfx("reload_in", 0.7)
+    end
     me.reload = me.reload - dt
     if me.reload <= 0 then
       me.reload = 0
@@ -957,7 +958,7 @@ local function gameFrame(dt, sw, sh)
     G.beepT = G.beepT - dt
     if G.beepT <= 0 then
       G.beepT = max(0.12, min(1, b.timer / 30))
-      play3d("block.note_block.pling", b.x, b.z, 0.6, 1.9, 45)
+      sfx3d("bomb_beep", b.x, b.z, 0.8, 50)
     end
   end
   -- Камера: своя или того, за кем наблюдаем.
@@ -981,6 +982,7 @@ local function gameFrame(dt, sw, sh)
   end
   G.cam = cam
   G.smoke = R.smokeCover(V, cam.x, cam.y, cam.z)
+  -- Кадр: мир → выстрелы (g3d.pick по миру, пока оружие ещё не нарисовано) → оружие в руках → вывод кадра.
   R.drawWorld(V, cam, 0, 0, sw, sh, QUALITY[G.set.quality], now, hide)
   local enemyName
   if alive then
@@ -990,7 +992,11 @@ local function gameFrame(dt, sw, sh)
       local v = V.players[floor(id / 4)]
       if v and v.team ~= P.team and v.alive then enemyName = v.name end
     end
-    if me.zoom > 0 then H.scope(sw, sh) else viewmodel(sw, sh, now) end
+    if me.zoom == 0 then VM.draw(cam, me, P.team, now) end
+  end
+  g3d.finish()
+  if alive then
+    if me.zoom > 0 then H.scope(sw, sh) end
     G.inBuy = M.inBuyZone(V.map, P.team, me.x, me.z)
     H.crosshair({me = me, set = {cross = CROSS[G.set.cross]}, hitT = G.hitT, hitHead = G.hitHead}, sw, sh, currentSpread(w), enemyName)
   end
@@ -1056,7 +1062,7 @@ function onMessage(from, data)
       G.lobbies[data.host] = {host = data.host, m = data.m, map = data.map, n = data.n, ft = data.ft, t = now, invite = t == "inv"}
       if t == "inv" then
         toast(data.host .. " зовёт в Block Strike — «Найти игру»")
-        sound.play("block.note_block.bell", 1, 1.4)
+        sfx("round_start", 0.8)
       end
     end
   elseif t == "join" then
@@ -1120,6 +1126,7 @@ function onStart()
   math.randomseed(time.now() % 1000000)
   loadSettings()
   R.init()
+  VM.init()
 end
 
 function onTick()
@@ -1154,6 +1161,7 @@ end
 
 function onKey(key)
   if G.state ~= "game" then return false end
+  if hasDev and type(DEV) == "table" and DEV.key and DEV.key(G, key, Sim) then return true end
   local me, V = G.me, G.V
   local P = V and V.players[me.id]
   if not P then return true end
@@ -1234,7 +1242,7 @@ function onClick(x, y, button)
     local w = D.WEAPONS[me.wpn]
     if w.scope and me.switchT <= 0 and me.reload <= 0 then
       me.zoom = (me.zoom + 1) % (#w.scope + 1)
-      play("ui.button.click", 0.3, 2)
+      sfx("deploy", 0.4)
     end
   end
 end

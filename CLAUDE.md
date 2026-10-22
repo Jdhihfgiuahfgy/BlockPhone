@@ -27,7 +27,8 @@
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
 | `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
-| `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, radar из maps.lua, muzzles.lua, icon) |
+| `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, палитра 3D-оружия `vm_palette`, radar из maps.lua, icon) |
+| `python tools/gen_strike_sounds.py` | Звуки Block Strike (`sounds/*.wav`, синтез numpy) + `sounds.lua` (длительности) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
@@ -65,7 +66,8 @@
   Сценарий снимает только свою часть: общие снимки (все приложения в меню, мир, «на ходу») — только `all`/`design`/`hand`.
   Telegram дополнительно: `telegram_list`, `telegram_viewer`, `telegram_profile`.
   Сценарий `store` — только магазин (каталог-пример, полоса хода, выдуманные отзывы `AppStore.debugFakeReviews`).
-  Сценарий `strike`: копирует пример `blockstrike`, заставка → «Игра с ботами» → покупка → бой → пауза (`strike_*`).
+  Сценарий `strike`: копирует пример `blockstrike`, заставка → «Игра с ботами» → покупка → бой → пауза (`strike_*`);
+  кладёт в копию `dev.lua` (клавиша «0» выдаёт оружие по очереди) — снимки 3D-оружия `strike_w_<оружие>`, `strike_reload`.
   Логику Block Strike можно гонять без игры: LuaJ-jar из кэша Gradle, `java -cp luaj-jse.jar lua <скрипт>` в папке примера
   (`require("sim")` — матч ботов; main.lua — только с заглушками gfx/g3d/ui/net).
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
@@ -534,7 +536,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
   onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`;
-  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud.lua, хост считает игру и ботов, графика `tools/gen_strike.py`); DevShots `apps`
+  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud/viewmodel.lua, хост считает игру и ботов; оружие от
+  первого лица — 3D-модели из деталей рядом с глазом (масштаб 0,25 — не уходят в стены), рисуются после выстрелов-pick;
+  звуки — свои WAV через `sound.play`, не больше 7 сразу; графика `tools/gen_strike.py`, звуки `tools/gen_strike_sounds.py`); DevShots `apps`
   снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,
   хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
   ленты/музыки/Telegram. `AppRegistry.visible()` добавляет их на рабочий стол (Entry.custom, `label()`); «Настройки →

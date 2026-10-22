@@ -121,6 +121,24 @@ public final class DevShots {
                         }
                     }
                 }
+                // Только для снимков: клавиша «0» выдаёт по очереди оружие (3D-модели от первого лица).
+                Files.writeString(target.resolve("dev.lua"), """
+                        local list = {11, 12, 13, 6, 8, 10, 9, 7, 5, 3, 1, 14, 17}
+                        local i = 0
+                        return {key = function(G, key, Sim)
+                          if key ~= "0" or not G.S then return false end
+                          i = i % #list + 1
+                          local wid = list[i]
+                          local P = G.S.players[G.me.id]
+                          local w = require("data").WEAPONS[wid]
+                          if w.slot == 1 then P.pri = wid elseif w.slot == 2 then P.sec = wid
+                          elseif w.slot == 4 then P.he = 1 elseif w.slot == 5 then P.bomb = true end
+                          Sim.giveAmmo(P, wid)
+                          G.me.wpn, G.me.switchT, G.me.ammo[wid] = wid, 0, P.ammo[wid] and {math.max(1, P.ammo[wid][1] - 20), P.ammo[wid][2]}
+                          print("dev weapon " .. w.key)
+                          return true
+                        end}
+                        """);
                 dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
             } catch (Exception e) {
                 BlockPhoneFabric.LOGGER.warn("[DevShots] strike: {}", e.toString());
@@ -145,6 +163,16 @@ public final class DevShots {
             a.debugKey("b");
         }));
         shot(120, "strike_live");
+        String[] guns = {"ak47", "m4a4", "awp", "nova", "p90", "famas", "galil", "mp9", "deagle", "usp", "knife", "he", "c4"};
+        for (String gun : guns) {
+            step(1, mc -> customApp("blockstrike", a -> a.debugKey("0")));
+            shot(12, "strike_w_" + gun);
+        }
+        step(1, mc -> customApp("blockstrike", a -> {
+            a.debugKey("0"); // снова AK — перезарядка
+            a.debugKey("r");
+        }));
+        shot(25, "strike_reload");
         shot(300, "strike_fight");
         shot(300, "strike_later");
         step(1, mc -> phone(mc, PhoneScreen::back));

@@ -414,57 +414,22 @@ def icon(key):
     return out
 
 
-MUZZLES = {}
+# Палитра 3D-оружия от первого лица (viewmodel.lua, таблица C — тот же порядок): клетки 8×8 на картинке 64×64.
+PALETTE = [(30, 31, 34), (52, 54, 58), (92, 96, 102), (176, 180, 186), (140, 86, 44), (98, 58, 30), (78, 98, 62),
+           (96, 104, 72), (176, 156, 116), (64, 72, 64), (40, 38, 36), (128, 104, 66), (44, 64, 102), (196, 150, 112),
+           (70, 96, 60), (156, 162, 170), (92, 102, 112), (112, 98, 72), (40, 210, 90), (200, 40, 30), (150, 72, 32),
+           (70, 120, 150), (206, 210, 216), (232, 232, 232), (84, 54, 36), (194, 196, 200), (58, 66, 58), (220, 180, 40)]
 
 
-def viewmodel(key):
-    W, H = 160, 100
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    sleeve, glove = (70, 74, 70), (38, 36, 34)
-    if key in GUNS:
-        g = GUNS[key]
-        ln = min(1.0, g["len"])
-        stock = (W * (0.86 + 0.18 * ln), H * (0.8 + 0.18 * ln))
-        muzzle_full = (W * 0.27, H * 0.30)
-        muzzle = (stock[0] + (muzzle_full[0] - stock[0]) * (0.45 + 0.55 * ln), stock[1] + (muzzle_full[1] - stock[1]) * (0.45 + 0.55 * ln))
-
-        def tx(x, y):
-            t = x / 100.0
-            px = muzzle[0] + (stock[0] - muzzle[0]) * t
-            py = muzzle[1] + (stock[1] - muzzle[1]) * t
-            s = (0.5 + 1.1 * t) * (1.0 + 0.6 * (1 - ln))
-            return (px - y * s * 0.7, py + y * s * 2.2)
-        # тень/толщина: та же форма чуть ниже и темнее
-        shade = [(p[0], p[1], p[2], p[3], p[4], tone(p[5], 0.55)) if p[0] == "r" else ("p", p[1], tone(p[2], 0.55)) for p in g["parts"]]
-        draw_profile(d, shade, lambda x, y: (tx(x, y)[0] + 2, tx(x, y)[1] + 3))
-        draw_profile(d, g["parts"], tx)
-        mx, my = tx(0, 0)
-        MUZZLES[key] = (mx / W, my / H)
-        gx, gy = tx(70, 18)
-        # рука: рукав из-за правого нижнего угла, перчатка на рукояти
-        d.polygon([(gx - 4, gy + 2), (gx + 12, gy - 6), (W + 10, H - 6), (W + 10, H + 10), (gx + 14, H + 10)], fill=sleeve + (255,))
-        d.polygon([(gx - 4, gy + 2), (gx + 12, gy - 6), (W + 10, H - 6)], fill=tone(sleeve, 1.2))
-        d.rounded_rectangle([gx - 8, gy - 9, gx + 9, gy + 9], radius=4, fill=glove + (255,))
-        d.line([(gx - 6, gy - 3), (gx + 6, gy - 6)], fill=tone(glove, 1.6), width=1)
-        if ln > 0.7:
-            fx, fy = tx(38, 6)
-            d.polygon([(fx - 6, fy + 2), (fx + 6, fy - 2), (fx + 26, H + 10), (fx + 4, H + 10)], fill=tone(sleeve, 0.85))
-            d.rounded_rectangle([fx - 8, fy - 6, fx + 7, fy + 7], radius=4, fill=glove + (255,))
-    elif key in ("he", "flash", "smoke", "c4"):
-        cx, cy = W * 0.66, H * 0.62
-        d.polygon([(cx - 6, cy + 6), (cx + 14, cy), (W + 10, H - 10), (W + 10, H + 10), (cx + 4, H + 10)], fill=sleeve + (255,))
-        if key == "c4":
-            d.polygon([(cx - 24, cy - 14), (cx + 12, cy - 18), (cx + 18, cy + 2), (cx - 18, cy + 6)], fill=(96, 86, 64, 255))
-            d.polygon([(cx - 14, cy - 12), (cx + 4, cy - 14), (cx + 6, cy - 6), (cx - 12, cy - 4)], fill=(40, 190, 80, 255))
-            d.line([(cx - 18, cy), (cx + 16, cy - 4)], fill=(170, 40, 30, 255), width=2)
-        else:
-            col = {"he": (70, 96, 60), "flash": (150, 156, 164), "smoke": (90, 100, 110)}[key]
-            d.ellipse([cx - 16, cy - 22, cx + 10, cy + 4], fill=col + (255,))
-            d.ellipse([cx - 12, cy - 19, cx - 4, cy - 12], fill=tone(col, 1.4))
-            d.rectangle([cx - 8, cy - 28, cx + 2, cy - 21], fill=(60, 60, 64, 255))
-            d.line([(cx + 2, cy - 26), (cx + 12, cy - 16)], fill=(200, 200, 200, 255), width=2)
-        d.ellipse([cx - 4, cy - 6, cx + 16, cy + 12], fill=glove + (255,))
+def palette():
+    img = Image.new("RGBA", (64, 64), (255, 0, 255, 255))
+    px = img.load()
+    for i, c in enumerate(PALETTE):
+        cx, cy = (i % 8) * 8, (i // 8) * 8
+        for y in range(8):
+            for x in range(8):
+                n = random.randint(-6, 6)
+                px[cx + x, cy + y] = (clamp(c[0] + n), clamp(c[1] + n), clamp(c[2] + n), 255)
     return img
 
 
@@ -656,7 +621,6 @@ def main():
     save(flat_tex((160, 166, 172), 16, 6), "nade_flash")
     save(flat_tex((90, 100, 110), 16, 6), "nade_smoke")
     save(muzzle_flash(), "muzzle")
-    save(muzzle_flash(48), "v_flash")
     save(puff(48, (200, 200, 200)), "smoke")
     save(explosion(), "explosion")
     save(small_sprite(8, (20, 18, 16)), "impact")
@@ -665,13 +629,7 @@ def main():
     save(small_sprite(8, (255, 40, 30)), "bomb_light")
     for key in list(GUNS.keys()) + ["he", "flash", "smoke", "c4"]:
         save(icon(key), "i_" + key)
-        save(viewmodel(key), "v_" + key)
-    with open(os.path.join(APP, "muzzles.lua"), "w", encoding="utf-8", newline="\n") as f:
-        f.write("-- Где у картинок оружия от первого лица (textures/v_*.png) дуло — для вспышки. Создаёт tools/gen_strike.py.\n")
-        f.write("return {\n")
-        for k in sorted(MUZZLES):
-            f.write("  %s = {%.3f, %.3f},\n" % (k, MUZZLES[k][0], MUZZLES[k][1]))
-        f.write("}\n")
+    save(palette(), "vm_palette")
     hud_icons()
     save(scope(), "scope")
     radars()
