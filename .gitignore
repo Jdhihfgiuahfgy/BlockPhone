@@ -9,3 +9,6 @@ out/
 # Старые шаблоны IntelliJ (не входят в сборку)
 PhoneMod/
 PhoneModPlugin/
+
+# Кэш wrangler (выкладка приёмника)
+.wrangler/
