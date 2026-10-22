@@ -139,6 +139,14 @@ public class PhoneScreen extends Screen {
         }
     }
 
+    /** Экран, к которому вернуться при закрытии (главное меню, меню паузы); null — в игру. */
+    private @org.jetbrains.annotations.Nullable Screen parent;
+
+    public PhoneScreen withParent(@org.jetbrains.annotations.Nullable Screen parent) {
+        this.parent = parent;
+        return this;
+    }
+
     public void showDialog(PhoneDialog dialog) {
         this.dialog = dialog;
     }
@@ -159,13 +167,23 @@ public class PhoneScreen extends Screen {
         if (PhoneSettings.get().animations) {
             closingAt = System.currentTimeMillis();
         } else {
-            minecraft.setScreen(null);
+            minecraft.setScreen(parent);
         }
     }
 
     /** Закрыть открытый диалог (как «Отмена»). */
     public void closeDialog() {
         dialog = null;
+    }
+
+    /**
+     * Приложения общие у полного телефона и телефона «на ходу»: если приложение привязано к другому экрану (или
+     * отвязано), привязать к этому перед отрисовкой и вводом.
+     */
+    private void ensureAttached() {
+        if (app != null && app.attachedTo() != this) {
+            app.attach(this);
+        }
     }
 
     private void show(PhoneApp next) {
@@ -195,23 +213,29 @@ public class PhoneScreen extends Screen {
         if (PhonePin.hiding()) {
             return; // «на ходу» телефон лишь отдаёт мышь игре — приложения остаются открытыми
         }
+        if (PhonePin.pinned(this)) {
+            return; // прикреплённый телефон остаётся на экране (его закрыло другое окно игры) — приложения не отвязывать
+        }
         PhoneState.markClosed();
         if (app != null) {
             app.onHidden();
-            app.attach(null);
+            if (app.attachedTo() == this) {
+                app.attach(null);
+            }
         }
     }
 
     @Override
     public void tick() {
         if (closingAt >= 0 && System.currentTimeMillis() - closingAt >= ANIM_MS) {
-            minecraft.setScreen(null);
+            minecraft.setScreen(parent);
             return;
         }
         // Приложение могло стать недоступным (например, мессенджер после выхода с сервера).
         if (!locked && PhoneState.current() != app) {
             show(PhoneState.current());
         }
+        ensureAttached();
         app.tick();
     }
 
@@ -245,6 +269,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+        ensureAttached();
         applyOrientation();
         float py = phoneY();
         g.pose().pushMatrix();
@@ -468,6 +493,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        ensureAttached();
         if (closingAt >= 0) {
             return true;
         }
@@ -557,6 +583,7 @@ public class PhoneScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        ensureAttached();
         if (event.isEscape()) {
             if (dialog != null) {
                 dialog = null;

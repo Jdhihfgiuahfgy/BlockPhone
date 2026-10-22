@@ -175,11 +175,20 @@ async function review(request, env) {
   }
 
   // Это правда этот игрок? Игра только что «вошла» на сервер serverId — Mojang подтверждает.
-  const mojang = await fetch(
-    `https://sessionserver.mojang.com/session/minecraft/hasJoined?username=${encodeURIComponent(player)}&serverId=${serverId}`,
-  );
+  // Подтверждение входа у Mojang иногда появляется не сразу — несколько попыток с паузой.
+  let mojang;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    mojang = await fetch(
+      `https://sessionserver.mojang.com/session/minecraft/hasJoined?username=${encodeURIComponent(player)}&serverId=${serverId}`,
+      { headers: { "User-Agent": "blockphone-store" } },
+    );
+    if (mojang.status === 200) {
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
   if (mojang.status !== 200) {
-    return json({ error: "Mojang did not confirm the account (licensed Minecraft only)" }, 403);
+    return json({ error: `Mojang did not confirm the account (licensed Minecraft only; Mojang HTTP ${mojang.status})` }, 403);
   }
   const profile = await mojang.json();
   const uuid = String(profile.id || "");

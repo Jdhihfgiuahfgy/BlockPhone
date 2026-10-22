@@ -104,6 +104,17 @@ public final class PhoneSettings {
     public int remoteOffsetX = 0;
     public int remoteOffsetY = 48;
     public int remoteScale = 100;
+    /** Будильники приложения «Часы». */
+    public java.util.List<Alarm> alarms = new java.util.ArrayList<>();
+
+    /** Будильник: время, дни повтора (бит 0 — понедельник … бит 6 — воскресенье; 0 — один раз), подпись. */
+    public static final class Alarm {
+        public int hour = 7;
+        public int minute;
+        public boolean enabled = true;
+        public int days;
+        public String label = "";
+    }
 
     public static PhoneSettings get() {
         if (instance == null) {

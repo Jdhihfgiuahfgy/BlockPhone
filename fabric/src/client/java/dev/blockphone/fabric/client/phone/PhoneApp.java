@@ -29,6 +29,11 @@ public abstract class PhoneApp {
         return PhoneLang.tr("app." + id);
     }
 
+    /** К какому экрану телефона приложение сейчас привязано (null — ни к какому). */
+    final PhoneScreen attachedTo() {
+        return phone;
+    }
+
     final void attach(PhoneScreen phone) {
         this.phone = phone;
     }

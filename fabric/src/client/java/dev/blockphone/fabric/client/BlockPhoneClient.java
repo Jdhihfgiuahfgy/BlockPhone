@@ -36,6 +36,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
     public static KeyMapping musicPrevKey;
     /** Пульт музыки: открыт, пока клавиша зажата. */
     public static KeyMapping musicRemoteKey;
+    private static boolean wasInWorld;
 
     @Override
     public void onInitializeClient() {
@@ -56,7 +57,16 @@ public final class BlockPhoneClient implements ClientModInitializer {
                 "key.blockphone.music_remote", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, KEY_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Вышли из мира (на сервер или из одиночной игры) — музыка и голосовые замолкают. Событие отключения
+            // с некоторыми модами (FastQuit и т. п.) не приходит, поэтому проверяем и здесь.
+            boolean inWorld = client.level != null;
+            if (wasInWorld && !inWorld) {
+                MusicPlayer.stop();
+                dev.blockphone.fabric.client.voice.VoiceMessages.stop();
+            }
+            wasInWorld = inWorld;
             MusicPlayer.tick();
+            dev.blockphone.fabric.client.clock.ClockService.tick();
             dev.blockphone.fabric.client.music.yandex.YandexMusic.tick();
             Spotify.tick();
             dev.blockphone.fabric.client.music.lyrics.LyricsService.tick();
@@ -106,6 +116,19 @@ public final class BlockPhoneClient implements ClientModInitializer {
                 if (client.screen == null && client.player != null) {
                     CameraMode.toggle();
                 }
+            }
+        });
+        // Телефон и в меню игры (главное меню, пауза): клавиша телефона открывает его поверх, закрытие — назад в меню.
+        net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
+            if (screen instanceof net.minecraft.client.gui.screens.TitleScreen
+                    || screen instanceof net.minecraft.client.gui.screens.PauseScreen) {
+                net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents.allowKeyPress(screen).register((s, key) -> {
+                    if (openPhoneKey.matches(key) && client.screen == s) {
+                        client.setScreen(new PhoneScreen().withParent(s));
+                        return false;
+                    }
+                    return true;
+                });
             }
         });
         CameraMode.init();

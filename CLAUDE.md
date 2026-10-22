@@ -284,7 +284,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     полный экран — без строки состояния и навигации); их ставит `PhoneScreen.applyOrientation()` по
     `PhoneApp.landscape()/immersive()` перед отрисовкой и вводом, смена ориентации — анимация поворота корпуса;
     в полном экране «назад/домой» всплывают у нижнего края.
-  - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<» и кнопкой действия справа, полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`, `closeImmediately()`; диалоги `showDialog(PhoneDialog)`. ESC = закрыть диалог / назад.
+  - `PhoneScreen` — `Screen` поверх игры (не ставит на паузу). Открывается и в главном меню / меню паузы (клавиша через
+    `ScreenKeyboardEvents.allowKeyPress`), `withParent(screen)` — куда вернуться при закрытии. Приложения общие с телефоном
+    «на ходу»: `ensureAttached()` перед отрисовкой и вводом. Масштабирует виртуальные координаты под окно, анимация выезда, статус-бар, заголовок с «<» и кнопкой действия справа, полоска «домой». Навигация: `openApp(id)`, `goHome()`, `back()`, `closePhone()`, `closeImmediately()`; диалоги `showDialog(PhoneDialog)`. ESC = закрыть диалог / назад.
   - `PhoneDialog` — модальный диалог (заголовок, текст, «Отмена» + действие); `PhoneDialog.confirmDelete(...)`.
   - `PhoneApp` — базовый класс приложения: `render`, `mouseClicked/Released/Dragged/Scrolled`, `keyPressed`, `charTyped`, `tick`, `onShown/onHidden`, `onBack`, `capturesKeyboard` (не закрывать телефон клавишей при вводе текста), внешний вид (`hasHeader`, `transparentBackground`, `backgroundColor`, `headerColor`, `lightStatusBar`), кнопка в заголовке (`headerAction`, `headerActionColor`, `onHeaderAction`). Координаты — локальные для области содержимого.
   - `AppRegistry` — список приложений на рабочем столе (id, фабрика, условие видимости, значок-число, цвет приложения).
@@ -416,6 +418,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
   цвета + HEX / WALLPAPER — градиенты + свои картинки (родитель LOOK) / HUD — виджет музыки: предпросмотр «экрана игры» 16:9
   (родитель MUSIC); «назад» — `parent(page)`; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
+  `clock/ClockApp` («Часы»: вкладки Будильник/Секундомер/Таймер; работа в фоне — `clock/ClockService.tick()` из
+  BlockPhoneClient: таймер, секундомер, будильники `PhoneSettings.alarms` (Alarm: hour, minute, enabled, days — биты Пн..Вс,
+  0 — один раз, label), звонок до 60 с + тост + `PhoneNotifications` «clock:»; DevShots `clock`),
   `notes/` (`NotesStore` — JSON, атомарная запись; `NotesApp` — список с поиском + редактор, удаление через диалог),
   `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
   `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;

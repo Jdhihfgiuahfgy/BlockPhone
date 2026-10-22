@@ -602,7 +602,9 @@ public final class AppStore {
                 try {
                     mc.services().sessionService().joinServer(profile, token, serverId);
                 } catch (Exception e) {
-                    throw new IOException("offline");
+                    // Игра не смогла подтвердить вход у Mojang (нет лицензии, вход устарел, лаунчер без входа Microsoft).
+                    BlockPhoneFabric.LOGGER.warn("App store: Mojang session check failed for {}", player, e);
+                    throw new IOException("offline:" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                 }
                 JsonObject body = new JsonObject();
                 body.addProperty("app", id);
@@ -623,6 +625,7 @@ public final class AppStore {
                         // как есть
                     }
                     error = response.statusCode() == 404 || message.contains("author key") ? "not_configured" : message;
+                    BlockPhoneFabric.LOGGER.warn("App store: review for {} rejected: HTTP {} {}", id, response.statusCode(), message);
                 }
             } catch (Exception e) {
                 error = e.getMessage() == null ? e.toString() : e.getMessage();

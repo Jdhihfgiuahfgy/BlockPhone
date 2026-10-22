@@ -253,6 +253,21 @@ def glyph_calculator():
     return img
 
 
+def glyph_clock():
+    img, d = glyph_canvas()
+    # Циферблат: кольцо, засечки на 12/3/6/9 и две стрелки.
+    d.ellipse([36, 36, 220, 220], outline=WHITE, width=16)
+    for a in range(4):
+        ang = a * math.pi / 2
+        x1, y1 = 128 + math.cos(ang) * 70, 128 + math.sin(ang) * 70
+        x2, y2 = 128 + math.cos(ang) * 84, 128 + math.sin(ang) * 84
+        d.line([(x1, y1), (x2, y2)], fill=WHITE, width=12)
+    d.line([(128, 128), (128, 74)], fill=WHITE, width=14)
+    d.line([(128, 128), (166, 150)], fill=WHITE, width=14)
+    d.ellipse([116, 116, 140, 140], fill=WHITE)
+    return img
+
+
 def glyph_weather():
     img, d = glyph_canvas()
     sun(d, 104, 100, 34, WHITE)
@@ -615,7 +630,7 @@ if __name__ == "__main__":
         "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
         "gallery": glyph_gallery, "music": glyph_music, "notes": glyph_notes,
         "calculator": glyph_calculator, "weather": glyph_weather, "settings": glyph_settings,
-        "feed": glyph_feed, "store": glyph_store,
+        "feed": glyph_feed, "store": glyph_store, "clock": glyph_clock,
     }
     for name, fn in glyphs.items():
         save(fn(), GLYPH_DIR, name)

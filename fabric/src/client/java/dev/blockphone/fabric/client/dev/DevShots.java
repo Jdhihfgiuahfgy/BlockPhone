@@ -275,6 +275,58 @@ public final class DevShots {
         shot(30, "apps_script_timeout");
     }
 
+    /** Часы: будильники (список и редактор), секундомер с кругами, таймер (выбор и идёт), звонок. */
+    private void planClock() {
+        step(1, mc -> {
+            PhoneSettings s = PhoneSettings.get();
+            s.alarms.clear();
+            PhoneSettings.Alarm a = new PhoneSettings.Alarm();
+            a.hour = 7;
+            a.minute = 30;
+            a.days = 0x1F;
+            a.label = "Проверить ферму";
+            s.alarms.add(a);
+            PhoneSettings.Alarm b = new PhoneSettings.Alarm();
+            b.hour = 9;
+            b.minute = 0;
+            b.days = 0x60;
+            b.enabled = false;
+            s.alarms.add(b);
+            if (mc.screen == null) {
+                mc.setScreen(new PhoneScreen());
+            }
+            phone(mc, p -> p.openApp("clock"));
+        });
+        shot(30, "clock_alarms");
+        step(1, mc -> clockDebug("edit"));
+        shot(20, "clock_alarm_edit");
+        step(1, mc -> {
+            clockDebug("close");
+            clockDebug("stopwatch");
+            dev.blockphone.fabric.client.clock.ClockService.toggleStopwatch();
+        });
+        step(20, mc -> dev.blockphone.fabric.client.clock.ClockService.lap());
+        step(15, mc -> dev.blockphone.fabric.client.clock.ClockService.lap());
+        shot(15, "clock_stopwatch");
+        step(1, mc -> clockDebug("timer"));
+        shot(20, "clock_timer_pick");
+        step(1, mc -> dev.blockphone.fabric.client.clock.ClockService.startTimer(3000));
+        shot(20, "clock_timer_run");
+        shot(60, "clock_ringing");
+        step(1, mc -> {
+            dev.blockphone.fabric.client.clock.ClockService.stopRinging();
+            dev.blockphone.fabric.client.clock.ClockService.resetStopwatch();
+            PhoneSettings.get().alarms.clear();
+            PhoneSettings.get().save();
+        });
+    }
+
+    private static void clockDebug(String what) {
+        if (PhoneState.existing("clock") instanceof dev.blockphone.fabric.client.apps.clock.ClockApp app) {
+            app.debug(what);
+        }
+    }
+
     /** Магазин: каталог-пример из docs/examples/store (file:), ход установки, отзывы (выдуманные), установка. */
     private void planStore() {
         step(1, mc -> {
@@ -470,6 +522,8 @@ public final class DevShots {
             planTelegram();
         } else if (scenario.equals("apps")) {
             planApps();
+        } else if (scenario.equals("clock")) {
+            planClock();
         } else if (scenario.equals("store")) {
             planStore();
         } else if (scenario.equals("strike")) {

@@ -98,6 +98,7 @@ public final class AppRegistry {
         add("gallery", GalleryApp::new, 0xFFE0559B);
         add("music", MusicApp::new, 0xFFE5534B);
         add("notes", NotesApp::new, 0xFFF2C14E);
+        add("clock", dev.blockphone.fabric.client.apps.clock.ClockApp::new, 0xFF5C6BC0);
         add("calculator", CalculatorApp::new, 0xFFF29544);
         add("weather", WeatherApp::new, 0xFF4C8DF6);
         add("store", dev.blockphone.fabric.client.apps.store.StoreApp::new, 0xFF2DB87D);
