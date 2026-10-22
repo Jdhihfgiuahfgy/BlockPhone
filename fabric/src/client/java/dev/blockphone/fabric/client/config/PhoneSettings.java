@@ -104,6 +104,10 @@ public final class PhoneSettings {
     public int remoteOffsetX = 0;
     public int remoteOffsetY = 48;
     public int remoteScale = 100;
+    /** Звуки телефона: вид (notify, ringtone, alarm, timer) → «builtin:имя» или «file:имя» (папка blockphone/sounds). */
+    public java.util.Map<String, String> sounds = new java.util.HashMap<>();
+    /** Громкость звуков телефона, %. */
+    public int soundVolume = 100;
     /** Будильники приложения «Часы». */
     public java.util.List<Alarm> alarms = new java.util.ArrayList<>();
 

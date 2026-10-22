@@ -38,7 +38,6 @@ public final class ClockService {
     // Звонок.
     private static @Nullable String ringing;
     private static long ringStartedAt;
-    private static long nextBell;
 
     /** Будильник → минута, в которую он уже сработал («2026-10-22T07:30»), чтобы не звенеть дважды. */
     private static final Map<PhoneSettings.Alarm, String> FIRED = new HashMap<>();
@@ -143,13 +142,23 @@ public final class ClockService {
 
     public static void stopRinging() {
         ringing = null;
+        if (sound != null) {
+            sound.stop();
+            sound = null;
+        }
         PhoneNotifications.remove("clock:");
     }
 
-    private static void ring(String title, String text) {
+    /** Звучащий сигнал (свой звук или встроенный). */
+    private static dev.blockphone.fabric.client.sound.PhoneSounds.@Nullable Handle sound;
+
+    private static void ring(String title, String text, dev.blockphone.fabric.client.sound.PhoneSounds.Kind kind) {
+        if (sound != null) {
+            sound.stop();
+        }
+        sound = dev.blockphone.fabric.client.sound.PhoneSounds.play(kind, true);
         ringing = text.isEmpty() ? title : title + " · " + text;
         ringStartedAt = System.currentTimeMillis();
-        nextBell = 0;
         Minecraft mc = Minecraft.getInstance();
         mc.getToastManager().addToast(SystemToast.multiline(mc, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                 Component.literal(title), Component.literal(text.isEmpty() ? PhoneLang.tr("clock.open_to_stop") : text)));
@@ -164,18 +173,12 @@ public final class ClockService {
         if (timerEndAt > 0 && now >= timerEndAt) {
             timerEndAt = 0;
             timerRemaining = 0;
-            ring(PhoneLang.tr("clock.timer_done"), "");
+            ring(PhoneLang.tr("clock.timer_done"), "", dev.blockphone.fabric.client.sound.PhoneSounds.Kind.TIMER);
         }
         checkAlarms();
         if (ringing != null) {
             if (now - ringStartedAt > RING_MS) {
                 stopRinging();
-            } else if (now >= nextBell) {
-                nextBell = now + 1400;
-                Minecraft mc = Minecraft.getInstance();
-                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL.value(), 1.0f, 0.9f));
-                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL.value(), 1.26f, 0.7f));
-                mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_CHIME.value(), 1.5f, 0.5f));
             }
         }
     }
@@ -203,7 +206,7 @@ public final class ClockService {
                 changed = true;
             }
             ring(PhoneLang.tr("clock.alarm") + " " + String.format("%02d:%02d", alarm.hour, alarm.minute),
-                    alarm.label == null ? "" : alarm.label);
+                    alarm.label == null ? "" : alarm.label, dev.blockphone.fabric.client.sound.PhoneSounds.Kind.ALARM);
         }
         if (changed) {
             settings.save();

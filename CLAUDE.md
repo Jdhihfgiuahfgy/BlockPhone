@@ -335,6 +335,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
+- `sound/PhoneSounds` — звуки телефона мимо игры (javax.sound, свой поток, `Handle.stop()`): `Kind` NOTIFY/RINGTONE/ALARM/TIMER,
+  выбор `PhoneSettings.sounds` («builtin:имя» — синтез `sound/Tones`, «file:имя» — `blockphone/sounds`, MP3/OGG/WAV через
+  `music/audio/Decoders`), громкость `soundVolume` × общая; `NotifyPrefs.sound(app)` — звук уведомления; `playFile` — звуки
+  своих приложений (`ScriptHost.playOwnSound`, кэш `cache/appsounds`). Страница настроек SOUND (родитель NOTIFY).
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
 - «Магазин» (id `store`): `store/AppStore` (источники — `PhoneSettings.storeSources`, ссылки https на catalog.json;
   `refresh`, `parseCatalog` (ссылки относительно каталога), `install` — скачать zip (≤ 30 МБ), сверить sha256, распаковать

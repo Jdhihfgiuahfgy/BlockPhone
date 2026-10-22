@@ -29,6 +29,17 @@ public final class NotifyPrefs {
     }
 
     /** Звонить (звук входящего звонка). */
+    /** Звук уведомления приложения (по настройкам), не чаще раза в 1,5 с. */
+    public static void sound(String app) {
+        long now = System.currentTimeMillis();
+        if (allowed(app) && PhoneSettings.get().notifySound && now - lastSound > 1500) {
+            lastSound = now;
+            dev.blockphone.fabric.client.sound.PhoneSounds.play(dev.blockphone.fabric.client.sound.PhoneSounds.Kind.NOTIFY, false);
+        }
+    }
+
+    private static long lastSound;
+
     public static boolean ring() {
         return allowed("calls") && PhoneSettings.get().notifySound;
     }

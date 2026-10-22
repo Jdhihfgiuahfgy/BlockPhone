@@ -23,6 +23,13 @@ public record AppScript(String main, Map<String, String> sources, Map<String, by
     public static final int MAX_ASSETS = 256;
     public static final int MAX_ASSET_BYTES = 1024 * 1024;
     public static final int MAX_TOTAL_ASSETS = 16 * 1024 * 1024;
+    /** Звуки (*.ogg, *.wav, *.mp3) — тоже в assets: один не больше 4 МБ (общий предел — MAX_TOTAL_ASSETS). */
+    public static final int MAX_SOUND_BYTES = 4 * 1024 * 1024;
+
+    public static boolean isSound(String path) {
+        String lower = path.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".ogg") || lower.endsWith(".wav") || lower.endsWith(".mp3");
+    }
 
     /** Разрешён ли хост (без порта, в нижнем регистре). */
     public boolean hostAllowed(String host) {

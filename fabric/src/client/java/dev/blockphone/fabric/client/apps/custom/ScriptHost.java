@@ -331,6 +331,45 @@ final class ScriptHost {
 
     // --- События от телефона ---
 
+    // --- Свои звуки приложения (*.ogg/*.wav/*.mp3 из его папки) ---
+
+    private final java.util.Map<Integer, dev.blockphone.fabric.client.sound.PhoneSounds.Handle> sounds = new java.util.HashMap<>();
+    private int nextSound = 1;
+
+    /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 8 звуков сразу. */
+    private int playOwnSound(String path, float volume, boolean loop) {
+        String name = path.replace('\\', '/');
+        byte[] data = script.assets().get(name);
+        if (data == null || !dev.blockphone.common.apps.AppScript.isSound(name)) {
+            throw new LuaError("sound \"" + path + "\" not found in the app folder");
+        }
+        sounds.values().removeIf(h -> !h.playing());
+        if (sounds.size() >= 8) {
+            return 0;
+        }
+        try {
+            // Декодеру нужен файл: копия в кэше по отпечатку содержимого (один раз).
+            String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-1").digest(data));
+            String ext = name.substring(name.lastIndexOf('.'));
+            java.nio.file.Path file = dev.blockphone.fabric.client.storage.ClientFiles.root().resolve("cache").resolve("appsounds")
+                    .resolve(hash + ext);
+            if (!java.nio.file.Files.exists(file)) {
+                java.nio.file.Files.createDirectories(file.getParent());
+                java.nio.file.Files.write(file, data);
+            }
+            int id = nextSound++;
+            sounds.put(id, dev.blockphone.fabric.client.sound.PhoneSounds.playFile(file, Math.max(0, Math.min(1, volume)), loop));
+            return id;
+        } catch (Exception e) {
+            throw new LuaError("sound: " + e.getMessage());
+        }
+    }
+
+    private void stopSounds() {
+        sounds.values().forEach(dev.blockphone.fabric.client.sound.PhoneSounds.Handle::stop);
+        sounds.clear();
+    }
+
     void onShow() {
         start();
         callback("onShow");
@@ -338,6 +377,7 @@ final class ScriptHost {
 
     void onHide() {
         unlockMouse();
+        stopSounds();
         inputs.values().forEach(t -> t.setFocused(false));
         callback("onHide");
     }
@@ -974,6 +1014,9 @@ final class ScriptHost {
         LuaTable sound = new LuaTable();
         sound.set("play", fn(a -> {
             String name = a.checkjstring(1).replace("minecraft:", "");
+            if (dev.blockphone.common.apps.AppScript.isSound(name)) {
+                return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false));
+            }
             if (SOUND_PREFIXES.stream().noneMatch(name::startsWith)) {
                 throw new LuaError("sound \"" + name + "\" is not allowed (ui.*, block.note_block.*, ...)");
             }
@@ -981,6 +1024,18 @@ final class ScriptHost {
             if (event != null) {
                 Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(event,
                         (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1))), (float) Math.max(0, Math.min(1, a.optdouble(2, 1)))));
+            }
+            return LuaValue.NONE;
+        }));
+        sound.set("loop", fn(a -> LuaValue.valueOf(playOwnSound(a.checkjstring(1), (float) a.optdouble(2, 1), true))));
+        sound.set("stop", fn(a -> {
+            if (a.isnoneornil(1)) {
+                stopSounds();
+            } else {
+                dev.blockphone.fabric.client.sound.PhoneSounds.Handle h = sounds.remove(a.checkint(1));
+                if (h != null) {
+                    h.stop();
+                }
             }
             return LuaValue.NONE;
         }));

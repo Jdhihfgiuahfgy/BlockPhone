@@ -228,6 +228,13 @@ public final class AppLoader {
                         throw new AppException("images are too big (max " + AppScript.MAX_ASSETS + " files, 1 MB each)");
                     }
                     assets.put(rel, Files.readAllBytes(file));
+                } else if (AppScript.isSound(lower)) {
+                    long size = Files.size(file);
+                    totalAssets += size;
+                    if (assets.size() >= AppScript.MAX_ASSETS || size > AppScript.MAX_SOUND_BYTES || totalAssets > AppScript.MAX_TOTAL_ASSETS) {
+                        throw new AppException("sounds are too big (max 4 MB each, 16 MB with images)");
+                    }
+                    assets.put(rel, Files.readAllBytes(file));
                 }
             }
         } catch (IOException e) {

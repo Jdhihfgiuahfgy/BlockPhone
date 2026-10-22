@@ -39,6 +39,7 @@ public final class SocialNotifications {
             case FOLLOW -> PhoneLang.tr("social.notice.follow_text");
             default -> notice.text();
         };
+        dev.blockphone.fabric.client.phone.NotifyPrefs.sound("feed");
         if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("feed")) {
             Minecraft.getInstance().getToastManager().addToast(new NoticeToast(notice, title, text));
         }

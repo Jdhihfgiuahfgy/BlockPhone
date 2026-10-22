@@ -62,7 +62,7 @@ public final class AppStore {
     private static final long MAX_ZIP = 30L << 20;
     private static final long MAX_UNPACKED = 40L << 20;
     private static final int MAX_FILES = 400;
-    private static final Set<String> ALLOWED = Set.of(".json", ".lua", ".png", ".obj", ".txt", ".md");
+    private static final Set<String> ALLOWED = Set.of(".json", ".lua", ".png", ".obj", ".txt", ".md", ".ogg", ".wav", ".mp3");
     private static final HttpClient CLIENT = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(10)).build();
 

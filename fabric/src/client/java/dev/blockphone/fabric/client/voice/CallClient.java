@@ -144,17 +144,17 @@ public final class CallClient {
 
     /** Каждый тик: «рингтон» входящего вызова. */
     public static void tick() {
-        if (incoming() == null || !dev.blockphone.fabric.client.phone.NotifyPrefs.ring()) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastRing > RING_INTERVAL_MS) {
-            lastRing = now;
-            Minecraft mc = Minecraft.getInstance();
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL.value(), 1.2f, 0.8f));
-            mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.NOTE_BLOCK_BELL.value(), 1.5f, 0.6f));
+        boolean ring = incoming() != null && dev.blockphone.fabric.client.phone.NotifyPrefs.ring();
+        if (ring && (ringtone == null || !ringtone.playing())) {
+            ringtone = dev.blockphone.fabric.client.sound.PhoneSounds.play(dev.blockphone.fabric.client.sound.PhoneSounds.Kind.RINGTONE, true);
+        } else if (!ring && ringtone != null) {
+            ringtone.stop();
+            ringtone = null;
         }
     }
+
+    /** Играющий рингтон (свой звук или встроенный), null — тихо. */
+    private static dev.blockphone.fabric.client.sound.PhoneSounds.@org.jetbrains.annotations.Nullable Handle ringtone;
 
     public static void reset() {
         CALLS.clear();

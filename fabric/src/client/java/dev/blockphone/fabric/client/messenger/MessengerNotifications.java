@@ -26,6 +26,7 @@ public final class MessengerNotifications {
         String title = chat.type() == ChatType.GROUP
                 ? message.sender().name() + " → " + MessengerClient.title(chat)
                 : message.sender().name();
+        dev.blockphone.fabric.client.phone.NotifyPrefs.sound("messenger");
         if (dev.blockphone.fabric.client.phone.NotifyPrefs.toast("messenger")) {
             mc.getToastManager().addToast(new MessageToast(message, title));
         }

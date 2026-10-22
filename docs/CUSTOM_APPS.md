@@ -355,6 +355,10 @@ end
 * `toast(text)` — всплывающее сообщение внизу экрана.
 * `sound.play(name[, volume[, pitch]])` — звуки интерфейса: `ui.*`, `block.note_block.*`, `entity.experience_orb.pickup`,
   `entity.player.levelup` и некоторые другие (не звуки мира).
+* **Свои звуки:** положите `*.ogg`, `*.wav` или `*.mp3` в папку приложения (можно в подпапку, до 4 МБ на файл, вместе с
+  картинками — до 16 МБ). `sound.play("sounds/jump.ogg"[, volume])` — сыграть один раз, `sound.loop("music.ogg"[, volume])` —
+  по кругу; обе возвращают номер звука, `sound.stop(номер)` — остановить, `sound.stop()` — все. Одновременно — до 8 звуков;
+  громкость — «Громкость звуков» телефона × `volume` (0..1). Когда приложение закрывают, его звуки замолкают.
 * `clipboard.set(text)` (`clipboard`), `openUrl(url)` (`links`), `runCommand("spawn")` (`commands`) — с подтверждением.
 * `app.id`, `app.version`, `app.player` (свой ник), `app.lang`. `print(...)` пишет в лог игры.
 

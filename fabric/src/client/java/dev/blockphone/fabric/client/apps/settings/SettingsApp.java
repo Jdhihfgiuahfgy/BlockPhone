@@ -41,7 +41,7 @@ public final class SettingsApp extends PhoneApp {
     private static final int ROW_H = 20;
     private static final int MARGIN = 6;
 
-    private enum Page { MAIN, GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT, ACCENT, WALLPAPER, HUD, APPS, NOTIFY }
+    private enum Page { MAIN, GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT, ACCENT, WALLPAPER, HUD, APPS, NOTIFY, SOUND }
 
     /** Пункт главного меню: страница, цвет плитки, значок, краткое «что внутри». */
     private record Category(Page page, int color, String glyph, String titleKey, Supplier<String> summary) {
@@ -51,6 +51,7 @@ public final class SettingsApp extends PhoneApp {
         return switch (page) {
             case ACCENT, WALLPAPER -> Page.LOOK;
             case HUD -> Page.MUSIC;
+            case SOUND -> Page.NOTIFY;
             default -> Page.MAIN;
         };
     }
@@ -94,6 +95,7 @@ public final class SettingsApp extends PhoneApp {
             case HUD -> PhoneLang.tr("settings.music_hud");
             case APPS -> PhoneLang.tr("settings.apps");
             case NOTIFY -> PhoneLang.tr("settings.notify");
+            case SOUND -> PhoneLang.tr("settings.sound." + soundKind.key());
         };
     }
 
@@ -122,6 +124,12 @@ public final class SettingsApp extends PhoneApp {
     }
 
     private void open(Page next) {
+        if (page == Page.SOUND && next != Page.SOUND) {
+            dev.blockphone.fabric.client.sound.PhoneSounds.stopPreview();
+        }
+        if (next == Page.SOUND) {
+            soundFiles = dev.blockphone.fabric.client.sound.PhoneSounds.files();
+        }
         page = next;
         scroll = 0;
         hex.setFocused(false);
@@ -371,6 +379,7 @@ public final class SettingsApp extends PhoneApp {
             case HUD -> renderHud(g, mouseX, mouseY);
             case APPS -> renderApps(g, mouseX, mouseY);
             case NOTIFY -> renderSections(g, mouseX, mouseY, notifySections(), 4 - (int) scroll);
+            case SOUND -> renderSounds(g, mouseX, mouseY);
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
@@ -474,6 +483,18 @@ public final class SettingsApp extends PhoneApp {
                     dir -> dev.blockphone.fabric.client.phone.NotifyPrefs.toggleApp(app), null, false));
         }
         result.add(new Section("settings.notify.apps", apps));
+        List<Row> sounds = new ArrayList<>();
+        for (dev.blockphone.fabric.client.sound.PhoneSounds.Kind kind : dev.blockphone.fabric.client.sound.PhoneSounds.Kind.values()) {
+            sounds.add(new Row(() -> PhoneLang.tr("settings.sound." + kind.key()),
+                    () -> dev.blockphone.fabric.client.sound.PhoneSounds.label(dev.blockphone.fabric.client.sound.PhoneSounds.choice(kind)),
+                    dir -> {
+                        soundKind = kind;
+                        open(Page.SOUND);
+                    }, null, true));
+        }
+        sounds.add(new Row(() -> PhoneLang.tr("settings.sound.volume"), () -> s.soundVolume + "%",
+                dir -> s.soundVolume = Math.floorMod(s.soundVolume / 10 + dir, 11) * 10, null, false));
+        result.add(new Section("settings.sound.section", sounds));
         return result;
     }
 
@@ -680,6 +701,78 @@ public final class SettingsApp extends PhoneApp {
             PhoneDraw.rawRoundedRect(g, x - 2, y - 2, x + w + 2, y + h + 2, 3, PhoneTheme.accent());
         } else if (hovered) {
             PhoneDraw.rawRoundedRect(g, x - 1, y - 1, x + w + 1, y + h + 1, 2, PhoneTheme.border());
+        }
+    }
+
+    // --- Звуки ---
+
+    private dev.blockphone.fabric.client.sound.PhoneSounds.Kind soundKind = dev.blockphone.fabric.client.sound.PhoneSounds.Kind.NOTIFY;
+    private List<String> soundFiles = List.of();
+
+    /** Выбор звука: встроенные мелодии и свои файлы из папки; нажатие — выбрать и прослушать. */
+    private int renderSounds(GuiGraphics g, int mouseX, int mouseY) {
+        int w = contentWidth();
+        int y = 6 - (int) scroll;
+        String current = dev.blockphone.fabric.client.sound.PhoneSounds.choice(soundKind);
+        PhoneDraw.text(g, PhoneLang.tr("settings.sound.builtin").toUpperCase(PhoneClock.locale()), MARGIN + 2, y, PhoneTheme.secondaryText(), 0.6f, false);
+        y += 10;
+        List<String> builtins = dev.blockphone.fabric.client.sound.PhoneSounds.BUILTIN;
+        y = soundList(g, mouseX, mouseY, w, y, builtins.stream().map(n -> "builtin:" + n).toList(), current);
+        y += 6;
+        PhoneDraw.text(g, PhoneLang.tr("settings.sound.mine").toUpperCase(PhoneClock.locale()), MARGIN + 2, y, PhoneTheme.secondaryText(), 0.6f, false);
+        y += 10;
+        if (!soundFiles.isEmpty()) {
+            y = soundList(g, mouseX, mouseY, w, y, soundFiles.stream().map(n -> "file:" + n).toList(), current);
+            y += 4;
+        }
+        y += PhoneDraw.wrapped(g, PhoneLang.tr("settings.sound.hint"), MARGIN + 2, y, w - 2 * MARGIN - 4, PhoneTheme.secondaryText(), 0.6f, false) + 6;
+        int half = (w - 2 * MARGIN - 6) / 2;
+        PhoneDraw.button(g, MARGIN, y, half, 18, PhoneLang.tr("settings.wallpaper.folder"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
+        hits.add(new Hit(MARGIN, y, half, 18, dir -> openSoundFolder()));
+        PhoneDraw.button(g, MARGIN + half + 6, y, half, 18, PhoneLang.tr("settings.sound.refresh"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL);
+        hits.add(new Hit(MARGIN + half + 6, y, half, 18, dir -> soundFiles = dev.blockphone.fabric.client.sound.PhoneSounds.files()));
+        return y + 24;
+    }
+
+    private int soundList(GuiGraphics g, int mouseX, int mouseY, int w, int y, List<String> choices, String current) {
+        int h = choices.size() * ROW_H;
+        PhoneDraw.card(g, MARGIN, y, w - MARGIN, y + h, false);
+        for (int i = 0; i < choices.size(); i++) {
+            String choice = choices.get(i);
+            int ry = y + i * ROW_H;
+            boolean hover = PhoneDraw.inside(mouseX, mouseY, MARGIN, ry, w - 2 * MARGIN, ROW_H);
+            if (hover) {
+                g.fill(MARGIN + 1, ry + 1, w - MARGIN - 1, ry + ROW_H - 1, PhoneTheme.cardHover());
+            }
+            boolean selected = choice.equals(current);
+            PhoneDraw.text(g, PhoneDraw.ellipsize(dev.blockphone.fabric.client.sound.PhoneSounds.label(choice), w - 2 * MARGIN - 30, 0.75f),
+                    MARGIN + 8, ry + 6, selected ? PhoneTheme.accent() : PhoneTheme.text(), 0.75f, false);
+            if (selected) {
+                PhoneDraw.rightText(g, "✔", w - MARGIN - 8, ry + 6, PhoneTheme.accent(), 0.75f);
+            }
+            if (i > 0) {
+                g.fill(MARGIN + 8, ry, w - MARGIN - 8, ry + 1, PhoneTheme.separator());
+            }
+            hits.add(new Hit(MARGIN, ry, w - 2 * MARGIN, ROW_H, dir -> {
+                dev.blockphone.fabric.client.sound.PhoneSounds.setChoice(soundKind, choice);
+                dev.blockphone.fabric.client.sound.PhoneSounds.preview(choice);
+            }));
+        }
+        return y + h;
+    }
+
+    /** DevShots: страница выбора звука таймера. */
+    public void debugSoundPage() {
+        soundKind = dev.blockphone.fabric.client.sound.PhoneSounds.Kind.TIMER;
+        open(Page.SOUND);
+    }
+
+    private static void openSoundFolder() {
+        try {
+            Files.createDirectories(dev.blockphone.fabric.client.sound.PhoneSounds.dir());
+            Util.getPlatform().openPath(dev.blockphone.fabric.client.sound.PhoneSounds.dir());
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("Failed to open sounds folder", e);
         }
     }
 

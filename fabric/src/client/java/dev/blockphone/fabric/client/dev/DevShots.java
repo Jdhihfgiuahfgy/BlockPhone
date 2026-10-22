@@ -277,6 +277,27 @@ public final class DevShots {
 
     /** Часы: будильники (список и редактор), секундомер с кругами, таймер (выбор и идёт), звонок. */
     private void planClock() {
+        int[] volume = new int[1];
+        step(1, mc -> {
+            // Звуки телефона — тихо (5 %); свой звук — копия музыки Minecraft в blockphone/sounds.
+            volume[0] = PhoneSettings.get().soundVolume;
+            PhoneSettings.get().soundVolume = 5;
+            try {
+                java.nio.file.Files.createDirectories(dev.blockphone.fabric.client.sound.PhoneSounds.dir());
+                Path target = dev.blockphone.fabric.client.sound.PhoneSounds.dir().resolve("Мой звонок.ogg");
+                var resource = mc.getResourceManager().getResource(
+                        net.minecraft.resources.Identifier.withDefaultNamespace("sounds/music/game/clark.ogg"));
+                if (!java.nio.file.Files.exists(target) && resource.isPresent()) {
+                    try (var in = resource.get().open()) {
+                        java.nio.file.Files.copy(in, target);
+                    }
+                }
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] sound copy failed", e);
+            }
+            dev.blockphone.fabric.client.sound.PhoneSounds.setChoice(dev.blockphone.fabric.client.sound.PhoneSounds.Kind.TIMER,
+                    "file:Мой звонок.ogg");
+        });
         step(1, mc -> {
             PhoneSettings s = PhoneSettings.get();
             s.alarms.clear();
@@ -315,10 +336,32 @@ public final class DevShots {
         shot(60, "clock_ringing");
         step(1, mc -> {
             dev.blockphone.fabric.client.clock.ClockService.stopRinging();
+            for (String tone : dev.blockphone.fabric.client.sound.PhoneSounds.BUILTIN) {
+                long t0 = System.nanoTime();
+                dev.blockphone.fabric.client.sound.PhoneSounds.play("builtin:" + tone, false).stop();
+                BlockPhoneFabric.LOGGER.info("[DevShots] tone {} ok ({} ms)", tone, (System.nanoTime() - t0) / 1_000_000);
+            }
+            mc.setScreen(new PhoneScreen());
+            phone(mc, p -> p.openApp("settings"));
+        });
+        step(5, mc -> settingsPage("notify"));
+        shot(30, "settings_notify_sounds");
+        step(1, mc -> settingsSound());
+        shot(30, "settings_sound_pick");
+        step(1, mc -> {
+            dev.blockphone.fabric.client.sound.PhoneSounds.stopPreview();
+            PhoneSettings.get().soundVolume = volume[0];
+            PhoneSettings.get().sounds.clear();
             dev.blockphone.fabric.client.clock.ClockService.resetStopwatch();
             PhoneSettings.get().alarms.clear();
             PhoneSettings.get().save();
         });
+    }
+
+    private static void settingsSound() {
+        if (PhoneState.app("settings") instanceof dev.blockphone.fabric.client.apps.settings.SettingsApp app) {
+            app.debugSoundPage();
+        }
     }
 
     private static void clockDebug(String what) {
