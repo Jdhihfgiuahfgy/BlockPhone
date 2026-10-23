@@ -160,6 +160,23 @@ final class ChatView extends MessengerView {
         return "i";
     }
 
+    /** Как в Telegram: нажатие на название личного чата — профиль собеседника, группы — сведения о группе. */
+    @Override
+    boolean onTitleClick() {
+        ChatInfo chat = chat();
+        if (chat == null) {
+            return false;
+        }
+        if (chat.type() == ChatType.DIRECT) {
+            UserInfo partner = MessengerClient.partner(chat);
+            if (partner != null && app.openProfile(partner.uuid())) {
+                return true;
+            }
+        }
+        app.push(new ChatInfoView(app, chatId));
+        return true;
+    }
+
     @Override
     void onHeaderAction() {
         if (chat() != null) {
@@ -931,8 +948,7 @@ final class ChatView extends MessengerView {
             return true;
         }
         if (y < STATUS_H && chat() != null) {
-            app.push(new ChatInfoView(app, chatId));
-            return true;
+            return onTitleClick();
         }
         if (button == 0) {
             for (VoiceHit hit : voiceHits) {

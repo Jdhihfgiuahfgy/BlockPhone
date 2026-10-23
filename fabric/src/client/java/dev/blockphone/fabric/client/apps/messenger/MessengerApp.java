@@ -126,6 +126,27 @@ public final class MessengerApp extends PhoneApp {
     }
 
     @Override
+    public boolean onTitleClick() {
+        return view().onTitleClick();
+    }
+
+    /** Кто открывает профиль игрока (общее приложение «Мессенджер» — во вкладке ленты); null — профилей нет. */
+    private java.util.function.Consumer<java.util.UUID> profileOpener;
+
+    public void setProfileOpener(java.util.function.Consumer<java.util.UUID> opener) {
+        profileOpener = opener;
+    }
+
+    /** Открыть профиль игрока; false — некуда (лента на сервере выключена). */
+    boolean openProfile(java.util.UUID uuid) {
+        if (profileOpener == null || uuid == null || !dev.blockphone.fabric.client.network.ClientNetwork.socialAvailable()) {
+            return false;
+        }
+        profileOpener.accept(uuid);
+        return true;
+    }
+
+    @Override
     public int headerActionColor() {
         int color = view().headerActionColor();
         return color != 0 ? color : super.headerActionColor();

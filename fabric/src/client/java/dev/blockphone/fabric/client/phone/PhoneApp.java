@@ -127,6 +127,11 @@ public abstract class PhoneApp {
         return PhoneTheme.dark();
     }
 
+    /** Нажали на заголовок (название) — например, профиль собеседника в чате. true — обработано. */
+    public boolean onTitleClick() {
+        return false;
+    }
+
     public final int contentWidth() {
         return PhoneLayout.appW();
     }

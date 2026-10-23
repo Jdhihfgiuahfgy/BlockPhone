@@ -536,6 +536,9 @@ public class PhoneScreen extends Screen {
                 return true;
             }
         }
+        if (app.hasHeader() && event.button() == 0 && PhoneDraw.inside(sx, sy, 0, statusH(), screenW(), HEADER_H) && app.onTitleClick()) {
+            return true;
+        }
         if (inContent(sx, sy)) {
             if (event.button() == 0 && Scrollbar.mouseClicked(sx, sy - contentTop())) {
                 return true;

@@ -40,6 +40,7 @@ public final class HubApp extends PhoneApp {
     public HubApp() {
         super(ID);
         social.embed(this::openDirect, this::openStickers);
+        chats.setProfileOpener(this::openProfileFromChat);
     }
 
     /** Открытое (созданное) приложение-хаб или null. */
@@ -115,6 +116,9 @@ public final class HubApp extends PhoneApp {
     }
 
     public void showTab(Tab next) {
+        if (next != Tab.PROFILE) {
+            returnToChats = false;
+        }
         PhoneApp before = active();
         Tab was = tab;
         tab = next;
@@ -149,6 +153,15 @@ public final class HubApp extends PhoneApp {
     private void openDirect(UUID uuid) {
         ClientNetwork.send(new dev.blockphone.common.protocol.packet.MessengerPackets.OpenDirect(uuid));
         showTab(Tab.CHATS);
+    }
+
+    /** Профиль собеседника из чата: показывается на месте вкладки, «назад» возвращает в переписку. */
+    private boolean returnToChats;
+
+    private void openProfileFromChat(UUID uuid) {
+        showTab(Tab.PROFILE);
+        social.openProfile(uuid);
+        returnToChats = true;
     }
 
     private void openStickers() {
@@ -271,7 +284,20 @@ public final class HubApp extends PhoneApp {
 
     @Override
     public boolean onBack() {
+        if (returnToChats && active() == social) {
+            social.onBack();
+            if (social.atRoot()) {
+                returnToChats = false;
+                showTab(Tab.CHATS);
+            }
+            return true;
+        }
         return active().onBack();
+    }
+
+    @Override
+    public boolean onTitleClick() {
+        return active().onTitleClick();
     }
 
     @Override
