@@ -11,7 +11,7 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "docs", "examples", "scripts", "blockstrike")
 OUT = os.path.join(APP, "sounds")
-RATE = 22050
+RATE = 44100
 rng = np.random.default_rng(1337)
 LENGTHS = {}
 
@@ -106,43 +106,90 @@ def save(name, x, gain=0.9):
 
 # --- Выстрелы ---
 
+def reverb(x, seconds=0.7, wet=0.35, bright=4000, predelay=0.012):
+    """Реверберация свёрткой: импульс помещения — затухающий шум, который со временем темнеет (стены глушат верх)."""
+    n = int(seconds * RATE)
+    t = np.arange(n) / RATE
+    ir_noise = rng.normal(0, 1, n)
+    early = band(ir_noise, 200, bright) * np.exp(-t / (seconds * 0.18))
+    late = band(ir_noise, 120, bright * 0.35) * np.exp(-t / (seconds * 0.4))
+    ir = early * 0.6 + late
+    # ранние отражения — отдельные «щелчки» от ближних стен
+    for d, k in ((0.009, 0.7), (0.017, 0.5), (0.026, 0.4), (0.041, 0.3)):
+        i = int(d * RATE)
+        if i < n:
+            ir[i] += k * 3
+    ir = np.concatenate([np.zeros(int(predelay * RATE)), ir])
+    ir /= np.sqrt(np.sum(ir ** 2)) + 1e-9
+    size = len(x) + len(ir)
+    wet_sig = np.fft.irfft(np.fft.rfft(x, size) * np.fft.rfft(ir, size), size)
+    dry_sig = np.concatenate([x, np.zeros(size - len(x))])
+    return dry_sig + wet_sig * wet * 1.1
+
+
+def tail(x, room=0.25, mixk=0.35):
+    return reverb(x, 0.3 + room * 1.6, 0.18 + mixk * 0.3)
+
+
+def damped(freq, sec, decay, attack=0.0008):
+    t = t_axis(sec)
+    return np.sin(2 * np.pi * freq * t) * env(sec, attack, decay)
+
+
+def metal_ping(freqs, sec, decay):
+    """Металлический звон (затвор, гильза): несколько негармонических резонансов."""
+    out = np.zeros(int(sec * RATE))
+    for i, f in enumerate(freqs):
+        out += damped(f, sec, decay * (1 - i * 0.12), 0.0003) * (0.8 ** i)
+    return out
+
+
 def gunshot(boom_hz, crack_lo, crack_hi, length, body=1.0, crack=1.0, room=0.3, mech=0.0):
+    """Выстрел из слоёв: сверхзвуковой щелчок, ударная волна (низкий удар), корпус (шум средних частот), затвор,
+    звон гильзы и помещение (свёртка). Параметры подобраны под калибр: пистолет — сухо и коротко, винтовка — плотнее."""
     sec = length
     n = noise(sec)
-    crack_part = band(n, crack_lo, crack_hi) * env(sec, 0.0005, 0.018 + 0.02 * crack) * crack * 1.6
-    body_part = band(n, 60, 900) * env(sec, 0.001, 0.05 * body + 0.02) * body
-    boom = sweep(sec, boom_hz * 1.6, boom_hz * 0.7) * env(sec, 0.002, 0.07 * body + 0.03) * body * 0.9
-    out = mix(crack_part, body_part, boom)
-    if mech > 0:  # механика затвора
-        click = band(noise(0.02), 2000, 7000) * env(0.02, 0.0003, 0.004)
-        out = mix(out, at(click * mech, 0.045, sec))
-    return tail(out, room, 0.5)
+    snap = band(n, crack_lo, crack_hi, 1.5) * env(sec, 0.0002, 0.006 + 0.006 * crack) * crack * 2.2
+    blast = band(n, 150, 2200) * env(sec, 0.0006, 0.022 + 0.03 * body, 0.9) * body * 1.4
+    thump = (sweep(sec, boom_hz * 2.2, boom_hz * 0.6) * env(sec, 0.0008, 0.035 + 0.04 * body)
+             + damped(boom_hz * 0.55, sec, 0.06 + 0.05 * body) * 0.6) * body * 1.3
+    out = mix(snap, blast, thump)
+    out = np.tanh(out * 2.2)  # плотность, «панч»
+    if mech > 0:
+        bolt = (band(noise(0.04), 1800, 9000) * env(0.04, 0.0002, 0.006) + metal_ping((2300, 3700, 5900), 0.04, 0.008) * 0.4)
+        out = mix(out, at(bolt * mech, 0.035, sec))
+        casing = metal_ping((4200, 6100, 7900), 0.15, 0.035) * 0.18 * mech
+        out = mix(out, at(casing, min(sec - 0.16, 0.22 + rng.uniform(0, 0.05)), sec))
+    return reverb(out, 0.35 + room * 1.4, 0.16 + room * 0.25)
 
 
 def suppressed():
-    sec = 0.25
+    sec = 0.3
     n = noise(sec)
-    puff = band(n, 300, 2500) * env(sec, 0.001, 0.03)
-    click = band(noise(0.03), 2500, 8000) * env(0.03, 0.0002, 0.006) * 0.7
-    slide = at(band(noise(0.05), 1500, 6000) * env(0.05, 0.002, 0.015) * 0.5, 0.06, sec)
-    return mix(puff, click, slide)
+    puff = band(n, 250, 2200) * env(sec, 0.001, 0.025) * 1.2
+    thump = damped(140, sec, 0.03) * 0.5
+    click_ = band(noise(0.03), 2500, 9000) * env(0.03, 0.0002, 0.005) * 0.6
+    slide = at(band(noise(0.05), 1500, 7000) * env(0.05, 0.001, 0.012) * 0.45 + metal_ping((2600, 4100), 0.05, 0.01) * 0.3,
+               0.05, sec)
+    return reverb(mix(puff, thump, click_, slide), 0.35, 0.12)
 
 
 def shotgun():
-    sec = 0.7
-    out = gunshot(70, 600, 6000, sec, body=1.6, crack=1.2, room=0.45)
-    # передёргивание цевья
-    pump1 = band(noise(0.06), 800, 5000) * env(0.06, 0.002, 0.02)
-    pump2 = band(noise(0.06), 1000, 6000) * env(0.06, 0.002, 0.018)
-    return mix(out, at(pump1 * 0.35, 0.42, 0.75), at(pump2 * 0.4, 0.55, 0.75))
+    sec = 0.8
+    out = gunshot(65, 500, 6500, sec, body=1.8, crack=1.1, room=0.45)
+    pump1 = band(noise(0.07), 700, 5000) * env(0.07, 0.002, 0.02) + metal_ping((1900, 3100), 0.07, 0.015) * 0.3
+    pump2 = band(noise(0.07), 900, 6000) * env(0.07, 0.002, 0.018) + metal_ping((2200, 3500), 0.07, 0.015) * 0.3
+    return mix(out, at(pump1 * 0.35, 0.45, 0.95), at(pump2 * 0.4, 0.6, 0.95))
 
 
 def awp():
-    sec = 0.9
-    out = gunshot(55, 900, 9000, sec, body=2.0, crack=1.6, room=0.6)
-    bolt = mix(at(band(noise(0.05), 1200, 6000) * env(0.05, 0.001, 0.012), 0.0, 0.2),
-               at(band(noise(0.05), 900, 5000) * env(0.05, 0.001, 0.014), 0.12, 0.2))
-    return mix(out, at(bolt * 0.35, 0.62, 1.0))
+    sec = 1.1
+    out = gunshot(50, 900, 10000, sec, body=2.2, crack=1.8, room=0.7)
+    bolt = mix(at(band(noise(0.05), 1200, 6000) * env(0.05, 0.001, 0.012) + metal_ping((1800, 2900), 0.05, 0.012) * 0.3,
+                  0.0, 0.22),
+               at(band(noise(0.05), 900, 5000) * env(0.05, 0.001, 0.014) + metal_ping((1500, 2600), 0.05, 0.012) * 0.3,
+                  0.14, 0.22))
+    return mix(out, at(bolt * 0.35, 0.75, 1.3))
 
 
 # --- Остальное ---
@@ -234,7 +281,7 @@ def he_explode():
     blast = band(n, 30, 3000) * env(sec, 0.001, 0.25, 0.8)
     low = sweep(sec, 70, 30) * env(sec, 0.002, 0.4) * 1.2
     debris = band(noise(sec), 2000, 7000) * env(sec, 0.05, 0.5) * 0.15 * (rng.uniform(0, 1, int(sec * RATE)) > 0.97)
-    return tail(mix(blast, low, debris), 0.6, 0.6)
+    return reverb(mix(np.tanh(mix(blast, low) * 1.8), debris), 1.4, 0.35)
 
 
 def flash_bang():
@@ -288,7 +335,7 @@ def bomb_explode():
     blast = band(noise(sec), 20, 2500) * env(sec, 0.002, 0.6, 0.7)
     low = sweep(sec, 55, 22) * env(sec, 0.003, 0.9) * 1.4
     crackle = band(noise(sec), 1500, 6000) * env(sec, 0.1, 1.2) * 0.25 * (rng.uniform(0, 1, int(sec * RATE)) > 0.95)
-    return tail(mix(blast, low, crackle), 0.9, 0.7)
+    return reverb(mix(np.tanh(mix(blast, low) * 1.8), crackle), 2.0, 0.4)
 
 
 def chord(freqs, sec, decay, delay=0.0):

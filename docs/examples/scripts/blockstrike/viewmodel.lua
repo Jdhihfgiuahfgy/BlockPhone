@@ -11,14 +11,15 @@ local sin, cos, rad, sqrt, min, max, abs = math.sin, math.cos, math.rad, math.sq
 
 local S = 0.25 -- во сколько раз модель меньше «настоящей»
 
--- Палитра: номер клетки 8×8 на текстуре 64×64 (порядок — как в gen_strike.py PALETTE).
+-- Палитра: номер клетки 32×32 на текстуре 256×256 (порядок — как в gen_strike.py PALETTE). Клетка — материал с
+-- фасками (металл, дерево, пластик, ткань): каждая грань детали показывает всю клетку — выглядит как деталь с ребром.
 local C = {black = 0, dark = 1, gray = 2, steel = 3, wood = 4, wood2 = 5, green = 6, olive = 7, tan = 8, p90 = 9,
   glove = 10, sleeve_t = 11, sleeve_ct = 12, skin = 13, he = 14, flash = 15, smoke = 16, c4 = 17, screen = 18, red = 19,
   mag = 20, glass = 21, blade = 22, white = 23, leather = 24, silver = 25, famas = 26, yellow = 27}
 
 local function uv(col)
   local cx, cy = col % 8, math.floor(col / 8)
-  return (cx * 8 + 2) / 64, (cy * 8 + 2) / 64, (cx * 8 + 6) / 64, (cy * 8 + 6) / 64
+  return (cx * 32 + 0.5) / 256, (cy * 32 + 0.5) / 256, (cx * 32 + 31.5) / 256, (cy * 32 + 31.5) / 256
 end
 
 local function quad(m, a, b, c, d, col)

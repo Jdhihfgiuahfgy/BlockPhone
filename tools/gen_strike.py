@@ -715,6 +715,280 @@ def radars():
         save(img, key, RADAR)
 
 
+
+# --- Текстуры в высоком качестве (64×64): шум нескольких масштабов, швы, сколы, тени; для всех карт ---
+
+def _np():
+    import numpy as np
+    return np
+
+
+def value_noise(size, cells, seed):
+    """Плавный шум: случайная сетка cells×cells, билинейная интерполяция, бесшовный по краям."""
+    np = _np()
+    rng = np.random.default_rng(seed)
+    grid = rng.random((cells, cells))
+    t = np.arange(size) * cells / size
+    i0 = np.floor(t).astype(int) % cells
+    i1 = (i0 + 1) % cells
+    f = t - np.floor(t)
+    f = f * f * (3 - 2 * f)
+    rows = grid[i0][:, i0] * (1 - f)[None, :] + grid[i0][:, i1] * f[None, :]
+    rows2 = grid[i1][:, i0] * (1 - f)[None, :] + grid[i1][:, i1] * f[None, :]
+    return rows * (1 - f)[:, None] + rows2 * f[:, None]
+
+
+def fractal(size, seed, octaves=((4, 0.5), (8, 0.3), (16, 0.15), (32, 0.05))):
+    np = _np()
+    out = np.zeros((size, size))
+    for k, (cells, w) in enumerate(octaves):
+        out += value_noise(size, cells, seed * 31 + k) * w
+    return out / sum(w for _, w in octaves)
+
+
+def from_array(rgb):
+    np = _np()
+    a = np.clip(rgb, 0, 255).astype("uint8")
+    alpha = np.full(a.shape[:2] + (1,), 255, dtype="uint8")
+    return Image.fromarray(np.concatenate([a, alpha], axis=2), "RGBA")
+
+
+def colored(color, n, contrast):
+    np = _np()
+    c = np.array(color, dtype=float)
+    return c[None, None, :] * (1 + (n[:, :, None] - 0.5) * contrast)
+
+
+def hd_stone_blocks(color, mortar, rows=4, cols=2, seed=1, chips=True, size=64):
+    """Кладка из блоков: у каждого свой оттенок, светлый верхний край, тёмный нижний, шум, сколы."""
+    np = _np()
+    rng = random.Random(seed)
+    n = fractal(size, seed)
+    img = colored(mortar, n, 0.25)
+    bh = size // rows
+    for r in range(rows):
+        bw = size // cols
+        off = (bw // 2) if r % 2 else 0
+        for c in range(-1, cols + 1):
+            x0 = c * bw + off
+            k = 0.86 + rng.random() * 0.26
+            tint = np.array(color, dtype=float) * k
+            for y in range(r * bh + 1, r * bh + bh - 1):
+                for x in range(x0 + 1, x0 + bw - 1):
+                    xx = x % size
+                    edge = 1.0
+                    if y == r * bh + 1:
+                        edge = 1.16
+                    elif y >= r * bh + bh - 2:
+                        edge = 0.78
+                    elif x == x0 + 1:
+                        edge = 1.08
+                    elif x >= x0 + bw - 2:
+                        edge = 0.85
+                    img[y, xx] = tint * (1 + (n[y, xx] - 0.5) * 0.35) * edge
+    if chips:
+        for _ in range(10):
+            x, y = rng.randrange(size), rng.randrange(size)
+            img[y:y + 2, x:x + 2] *= 0.72
+    return from_array(img)
+
+
+def hd_sand(seed=3, color=(222, 198, 148), size=64):
+    np = _np()
+    n = fractal(size, seed, ((4, 0.4), (16, 0.3), (32, 0.2), (64, 0.1)))
+    img = colored(color, n, 0.22)
+    rng = np.random.default_rng(seed)
+    grains = rng.random((size, size)) < 0.06
+    img[grains] *= 0.85
+    ripples = (np.sin(np.arange(size) / size * math.pi * 6 + n * 3) * 0.5 + 0.5)[:, :]
+    img *= (0.96 + ripples[:, :, None] * 0.06)
+    return from_array(img)
+
+
+def hd_plaster(color=(214, 200, 176), seed=5, size=64):
+    np = _np()
+    n = fractal(size, seed)
+    img = colored(color, n, 0.18)
+    rng = random.Random(seed)
+    # пятна осыпавшейся штукатурки с кирпичом под ней
+    for _ in range(2):
+        cx, cy, r = rng.randrange(size), rng.randrange(size), rng.randrange(5, 10)
+        for y in range(cy - r, cy + r):
+            for x in range(cx - r, cx + r):
+                if (x - cx) ** 2 + ((y - cy) * 1.4) ** 2 < r * r * (0.6 + n[y % size, x % size] * 0.6):
+                    yy, xx = y % size, x % size
+                    brick = (168, 98, 70) if (yy // 5 + (xx // 10 if (yy // 5) % 2 else (xx + 5) // 10)) % 7 else (130, 120, 110)
+                    img[yy, xx] = np.array(brick) * (0.9 + n[yy, xx] * 0.2)
+    # грязь снизу
+    grad = np.concatenate([np.ones(size // 2), np.linspace(1.0, 0.84, size - size // 2)])
+    img *= grad[:, None, None]
+    return from_array(img)
+
+
+def hd_planks(color=(150, 104, 62), seed=7, size=64, boards=4):
+    np = _np()
+    img = np.zeros((size, size, 3))
+    bw = size // boards
+    rng = random.Random(seed)
+    for b in range(boards):
+        k = 0.85 + rng.random() * 0.3
+        grain = value_noise(size, 4, seed + b)[:, :1] * 0 + 0
+        for x in range(b * bw, b * bw + bw):
+            for y in range(size):
+                g = math.sin((x * 0.9 + math.sin(y * 0.11 + b) * 3) * 1.3) * 0.08
+                img[y, x] = np.array(color) * k * (1 + g)
+        img[:, b * bw] *= 0.55
+        img[:, b * bw + bw - 1] *= 0.8
+        for _ in range(2):
+            ny = rng.randrange(size)
+            nx = b * bw + rng.randrange(2, bw - 2)
+            img[ny:ny + 2, nx:nx + 2] *= 0.6
+    return from_array(img * (0.92 + fractal(size, seed)[:, :, None] * 0.16))
+
+
+def hd_tiles(c1, c2, seed=9, size=64, n=4):
+    np = _np()
+    noise_ = fractal(size, seed)
+    img = np.zeros((size, size, 3))
+    t = size // n
+    rng = random.Random(seed)
+    for ty in range(n):
+        for tx in range(n):
+            c = np.array(c1 if (tx + ty) % 2 == 0 else c2, dtype=float) * (0.92 + rng.random() * 0.16)
+            img[ty * t:(ty + 1) * t, tx * t:(tx + 1) * t] = c
+            img[ty * t, tx * t:(tx + 1) * t] *= 1.12
+            img[ty * t:(ty + 1) * t, tx * t] *= 1.08
+            img[(ty + 1) * t - 1, tx * t:(tx + 1) * t] *= 0.7
+            img[ty * t:(ty + 1) * t, (tx + 1) * t - 1] *= 0.75
+    img *= (0.9 + noise_[:, :, None] * 0.2)
+    return from_array(img)
+
+
+def hd_cobble(color=(132, 128, 120), seed=11, size=64):
+    """Брусчатка: ячейки Вороного — камни разного оттенка с тёмными швами."""
+    np = _np()
+    rng = np.random.default_rng(seed)
+    pts = rng.random((26, 2)) * size
+    shades = 0.8 + rng.random(26) * 0.35
+    ys, xs = np.mgrid[0:size, 0:size]
+    best = np.full((size, size), 1e9)
+    second = np.full((size, size), 1e9)
+    idx = np.zeros((size, size), dtype=int)
+    for i, (px, py) in enumerate(pts):
+        for ox in (-size, 0, size):
+            for oy in (-size, 0, size):
+                d = np.hypot(xs - px - ox, ys - py - oy)
+                closer = d < best
+                second = np.where(closer, best, np.minimum(second, d))
+                idx = np.where(closer, i, idx)
+                best = np.where(closer, d, best)
+    edge = np.clip((second - best) / 3.0, 0, 1)
+    n = fractal(size, seed)
+    img = np.array(color, dtype=float)[None, None, :] * shades[idx][:, :, None] * (0.85 + n[:, :, None] * 0.3)
+    img *= (0.45 + 0.55 * edge)[:, :, None]
+    return from_array(img)
+
+
+def hd_crate(seed=13, size=64, color=(150, 108, 60)):
+    np = _np()
+    img = np.array(hd_planks(color, seed, size, 4).convert("RGB"), dtype=float)
+    # рамка и диагональ
+    frame = (112, 78, 42)
+    img[:5, :] = frame
+    img[-5:, :] = frame
+    img[:, :5] = frame
+    img[:, -5:] = frame
+    for i in range(size):
+        for w in range(-2, 3):
+            j = i + w
+            if 5 <= j < size - 5 and 5 <= i < size - 5:
+                img[i, j] = np.array(frame) * 1.05
+    img[0, :] *= 1.2
+    img[:, 0] *= 1.15
+    img[-1, :] *= 0.6
+    img[:, -1] *= 0.6
+    return from_array(img)
+
+
+def hd_site(base_color, stripe, seed=15, size=64):
+    np = _np()
+    n = fractal(size, seed)
+    img = colored(base_color, n, 0.2)
+    ys, xs = np.mgrid[0:size, 0:size]
+    band = ((xs + ys) // 8) % 2 == 0
+    worn = n > 0.38
+    sel = band & worn
+    img[sel] = np.array(stripe, dtype=float) * (0.85 + n[sel][:, None] * 0.3)
+    img[:3, :] *= 0.8
+    img[:, :3] *= 0.8
+    return from_array(img)
+
+
+def hd_world_textures():
+    save(hd_stone_blocks((214, 188, 138), (176, 150, 106), 4, 2, 21), "sandstone")
+    save(hd_stone_blocks((200, 168, 116), (150, 126, 86), 8, 4, 22), "sandbrick")
+    save(hd_sand(), "sand")
+    save(hd_tiles((190, 162, 120), (168, 140, 102)), "tiles")
+    save(hd_plaster(), "plaster")
+    save(hd_planks((122, 84, 52), 31, 64, 6), "wood_panel")
+    save(hd_planks(), "planks")
+    save(hd_stone_blocks((150, 144, 126), (104, 100, 90), 4, 2, 23), "temple_stone")
+    save(hd_cobble(), "cobble")
+    save(hd_sand(25, (170, 150, 112)), "path")
+    save(hd_stone_blocks((150, 70, 54), (96, 90, 84), 8, 4, 24, chips=False), "brick")
+    save(hd_crate(), "crate")
+    save(hd_site((214, 190, 140), (190, 92, 70)), "site_sand")
+    save(hd_site((150, 144, 118), (170, 70, 40), 16), "site_temple")
+
+
+# --- Палитра 3D-оружия: клетки 32×32 на 256×256 — материал с фасками (металл, дерево, пластик, ткань) ---
+
+MATERIAL = {0: "metal", 1: "metal", 2: "metal", 3: "metal", 4: "wood", 5: "wood", 6: "poly", 7: "poly", 8: "poly",
+            9: "poly", 10: "cloth", 11: "cloth", 12: "cloth", 13: "skin", 14: "poly", 15: "metal", 16: "poly",
+            17: "poly", 18: "flat", 19: "flat", 20: "poly", 21: "flat", 22: "metal", 23: "flat", 24: "wood",
+            25: "metal", 26: "poly", 27: "flat"}
+
+
+def palette_hd():
+    np = _np()
+    size, cell = 256, 32
+    img = np.zeros((size, size, 3))
+    ys, xs = np.mgrid[0:cell, 0:cell]
+    for i, c in enumerate(PALETTE):
+        kind = MATERIAL.get(i, "poly")
+        base_c = np.array(c, dtype=float)
+        n = fractal(cell, 100 + i, ((4, 0.5), (8, 0.3), (16, 0.2)))
+        if kind == "metal":
+            brush = value_noise(cell, 16, 200 + i)[:1, :].repeat(cell, 0) * 0.6 + n * 0.4
+            t = base_c[None, None, :] * (0.9 + brush[:, :, None] * 0.2)
+            scratch = (np.random.default_rng(i).random((cell, cell)) < 0.004)
+            t[scratch] = np.minimum(255, t[scratch] * 1.25 + 12)
+        elif kind == "wood":
+            grain = np.sin((xs * 0.55 + n * 2.5) * 1.6) * 0.5 + 0.5
+            t = base_c[None, None, :] * (0.82 + grain[:, :, None] * 0.3)
+        elif kind == "cloth":
+            weave = ((xs + ys) % 3 == 0) * 0.08 + ((xs - ys) % 3 == 0) * 0.05
+            t = base_c[None, None, :] * (0.9 + n[:, :, None] * 0.15 - weave[:, :, None])
+        elif kind == "skin":
+            t = base_c[None, None, :] * (0.95 + n[:, :, None] * 0.1)
+        elif kind == "flat":
+            t = base_c[None, None, :] * (0.97 + n[:, :, None] * 0.06)
+        else:
+            stipple = np.random.default_rng(300 + i).random((cell, cell)) * 0.1
+            t = base_c[None, None, :] * (0.9 + n[:, :, None] * 0.12 + stipple[:, :, None])
+        # фаска: светлый верх и левый край, тёмный низ и правый — каждая грань выглядит как деталь с ребром
+        bevel = np.ones((cell, cell))
+        bevel[:2, :] = 1.28 if kind == "metal" else 1.18
+        bevel[:, :2] = np.maximum(bevel[:, :2], 1.12)
+        bevel[-2:, :] = 0.62
+        bevel[:, -2:] = np.minimum(bevel[:, -2:], 0.72)
+        if kind == "metal":
+            bevel[2:4, 2:-2] = 1.1  # блик
+        t = t * bevel[:, :, None]
+        cx, cy = (i % 8) * cell, (i // 8) * cell
+        img[cy:cy + cell, cx:cx + cell] = t
+    return from_array(img)
+
 def app_icon():
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -796,9 +1070,10 @@ def main():
     for key in ["glock", "usp", "p250", "deagle", "nova", "mp9", "p90", "galil", "famas", "ak47", "m4a4", "awp", "knife",
                 "he", "flash", "smoke", "c4"]:
         save(render_icon(models[key]), "i_" + key)
-    save(palette(), "vm_palette")
+    save(palette_hd(), "vm_palette")
     hud_icons()
     save(scope(), "scope")
+    hd_world_textures()
     radars()
     app_icon()
     print("ok")
