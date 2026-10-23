@@ -941,6 +941,151 @@ def hd_world_textures():
     save(hd_site((150, 144, 118), (170, 70, 40), 16), "site_temple")
 
 
+# --- Текстуры в стиле Dust II (карта Shortdust) ---
+
+def d2_wall(size=64, seed=41):
+    """Штукатурка песочного цвета: пятна, тёмный низ, редкие трещины и выбоины с камнем под ней."""
+    np = _np()
+    n = fractal(size, seed)
+    n2 = fractal(size, seed + 1, ((2, 0.6), (4, 0.4)))
+    img = colored((214, 190, 146), n, 0.2) * (0.92 + n2[:, :, None] * 0.14)
+    rng = random.Random(seed)
+    for _ in range(3):
+        x, y = rng.randrange(size), rng.randrange(size)
+        for k in range(rng.randrange(6, 14)):
+            x, y = (x + rng.choice((-1, 0, 1))) % size, (y + 1) % size
+            img[y, x] *= 0.72
+    for _ in range(2):
+        cx, cy, r = rng.randrange(size), rng.randrange(size), rng.randrange(3, 6)
+        for y in range(cy - r, cy + r):
+            for x in range(cx - r, cx + r):
+                if (x - cx) ** 2 + (y - cy) ** 2 < r * r:
+                    img[y % size, x % size] = np.array((168, 146, 108)) * (0.85 + n[y % size, x % size] * 0.3)
+    grad = np.concatenate([np.ones(size * 2 // 3), np.linspace(1.0, 0.8, size - size * 2 // 3)])
+    return from_array(img * grad[:, None, None])
+
+
+def d2_door(size=64, seed=43):
+    """Синие деревянные двери (как двери мида): вертикальные доски, рама, облезшая краска, железные петли."""
+    np = _np()
+    n = fractal(size, seed)
+    img = np.zeros((size, size, 3))
+    blue = np.array((58, 104, 150), dtype=float)
+    wood = np.array((140, 104, 66), dtype=float)
+    for x in range(size):
+        board = x // 8
+        k = 0.88 + (board * 37 % 7) / 30
+        for y in range(size):
+            grain = math.sin((y * 0.7 + math.sin(x * 0.4 + board) * 2) * 0.9) * 0.05
+            c = blue * k * (1 + grain)
+            if n[y, x] > 0.74:
+                c = wood * (0.9 + n[y, x] * 0.2)  # краска облезла
+            img[y, x] = c
+        if x % 8 == 0:
+            img[:, x] *= 0.6
+    img[:4, :] = np.array((92, 70, 46))
+    img[-4:, :] = np.array((92, 70, 46))
+    img[:, :3] = np.array((92, 70, 46))
+    img[:, -3:] = np.array((92, 70, 46))
+    for hy in (12, 48):
+        img[hy:hy + 4, 3:14] = np.array((52, 50, 48))
+        img[hy, 3:14] = np.array((96, 92, 88))
+    return from_array(img)
+
+
+def d2_dirt(size=64, seed=45):
+    """Утоптанный песок с камешками и следами."""
+    np = _np()
+    n = fractal(size, seed, ((4, 0.4), (8, 0.3), (32, 0.2), (64, 0.1)))
+    img = colored((206, 178, 128), n, 0.26)
+    rng = random.Random(seed)
+    for _ in range(26):
+        x, y, r = rng.randrange(size), rng.randrange(size), rng.choice((1, 1, 2))
+        c = np.array((150, 134, 110)) * (0.85 + rng.random() * 0.3)
+        img[y:y + r, x:x + r] = c
+        if y + r < size:
+            img[y + r, x:x + r] *= 0.75
+    return from_array(img)
+
+
+def d2_pave(size=64, seed=47, color=(190, 172, 140)):
+    """Брусчатка из крупных прямоугольных плит разного размера, швы с песком."""
+    np = _np()
+    n = fractal(size, seed)
+    img = np.zeros((size, size, 3))
+    rng = random.Random(seed)
+    joint = np.array((150, 128, 92), dtype=float)
+    y = 0
+    while y < size:
+        h = rng.choice((10, 12, 16)) if size - y > 16 else size - y
+        x = rng.randrange(0, 12)
+        while x < size + 12:
+            w = rng.choice((14, 18, 22))
+            k = 0.86 + rng.random() * 0.24
+            for yy in range(y, min(size, y + h)):
+                for xx in range(x, x + w):
+                    img[yy, xx % size] = np.array(color) * k * (0.9 + n[yy, xx % size] * 0.2)
+            for xx in range(x, x + w):
+                img[y, xx % size] = joint
+                if y + 1 < size:
+                    img[y + 1, xx % size] *= 1.08
+            for yy in range(y, min(size, y + h)):
+                img[yy, x % size] = joint
+            x += w
+        y += h
+    return from_array(img)
+
+
+def d2_site(size=64):
+    """Плиты точки с полустёртой оранжевой краской."""
+    np = _np()
+    img = np.array(d2_pave(size, 49, (196, 176, 142)).convert("RGB"), dtype=float)
+    n = fractal(size, 50)
+    ys, xs = np.mgrid[0:size, 0:size]
+    band = ((xs + ys) // 10) % 3 == 0
+    sel = band & (n > 0.42)
+    img[sel] = img[sel] * 0.35 + np.array((214, 104, 52)) * 0.65
+    return from_array(img)
+
+
+def d2_crate(size=64, seed=51):
+    """Классический ящик CS: светлые доски, тёмная рама по краям и диагональ."""
+    np = _np()
+    img = np.array(hd_planks((188, 150, 92), seed, size, 5).convert("RGB"), dtype=float)
+    frame = np.array((104, 74, 40), dtype=float)
+    b = 6
+    img[:b, :] = frame
+    img[-b:, :] = frame
+    img[:, :b] = frame
+    img[:, -b:] = frame
+    for i in range(b, size - b):
+        for w in range(-3, 4):
+            j = i + w
+            if b <= j < size - b:
+                img[i, j] = frame * 1.08
+    for (cx, cy) in ((3, 3), (size - 4, 3), (3, size - 4), (size - 4, size - 4)):
+        img[cy - 1:cy + 1, cx - 1:cx + 1] = (60, 56, 52)
+    img[0, :] *= 1.25
+    img[:, 0] *= 1.15
+    img[-1, :] *= 0.55
+    img[:, -1] *= 0.6
+    return from_array(img * (0.94 + fractal(size, seed + 3)[:, :, None] * 0.12))
+
+
+def d2_block(size=64):
+    return hd_stone_blocks((222, 200, 156), (178, 156, 116), 2, 1, 53)
+
+
+def d2_textures():
+    save(d2_wall(), "d2_wall")
+    save(d2_door(), "d2_door")
+    save(d2_dirt(), "d2_dirt")
+    save(d2_pave(), "d2_pave")
+    save(d2_site(), "d2_site")
+    save(d2_crate(), "d2_crate")
+    save(d2_block(), "d2_block")
+
+
 # --- Палитра 3D-оружия: клетки 32×32 на 256×256 — материал с фасками (металл, дерево, пластик, ткань) ---
 
 MATERIAL = {0: "metal", 1: "metal", 2: "metal", 3: "metal", 4: "wood", 5: "wood", 6: "poly", 7: "poly", 8: "poly",
@@ -1074,6 +1219,7 @@ def main():
     hud_icons()
     save(scope(), "scope")
     hd_world_textures()
+    d2_textures()
     radars()
     app_icon()
     print("ok")
