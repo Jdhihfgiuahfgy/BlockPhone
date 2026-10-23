@@ -1056,18 +1056,18 @@ final class ScriptHost {
             if (event != null) {
                 float pitch = (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1)));
                 float volume = (float) Math.max(0, Math.min(1, a.optdouble(2, 1)));
-                Minecraft mc = Minecraft.getInstance();
-                if (!Float.isNaN(pan) && mc.player != null) {
+                Minecraft game = Minecraft.getInstance();
+                if (!Float.isNaN(pan) && game.player != null) {
                     // Панорама ванильного звука: источник в 2 блоках от игрока под нужным углом (OpenAL сам разведёт по ушам).
                     double side = Math.asin(Math.max(-1, Math.min(1, pan)));
-                    double yaw = Math.toRadians(mc.player.getYRot());
+                    double yaw = Math.toRadians(game.player.getYRot());
                     double fx = -Math.sin(yaw), fz = Math.cos(yaw);
                     double rx = -Math.cos(yaw), rz = -Math.sin(yaw);
                     double dx = fx * Math.cos(side) + rx * Math.sin(side), dz = fz * Math.cos(side) + rz * Math.sin(side);
-                    mc.getSoundManager().play(new SimpleSoundInstance(event, net.minecraft.sounds.SoundSource.MASTER, volume, pitch,
-                            net.minecraft.util.RandomSource.create(), mc.player.getX() + dx * 2, mc.player.getEyeY(), mc.player.getZ() + dz * 2));
+                    game.getSoundManager().play(new SimpleSoundInstance(event, net.minecraft.sounds.SoundSource.MASTER, volume, pitch,
+                            net.minecraft.util.RandomSource.create(), game.player.getX() + dx * 2, game.player.getEyeY(), game.player.getZ() + dz * 2));
                 } else {
-                    mc.getSoundManager().play(SimpleSoundInstance.forUI(event, pitch, volume));
+                    game.getSoundManager().play(SimpleSoundInstance.forUI(event, pitch, volume));
                 }
             }
             return LuaValue.NONE;
