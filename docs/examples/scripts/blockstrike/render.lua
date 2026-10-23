@@ -52,9 +52,111 @@ local function flat(m, cx, cz, y)
   quad(m, cx, y, cz, cx + 1, y, cz, cx + 1, y, cz + 1, cx, y, cz + 1, 0, 0, 1, 1)
 end
 
+-- Вертикальная грань клетки (cx, cz) в сторону соседа dir (1 — z−, 2 — z+, 3 — x−, 4 — x+) от высоты b до t.
+local function face(m, cx, cz, dir, b, t)
+  if t - b < 0.001 then return end
+  local x1, x2, z1, z2 = cx, cx + 1, cz, cz + 1
+  local v1, v2 = -t, -b -- текстура привязана к высоте мира: ряды кирпичей на уступах совпадают
+  if dir == 1 then quad(m, x1, t, z1, x2, t, z1, x2, b, z1, x1, b, z1, x1, v1, x2, v2)
+  elseif dir == 2 then quad(m, x2, t, z2, x1, t, z2, x1, b, z2, x2, b, z2, -x2, v1, -x1, v2)
+  elseif dir == 3 then quad(m, x1, t, z2, x1, t, z1, x1, b, z1, x1, b, z2, -z2, v1, -z1, v2)
+  else quad(m, x2, t, z1, x2, t, z2, x2, b, z2, x2, b, z1, z1, v1, z2, v2) end
+end
+
+-- Горизонтальные полосы: соседние в ряду клетки с одинаковым ключом — одним прямоугольником (меньше треугольников).
+local function runs(map, keyOf, emit)
+  for cz = 0, map.H - 1 do
+    local start, key, y = nil, nil, nil
+    for cx = 0, map.W do
+      local k, ky
+      if cx < map.W then k, ky = keyOf(cx, cz) end
+      if k ~= key or ky ~= y then
+        if key then emit(key, start, cx, cz, y) end
+        start, key, y = cx, k, ky
+      end
+    end
+  end
+end
+
+-- Многоуровневая карта: полы на своей высоте, уступы и ступени, ящики на возвышениях, крыши тоннелей и балконов.
+local function buildMulti(map)
+  local wallH = map.wallH
+  local meshes = {walls = newMesh(), walls2 = newMesh(), crates = newMesh(), boxes = newMesh(), floor = newMesh(),
+    floor2 = newMesh(), sites = newMesh(), ledges = newMesh(), roofs = newMesh(), roofTops = newMesh()}
+  local function isWall(ch) return ch == "#" or ch == "%" end
+  local function topOf(cx, cz)
+    if cx < 0 or cz < 0 or cx >= map.W or cz >= map.H then return wallH end
+    local i = cz * map.W + cx + 1
+    local ch = map.c[i]
+    if isWall(ch) then return wallH end
+    return map.base[i] + (M.HEIGHT[ch] or 0)
+  end
+  local function roofOf(cx, cz)
+    if cx < 0 or cz < 0 or cx >= map.W or cz >= map.H then return nil end
+    return map.roof[cz * map.W + cx + 1]
+  end
+  local NB = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+  for cz = 0, map.H - 1 do
+    for cx = 0, map.W - 1 do
+      local i = cz * map.W + cx + 1
+      local ch = map.c[i]
+      local base = map.base[i]
+      for dir = 1, 4 do
+        local nx, nz = cx + NB[dir][1], cz + NB[dir][2]
+        local nt = topOf(nx, nz)
+        if isWall(ch) then
+          if nt < wallH then face(ch == "#" and meshes.walls or meshes.walls2, cx, cz, dir, nt, wallH) end
+        else
+          if nt < base then face(meshes.ledges, cx, cz, dir, nt, base) end
+          local h = M.HEIGHT[ch]
+          if h and nt < base + h then face(ch == "X" and meshes.crates or meshes.boxes, cx, cz, dir, math.max(nt, base), base + h) end
+          -- край крыши: толща 0,3 там, где у соседа крыши нет или она другая
+          local rf = map.roof[i]
+          local nch = (nx >= 0 and nz >= 0 and nx < map.W and nz < map.H) and map.c[nz * map.W + nx + 1] or "#"
+          if rf and not isWall(nch) and roofOf(nx, nz) ~= rf then face(meshes.roofTops, cx, cz, dir, rf, rf + 0.3) end
+        end
+      end
+      local h = M.HEIGHT[ch]
+      if h and h < 99 then flat(ch == "X" and meshes.crates or meshes.boxes, cx, cz, base + h) end
+    end
+  end
+  -- Полы по материалам и высоте.
+  runs(map, function(cx, cz)
+    local i = cz * map.W + cx + 1
+    local ch = map.c[i]
+    if isWall(ch) then return nil end
+    local mat = ch == "," and "floor2" or ((ch == "A" or ch == "B") and "sites" or "floor")
+    return mat, map.base[i]
+  end, function(mat, x1, x2, cz, y)
+    quad(meshes[mat], x1, y, cz, x2, y, cz, x2, y, cz + 1, x1, y, cz + 1, x1, cz, x2, cz + 1)
+  end)
+  -- Потолки (снизу) и крыши (сверху).
+  runs(map, function(cx, cz)
+    local i = cz * map.W + cx + 1
+    if isWall(map.c[i]) or not map.roof[i] then return nil end
+    return "r", map.roof[i]
+  end, function(_, x1, x2, cz, y)
+    quad(meshes.roofs, x1, y, cz + 1, x2, y, cz + 1, x2, y, cz, x1, y, cz, x1, cz + 1, x2, cz)
+    local t = y + 0.3
+    quad(meshes.roofTops, x1, t, cz, x2, t, cz, x2, t, cz + 1, x1, t, cz + 1, x1, cz, x2, cz + 1)
+  end)
+  local mm = {}
+  for k, mesh in pairs(meshes) do mm[k] = finishMesh(mesh) end
+  return mm
+end
+
 function R.buildMap(map)
   if R.mapMeshes then
     for _, id in pairs(R.mapMeshes) do if type(id) == "number" then g3d.free(id) end end
+  end
+  if map.multi then
+    local mm = buildMulti(map)
+    local letter = newMesh()
+    quad(letter, -1.5, 0, -1.5, 1.5, 0, -1.5, 1.5, 0, 1.5, -1.5, 0, 1.5, 1, 0, 0, 1)
+    mm.letter = finishMesh(letter)
+    R.mapMeshes = mm
+    R.mapIndex = map.index
+    return
   end
   local walls, walls2, crates, boxes, floor2, sites = newMesh(), newMesh(), newMesh(), newMesh(), newMesh(), newMesh()
   for cz = 0, map.H - 1 do
@@ -226,13 +328,21 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
   local l = def.light or {-0.45, -1, -0.3, 0.55}
   g3d.light(l[1], l[2], l[3], l[4])
   g3d.begin(sx, sy, sw, sh, def.sky, quality)
-  g3d.draw(mm.floor, map.W / 2, 0, map.H / 2, {texture = R.T(tx.floor), lit = false})
-  if def.ceiling then g3d.draw(mm.floor, map.W / 2, M.WALL_H, map.H / 2, {texture = R.T(def.ceiling), lit = false}) end
+  if map.multi then
+    if mm.floor then g3d.draw(mm.floor, 0, 0, 0, {texture = R.T(tx.floor), lit = false}) end
+    if mm.ledges then g3d.draw(mm.ledges, 0, 0, 0, {texture = R.T(tx.ledge or tx.wall2)}) end
+    if mm.roofs then g3d.draw(mm.roofs, 0, 0, 0, {texture = R.T(tx.roof or "ceiling"), lit = false}) end
+    if mm.roofTops then g3d.draw(mm.roofTops, 0, 0, 0, {texture = R.T(tx.roofTop or tx.wall)}) end
+  else
+    g3d.draw(mm.floor, map.W / 2, 0, map.H / 2, {texture = R.T(tx.floor), lit = false})
+    if def.ceiling then g3d.draw(mm.floor, map.W / 2, M.WALL_H, map.H / 2, {texture = R.T(def.ceiling), lit = false}) end
+  end
   if mm.floor2 then g3d.draw(mm.floor2, 0, 0, 0, {texture = R.T(tx.floor2), lit = false}) end
   if mm.sites then g3d.draw(mm.sites, 0, 0, 0, {texture = R.T(tx.site), lit = false}) end
   for _, s in ipairs(map.sites) do
     local c = map.siteCenter[s]
-    g3d.draw(mm.letter, c[1], 0.006, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), lit = false})
+    local y = M.floorH(map, floor(c[1]), floor(c[2])) + 0.006
+    g3d.draw(mm.letter, c[1], y, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), lit = false})
   end
   if mm.walls then g3d.draw(mm.walls, 0, 0, 0, {texture = R.T(tx.wall)}) end
   if mm.walls2 then g3d.draw(mm.walls2, 0, 0, 0, {texture = R.T(tx.wall2)}) end

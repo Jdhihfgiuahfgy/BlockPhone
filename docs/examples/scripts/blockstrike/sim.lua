@@ -154,7 +154,7 @@ function Sim.spawn(S, p, reset)
     end
     if free then break end
   end
-  p.x, p.z, p.y, p.vx, p.vz, p.vy = x, z, 0, 0, 0, 0
+  p.x, p.z, p.y, p.vx, p.vz, p.vy = x, z, M.ground(m, x, z, Sim.RADIUS), 0, 0, 0
   local cx, cz = m.W / 2, m.H / 2
   p.yaw, p.pitch = Sim.yawTo(cx - x, cz - z), 0
   p.alive, p.hp, p.flash, p.using, p.crouch, p.plantT = true, 100, 0, false, false, 0
@@ -511,10 +511,16 @@ local function updateNades(S, dt)
     for _ = 1, 2 do
       local h = dt / 2
       n.vy = n.vy - Sim.GRAVITY * h
+      -- Стена, уступ или толща крыши (0,3) на пути — отскок.
+      local function blocked(x, z)
+        local rf = M.roofAt(m, x, z, 0.05)
+        return M.ground(m, x, z, 0.05) > n.y or (n.y > rf - 0.08 and n.y < rf + 0.38)
+      end
       local nx = n.x + n.vx * h
-      if M.ground(m, nx, n.z, 0.05) > n.y then n.vx = -n.vx * 0.45 else n.x = nx end
+      if blocked(nx, n.z) then n.vx = -n.vx * 0.45 else n.x = nx end
       local nz = n.z + n.vz * h
-      if M.ground(m, n.x, nz, 0.05) > n.y then n.vz = -n.vz * 0.45 else n.z = nz end
+      if blocked(n.x, nz) then n.vz = -n.vz * 0.45 else n.z = nz end
+      local was = n.y
       n.y = n.y + n.vy * h
       local g = M.ground(m, n.x, n.z, 0.05)
       if n.y < g + 0.05 then
@@ -524,7 +530,16 @@ local function updateNades(S, dt)
           n.vx, n.vz = n.vx * 0.7, n.vz * 0.7
         end
       end
-      if m.def.ceiling and n.y > M.WALL_H - 0.1 then n.vy = -abs(n.vy) * 0.5 end
+      local rf = M.roofAt(m, n.x, n.z, 0.05)
+      if was < rf and n.y > rf - 0.1 then
+        n.y, n.vy = rf - 0.1, -abs(n.vy) * 0.5 -- снизу в потолок
+      elseif was >= rf + 0.3 and n.y < rf + 0.35 then
+        n.y = rf + 0.35 -- сверху на крышу
+        if n.vy < 0 then
+          n.vy = -n.vy * 0.35
+          n.vx, n.vz = n.vx * 0.7, n.vz * 0.7
+        end
+      end
     end
     local speed = abs(n.vx) + abs(n.vy) + abs(n.vz)
     local boom = n.t >= NADE_FUSE[n.kind] and (n.kind ~= D.SMOKE or speed < 1.5 or n.t > 4)
@@ -722,7 +737,18 @@ function Sim.tick(S, dt)
     end
   end
   for _, p in ipairs(S.players) do
-    if p.bot and p.alive then Bots.think(S, p, dt, Sim) end
+    if p.bot and p.alive then
+      Bots.think(S, p, dt, Sim)
+      -- Высота бота: по ступеням — сразу, с уступа — падает.
+      local g = M.ground(S.map, p.x, p.z, Sim.RADIUS)
+      if p.y > g + 0.01 then
+        p.vy = (p.vy or 0) - Sim.GRAVITY * dt
+        p.y = max(g, p.y + p.vy * dt)
+        if p.y <= g then p.vy = 0 end
+      else
+        p.y, p.vy = g, 0
+      end
+    end
   end
   Sim.checkRound(S)
 end

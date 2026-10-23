@@ -5,10 +5,25 @@
 --   A, B  точки закладки бомбы (у карт «Напарников» — только A)   T, C  базы террористов и спецназа (там же покупка)
 -- lanes — промежуточные точки маршрутов ботов-террористов к каждой точке (боты выбирают случайно);
 -- steps — материалы шагов (ванильные звуки block.<материал>.step): пол «.», пол «,», ящики; wingman — карта «Напарников».
+-- Многоуровневые карты (mapdata.lua, tools/gen_strike_maps.py): levels — высота пола клетки (символ: 0–9, затем a–z,
+-- шаг 0,25 блока: «4» — 1 блок, «a» — 2,5), roofs — потолок над клеткой (тот же код; «.» — нет), wallH — высота стен.
+-- Лестницы — пол, растущий по 0,25 за клетку (подняться можно на STEP без прыжка); крыши делают тоннели и балконы.
 local M = {}
 
 M.WALL_H = 2.6
 M.HEIGHT = {["#"] = 99, ["%"] = 99, X = 1.1, x = 0.5}
+M.STEP = 0.3 -- на сколько можно подняться шагом (ступенька 0,25)
+M.HEAD = 1.0 -- рост игрока: под потолком ниже не пройти
+M.LEVEL = 0.25
+
+-- Символ высоты → блоки.
+function M.levelOf(ch)
+  if not ch or ch == "." or ch == " " then return nil end
+  local b = ch:byte()
+  if b >= 48 and b <= 57 then return (b - 48) * M.LEVEL end
+  if b >= 97 and b <= 122 then return (b - 97 + 10) * M.LEVEL end
+  return nil
+end
 
 M.LIST = {
   {key = "dust", name = "Пустыня", steps = {floor = "sand", floor2 = "stone"}, sky = "#FF9CC7E8", fog = "#FFD9DDD6", fogNear = 20, fogFar = 70,
@@ -403,6 +418,14 @@ M.LIST = {
 
 local floor, sqrt, ceil = math.floor, math.sqrt, math.ceil
 
+-- Новые карты (сгенерированы) — первыми, затем прежние.
+do
+  local ok, extra = pcall(require, "mapdata")
+  if ok and type(extra) == "table" then
+    for k = #extra, 1, -1 do table.insert(M.LIST, 1, extra[k]) end
+  end
+end
+
 -- Номера карт режима: обычные (wingman = false) или «Напарников».
 function M.forMode(wingman)
   local out = {}
@@ -415,14 +438,20 @@ end
 function M.load(index)
   local def = M.LIST[index]
   local m = {def = def, index = index, W = #def.rows[1], H = #def.rows, c = {}, spawns = {{}, {}}, site = {A = {}, B = {}},
-    flows = {}, flowCount = 0}
+    flows = {}, flowCount = 0, base = {}, roof = {}, wallH = def.wallH or M.WALL_H, multi = def.levels ~= nil}
   local W = m.W
+  -- Потолок завода и подобных (ceiling) — крыша над всей картой на высоте стен.
+  local globalRoof = def.ceiling and m.wallH or nil
   for z = 0, m.H - 1 do
     local row = def.rows[z + 1]
+    local lrow = def.levels and def.levels[z + 1]
+    local rrow = def.roofs and def.roofs[z + 1]
     for x = 0, W - 1 do
       local ch = row:sub(x + 1, x + 1)
       local i = z * W + x + 1
       m.c[i] = ch
+      m.base[i] = lrow and M.levelOf(lrow:sub(x + 1, x + 1)) or 0
+      m.roof[i] = (rrow and M.levelOf(rrow:sub(x + 1, x + 1))) or globalRoof
       if ch == "T" then m.spawns[1][#m.spawns[1] + 1] = i
       elseif ch == "C" then m.spawns[2][#m.spawns[2] + 1] = i
       elseif ch == "A" or ch == "B" then m.site[ch][#m.site[ch] + 1] = i end
@@ -470,7 +499,29 @@ end
 
 function M.h(m, cx, cz)
   if cx < 0 or cz < 0 or cx >= m.W or cz >= m.H then return 99 end
-  return M.HEIGHT[m.c[cz * m.W + cx + 1]] or 0
+  local i = cz * m.W + cx + 1
+  local h = M.HEIGHT[m.c[i]]
+  if h == 99 then return 99 end
+  return m.base[i] + (h or 0)
+end
+
+-- Высота пола клетки (без ящиков).
+function M.floorH(m, cx, cz)
+  if cx < 0 or cz < 0 or cx >= m.W or cz >= m.H then return 0 end
+  return m.base[cz * m.W + cx + 1]
+end
+
+-- Самый низкий потолок над кругом радиуса r (нет — очень высоко).
+function M.roofAt(m, x, z, r)
+  local best = 1e9
+  for _, c in ipairs({{floor(x - r), floor(z - r)}, {floor(x + r), floor(z - r)}, {floor(x - r), floor(z + r)}, {floor(x + r), floor(z + r)}}) do
+    local cx, cz = c[1], c[2]
+    if cx >= 0 and cz >= 0 and cx < m.W and cz < m.H then
+      local rf = m.roof[cz * m.W + cx + 1]
+      if rf and rf < best then best = rf end
+    end
+  end
+  return best
 end
 
 -- Высота опоры под кругом радиуса r (самая высокая клетка под ним).
@@ -482,15 +533,19 @@ function M.ground(m, x, z, r)
   return math.max(a, b, c, d)
 end
 
--- Сдвинуть сущность (x, y, z) с учётом стен и ящиков; step — на сколько можно шагнуть вверх.
+-- Сдвинуть сущность (x, y, z) с учётом стен, ящиков, ступеней и потолков; step — на сколько можно шагнуть вверх.
 function M.move(m, e, dx, dz, r, step)
   local top = e.y + (step or 0.05)
   local hitX, hitZ = false, false
+  local function fits(x, z)
+    local g = M.ground(m, x, z, r)
+    return g <= top and M.roofAt(m, x, z, r) >= math.max(g, e.y) + M.HEAD
+  end
   if dx ~= 0 then
-    if M.ground(m, e.x + dx, e.z, r) <= top then e.x = e.x + dx else hitX = true end
+    if fits(e.x + dx, e.z) then e.x = e.x + dx else hitX = true end
   end
   if dz ~= 0 then
-    if M.ground(m, e.x, e.z + dz, r) <= top then e.z = e.z + dz else hitZ = true end
+    if fits(e.x, e.z + dz) then e.z = e.z + dz else hitZ = true end
   end
   return hitX, hitZ
 end
@@ -512,13 +567,19 @@ function M.los(m, x1, y1, z1, x2, y2, z2, smokes)
   local dx, dy, dz = x2 - x1, y2 - y1, z2 - z1
   local len = sqrt(dx * dx + dz * dz)
   local steps = ceil(len / 0.25)
-  local HEIGHT, c, W, H = M.HEIGHT, m.c, m.W, m.H
+  local HEIGHT, c, W, H, base, roof = M.HEIGHT, m.c, m.W, m.H, m.base, m.roof
   for k = 1, steps - 1 do
     local t = k / steps
     local cx, cz = floor(x1 + dx * t), floor(z1 + dz * t)
     if cx < 0 or cz < 0 or cx >= W or cz >= H then return false end
-    local h = HEIGHT[c[cz * W + cx + 1]]
-    if h and h > y1 + dy * t then return false end
+    local i = cz * W + cx + 1
+    local y = y1 + dy * t
+    local h = HEIGHT[c[i]]
+    local b = base[i]
+    -- стена/ящик выше линии, пол (уступ, лестница) выше линии или линия выше потолка (крыша, другой этаж)
+    if (h and (h == 99 or b + h > y)) or b > y then return false end
+    local rf = roof[i]
+    if rf and y >= rf then return false end
   end
   if smokes then
     for _, s in ipairs(smokes) do
@@ -546,17 +607,20 @@ function M.bfs(m, starts, pass)
       queue[#queue + 1] = i
     end
   end
-  local W, c, size = m.W, m.c, m.W * m.H
+  local W, c, size, base = m.W, m.c, m.W * m.H, m.base
+  local step = M.STEP + 0.01
+  -- Поле — от цели наружу: в соседа n можно, если из n шагом попасть в i (вверх не больше STEP, вниз — сколько угодно).
+  local function ok(n, i) return dist[n] == nil and pass(c[n]) and base[i] - base[n] <= step end
   while head <= #queue do
     local i = queue[head]
     head = head + 1
     local d = dist[i] + 1
     local x = (i - 1) % W
     local n1, n2, n3, n4 = (x > 0) and i - 1 or nil, (x < W - 1) and i + 1 or nil, i - W, i + W
-    if n1 and dist[n1] == nil and pass(c[n1]) then dist[n1] = d queue[#queue + 1] = n1 end
-    if n2 and dist[n2] == nil and pass(c[n2]) then dist[n2] = d queue[#queue + 1] = n2 end
-    if n3 > 0 and dist[n3] == nil and pass(c[n3]) then dist[n3] = d queue[#queue + 1] = n3 end
-    if n4 <= size and dist[n4] == nil and pass(c[n4]) then dist[n4] = d queue[#queue + 1] = n4 end
+    if n1 and ok(n1, i) then dist[n1] = d queue[#queue + 1] = n1 end
+    if n2 and ok(n2, i) then dist[n2] = d queue[#queue + 1] = n2 end
+    if n3 > 0 and ok(n3, i) then dist[n3] = d queue[#queue + 1] = n3 end
+    if n4 <= size and ok(n4, i) then dist[n4] = d queue[#queue + 1] = n4 end
   end
   return dist
 end
@@ -598,6 +662,7 @@ end
 function M.clear(m, x1, z1, x2, z2, r)
   local dx, dz = x2 - x1, z2 - z1
   local steps = ceil(sqrt(dx * dx + dz * dz) / 0.3)
+  local prev = M.ground(m, x1, z1, r)
   for k = 1, steps do
     local t = k / steps
     local x, z = x1 + dx * t, z1 + dz * t
@@ -605,6 +670,10 @@ function M.clear(m, x1, z1, x2, z2, r)
         and M.walkable(M.cell(m, floor(x - r), floor(z + r))) and M.walkable(M.cell(m, floor(x + r), floor(z + r)))) then
       return false
     end
+    -- по прямой нельзя «срезать» через уступ выше ступеньки и с края, где пол под кругом разной высоты
+    local g = M.ground(m, x, z, r)
+    if g - prev > M.STEP + 0.01 then return false end
+    prev = g
   end
   return true
 end

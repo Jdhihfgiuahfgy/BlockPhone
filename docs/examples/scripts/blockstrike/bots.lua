@@ -191,7 +191,7 @@ local function walk(S, p, flow, dt, Sim, faceMove, speedMul)
   local speed = Sim.BASE_SPEED * (w.speed or 1) * (speedMul or 1)
   local vx, vz = dx / d * speed, dz / d * speed
   local ox, oz = p.x, p.z
-  M.move(m, p, vx * dt, vz * dt, Sim.RADIUS, 0.05)
+  M.move(m, p, vx * dt, vz * dt, Sim.RADIUS, M.STEP)
   p.vx, p.vz = (p.x - ox) / dt, (p.z - oz) / dt
   if faceMove then turn(p, Sim.yawTo(dx, dz), 0, 300, dt) end
   -- Застрял — шаг в сторону.
@@ -365,7 +365,7 @@ function Bots.fight(S, p, v, dist, dt, Sim, lvl)
       local rx, rz = math.cos(rad) * ai.strafe, -math.sin(rad) * ai.strafe
       local speed = Sim.BASE_SPEED * (w.speed or 1) * 0.6
       local ox, oz = p.x, p.z
-      local hx, hz = M.move(S.map, p, rx * speed * dt, rz * speed * dt, Sim.RADIUS, 0.05)
+      local hx, hz = M.move(S.map, p, rx * speed * dt, rz * speed * dt, Sim.RADIUS, M.STEP)
       if hx or hz then ai.strafe = -ai.strafe end
       p.vx, p.vz = (p.x - ox) / dt, (p.z - oz) / dt
     end

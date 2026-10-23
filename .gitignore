@@ -12,3 +12,4 @@ PhoneModPlugin/
 
 # Кэш wrangler (выкладка приёмника)
 .wrangler/
+__pycache__/

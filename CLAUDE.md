@@ -28,6 +28,7 @@
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
 | `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
 | `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, палитра 3D-оружия `vm_palette`, radar из maps.lua, icon) |
+| `python tools/gen_strike_maps.py` | Многоуровневые карты Block Strike (`mapdata.lua`: rows/levels/roofs) и их радары; проверка достижимости |
 | `python tools/gen_strike_sounds.py` | Звуки Block Strike (`sounds/*.wav`, синтез numpy) + `sounds.lua` (длительности) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 

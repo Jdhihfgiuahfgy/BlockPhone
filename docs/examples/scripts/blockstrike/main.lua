@@ -276,13 +276,19 @@ local function updateMove(dt, P)
   local k = me.ground and min(1, dt * 14) or min(1, dt * 2.5)
   me.vx = me.vx + (tvx - me.vx) * k
   me.vz = me.vz + (tvz - me.vz) * k
-  local hx, hz = M.move(map, me, me.vx * dt, me.vz * dt, Sim.RADIUS, 0.05)
+  local hx, hz = M.move(map, me, me.vx * dt, me.vz * dt, Sim.RADIUS, M.STEP)
   if hx then me.vx = 0 end
   if hz then me.vz = 0 end
   local g = M.ground(map, me.x, me.z, Sim.RADIUS)
   if me.y > g + 0.001 or me.vy > 0 then
     me.vy = me.vy - Sim.GRAVITY * dt
     me.y = me.y + me.vy * dt
+    -- Потолок (тоннель, балкон над головой): прыжок упирается.
+    local rf = M.roofAt(map, me.x, me.z, Sim.RADIUS)
+    if me.y + M.HEAD > rf then
+      me.y = max(g, rf - M.HEAD)
+      if me.vy > 0 then me.vy = 0 end
+    end
     if me.y <= g then
       if me.vy < -4 then footstep(me.x, me.z, 0.7, "fall") end
       me.y, me.vy = g, 0
