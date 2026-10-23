@@ -1076,7 +1076,25 @@ def d2_block(size=64):
     return hd_stone_blocks((222, 200, 156), (178, 156, 116), 2, 1, 53)
 
 
+def sd_mosque(size=64, seed=55):
+    """Стена мечети: крупный светлый песчаник и полоса синего орнамента (решётка) сверху каждого ряда."""
+    np = _np()
+    img = np.array(hd_stone_blocks((222, 198, 150), (188, 164, 120), 2, 1, seed).convert("RGB"), dtype=float)
+    band = 12
+    blue = np.array((52, 78, 128), dtype=float)
+    gold = np.array((214, 188, 120), dtype=float)
+    for y in range(band):
+        for x in range(size):
+            u, v = x % 8, y % 8
+            lattice = (u == v or u == 7 - v or u == 0 or v == 0)
+            img[y, x] = gold if lattice else blue * (0.9 + ((x * 7 + y * 3) % 5) / 25)
+    img[band, :] = (120, 104, 80)
+    img[band + 1, :] *= 1.15
+    return from_array(img)
+
+
 def d2_textures():
+    save(sd_mosque(), "sd_mosque")
     save(d2_wall(), "d2_wall")
     save(d2_door(), "d2_door")
     save(d2_dirt(), "d2_dirt")
