@@ -685,7 +685,7 @@
   "settings.notify.app.feed": "Feed",
   "settings.notify.app.telegram": "Telegram",
   "settings.notify.app.calls": "Calls",
-  "telegram.forwarded": "Forwarded from %s",
+  "telegram.forwarded": "Forwarded",
   "telegram.edited": "edited",
   "telegram.editing": "Editing message",
   "telegram.reply_to": "Reply to %s",
@@ -1050,5 +1050,15 @@
   "telegram.volume": "Volume",
   "settings.telegram.media_volume": "Voice & video volume",
   "telegram.calls_unavailable": "Telegram calls aren't available in game: TDLib doesn't carry call audio. Call from your phone or PC.",
-  "settings.right_click_back": "Right-click outside phone = Back"
+  "settings.right_click_back": "Right-click outside phone = Back",
+  "messenger.forward": "Forward",
+  "messenger.forward_to": "Forward to…",
+  "messenger.forwarded_from": "Forwarded from %s",
+  "messenger.post_preview": "[Post] %s",
+  "messenger.post_deleted": "Post deleted",
+  "social.share_to_chat": "Share to chat",
+  "social.error.post_not_found": "Post not found",
+  "messenger.error.not_found": "Message not found",
+  "telegram.forward": "Forward",
+  "telegram.forward_to": "Forward to…"
 }

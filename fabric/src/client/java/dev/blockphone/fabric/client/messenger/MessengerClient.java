@@ -203,9 +203,22 @@ public final class MessengerClient {
                 voice != null ? voice.id() : 0));
     }
 
-    /** Текст сообщения для превью и уведомлений: «[Фото] подпись», «[Голосовое 0:07]». */
+    /** Переслать сообщение в другой чат (ответ — обычное NewMessage). */
+    public static void forward(long messageId, long toChatId) {
+        ClientNetwork.send(new MessengerPackets.ForwardMessage(messageId, toChatId, "f" + (++nonceCounter) + "_" + System.nanoTime()));
+    }
+
+    /** Поделиться постом ленты в чате. */
+    public static void sharePost(long postId, long toChatId, String comment) {
+        ClientNetwork.send(new MessengerPackets.SharePost(postId, toChatId, "s" + (++nonceCounter) + "_" + System.nanoTime(), comment));
+    }
+
+    /** Текст сообщения для превью и уведомлений: «[Фото] подпись», «[Голосовое 0:07]», «[Пост] …». */
     public static String previewText(MessageInfo message) {
         String text = message.text().replace('\n', ' ');
+        if (message.post() != null && text.isEmpty()) {
+            return PhoneLang.tr("messenger.post_preview", message.post().author());
+        }
         if (message.voice() != null) {
             return PhoneLang.tr("messenger.voice_preview", dev.blockphone.fabric.client.voice.VoiceMessages.time(message.voice().durationMs()));
         }

@@ -34,6 +34,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -395,5 +396,48 @@ class SocialServiceTest {
         assertEquals(pubPhoto.image().id(), post.pub().avatar().id());
         send(ALEX, new SocialPackets.SetPublicAvatar(publicId, 0));
         assertNull(platform.last(ALEX, SocialPackets.PublicData.class).info().avatar());
+    }
+
+    @Test
+    void forwardMessagesAndSharePosts() throws Exception {
+        send(ALEX, new MessengerPackets.OpenDirect(STEVE));
+        long direct = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
+        ImagePackets.UploadResult photo = upload(STEVE, png(8, 8), ImageRef.Purpose.CHAT, serverId());
+        send(STEVE, new MessengerPackets.SendMessage(direct, "s1", "смотри", photo.image().id(), 0));
+        long original = platform.last(ALEX, MessengerPackets.NewMessage.class).message().id();
+
+        send(ALEX, new MessengerPackets.CreateGroup("Друзья", List.of(NOTCH)));
+        long group = platform.last(ALEX, MessengerPackets.ChatOpened.class).chatId();
+        send(ALEX, new MessengerPackets.ForwardMessage(original, group, "f1"));
+        MessengerPackets.NewMessage forwarded = platform.last(NOTCH, MessengerPackets.NewMessage.class);
+        assertEquals("Steve", forwarded.message().forwardedFrom());
+        assertEquals("смотри", forwarded.message().text());
+        assertNotEquals(photo.image().id(), forwarded.message().image().id());
+        assertNotNull(download(NOTCH, forwarded.message().image().id()));
+        assertNull(download(NOTCH, photo.image().id()));
+        assertEquals("f1", platform.last(ALEX, MessengerPackets.NewMessage.class).nonce());
+
+        // Переслать дальше — автор остаётся первым.
+        send(NOTCH, new MessengerPackets.OpenDirect(STEVE));
+        long notchSteve = platform.last(NOTCH, MessengerPackets.ChatOpened.class).chatId();
+        send(NOTCH, new MessengerPackets.ForwardMessage(forwarded.message().id(), notchSteve, "f2"));
+        assertEquals("Steve", platform.last(STEVE, MessengerPackets.NewMessage.class).message().forwardedFrom());
+
+        // Чужое сообщение (не участник чата) переслать нельзя.
+        send(NOTCH, new MessengerPackets.ForwardMessage(original, notchSteve, "f3"));
+        assertEquals("messenger.error.not_found", platform.last(NOTCH, MessengerPackets.Failure.class).key());
+
+        // Пост в чат.
+        PostInfo post = post(ALEX, 0, "Новый дом готов", 0);
+        send(ALEX, new MessengerPackets.SharePost(post.id(), direct, "p1", "глянь"));
+        MessengerPackets.NewMessage shared = platform.last(STEVE, MessengerPackets.NewMessage.class);
+        assertEquals("глянь", shared.message().text());
+        assertEquals(post.id(), shared.message().post().postId());
+        assertEquals("Alex", shared.message().post().author());
+        assertEquals("Новый дом готов", shared.message().post().text());
+        send(ALEX, new SocialPackets.DeletePost(post.id()));
+        send(STEVE, new MessengerPackets.RequestHistory(direct, 0));
+        MessengerPackets.History history = platform.last(STEVE, MessengerPackets.History.class);
+        assertTrue(history.messages().stream().anyMatch(m -> m.post() != null && m.post().deleted()));
     }
 }

@@ -41,6 +41,24 @@ public final class HubApp extends PhoneApp {
         super(ID);
         social.embed(this::openDirect, this::openStickers);
         chats.setProfileOpener(this::openProfileFromChat);
+        chats.setPostOpener(this::openPostFromChat);
+        social.setSharePost(this::sharePost);
+    }
+
+    /** «Поделиться в чате»: выбрать чат во вкладке «Чаты», отправить пост и открыть переписку. */
+    private void sharePost(long postId) {
+        showTab(Tab.CHATS);
+        chats.pickChat(dev.blockphone.fabric.client.i18n.PhoneLang.tr("social.share_to_chat"), chatId -> {
+            dev.blockphone.fabric.client.messenger.MessengerClient.sharePost(postId, chatId, "");
+            chats.openChat(chatId);
+        });
+    }
+
+    /** Пост из сообщения: показывается во вкладке ленты, «назад» возвращает в переписку. */
+    private void openPostFromChat(long postId) {
+        showTab(Tab.FEED);
+        social.openPost(postId);
+        returnToChats = true;
     }
 
     /** Открытое (созданное) приложение-хаб или null. */

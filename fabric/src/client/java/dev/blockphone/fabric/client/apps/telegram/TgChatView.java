@@ -1069,6 +1069,10 @@ final class TgChatView extends TgView {
         if (!item.text().isEmpty()) {
             menu.add(tr("telegram.copy"), () -> Minecraft.getInstance().keyboardHandler.setClipboard(item.text()));
         }
+        menu.add(tr("telegram.forward"), () -> app.push(new TgChatListView(app, tr("telegram.forward_to"), to -> {
+            Telegram.forward(chatId, ids, to);
+            app.openChat(to);
+        })));
         if (m.isOutgoing && m.content instanceof TdApi.MessageText t) {
             menu.add(tr("telegram.edit"), () -> {
                 replyTo = 0;

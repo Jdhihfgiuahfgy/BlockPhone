@@ -137,6 +137,24 @@ public final class MessengerApp extends PhoneApp {
         profileOpener = opener;
     }
 
+    /** Кто открывает пост ленты из сообщения «Поделиться» (общее приложение — во вкладке ленты); null — некуда. */
+    private java.util.function.LongConsumer postOpener;
+
+    public void setPostOpener(java.util.function.LongConsumer opener) {
+        postOpener = opener;
+    }
+
+    void openPost(long postId) {
+        if (postOpener != null && dev.blockphone.fabric.client.network.ClientNetwork.socialAvailable()) {
+            postOpener.accept(postId);
+        }
+    }
+
+    /** Выбрать свой чат (переслать, поделиться): список чатов поверх текущего экрана. */
+    public void pickChat(String title, java.util.function.LongConsumer onPick) {
+        push(new ChatPickView(this, title, onPick));
+    }
+
     /** Открыть профиль игрока; false — некуда (лента на сервере выключена). */
     boolean openProfile(java.util.UUID uuid) {
         if (profileOpener == null || uuid == null || !dev.blockphone.fabric.client.network.ClientNetwork.socialAvailable()) {

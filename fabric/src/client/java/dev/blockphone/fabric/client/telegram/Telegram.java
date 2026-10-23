@@ -568,6 +568,15 @@ public final class Telegram {
         send(view, null);
     }
 
+    /** Переслать сообщения (альбом — всеми id) из одного чата в другой — как «Переслать» в Telegram. */
+    public static void forward(long fromChatId, long[] messageIds, long toChatId) {
+        TdApi.ForwardMessages request = new TdApi.ForwardMessages();
+        request.chatId = toChatId;
+        request.fromChatId = fromChatId;
+        request.messageIds = messageIds;
+        send(request, null);
+    }
+
     public static void sendText(long chatId, String text) {
         sendText(chatId, text, 0);
     }

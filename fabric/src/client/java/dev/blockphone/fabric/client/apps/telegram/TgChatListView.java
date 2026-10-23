@@ -22,18 +22,28 @@ final class TgChatListView extends TgView {
     private static final int ROW_H = 38;
     private static final int AVATAR = 28;
 
+    /** Режим выбора чата («Переслать в…»): заголовок и что сделать с выбранным; null — обычный список. */
+    private final String pickTitle;
+    private final java.util.function.LongConsumer onPick;
+
     TgChatListView(TelegramApp app) {
+        this(app, null, null);
+    }
+
+    TgChatListView(TelegramApp app, String pickTitle, java.util.function.LongConsumer onPick) {
         super(app);
+        this.pickTitle = pickTitle;
+        this.onPick = onPick;
     }
 
     @Override
     String title() {
-        return "Telegram";
+        return pickTitle != null ? pickTitle : "Telegram";
     }
 
     @Override
     String headerAction() {
-        return "⋮";
+        return onPick != null ? null : "⋮";
     }
 
     @Override
@@ -102,7 +112,18 @@ final class TgChatListView extends TgView {
                 g.fill(tx, y + ROW_H - 1, w, y + ROW_H, TgTheme.separator());
             }
             long id = chat.id;
-            hit(0, y, w, ROW_H, () -> app.push(new TgChatView(app, id)));
+            if (onPick != null) {
+                if (Telegram.access(chat) == Telegram.Access.WRITE) {
+                    hit(0, y, w, ROW_H, () -> {
+                        app.pop();
+                        onPick.accept(id);
+                    });
+                } else {
+                    g.fill(0, y, w, y + ROW_H, (bg & 0x00FFFFFF) | 0x90000000);
+                }
+            } else {
+                hit(0, y, w, ROW_H, () -> app.push(new TgChatView(app, id)));
+            }
         }
         endList(g);
     }

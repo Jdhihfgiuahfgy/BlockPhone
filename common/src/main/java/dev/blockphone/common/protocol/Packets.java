@@ -154,6 +154,8 @@ public final class Packets {
         register(110, VoicePackets.CallAudioFrom.class, VoicePackets.CallAudioFrom::read);
         register(111, VoicePackets.CallControl.class, VoicePackets.CallControl::read);
         register(112, SocialPackets.SetPublicAvatar.class, SocialPackets.SetPublicAvatar::read);
+        register(113, MessengerPackets.ForwardMessage.class, MessengerPackets.ForwardMessage::read);
+        register(114, MessengerPackets.SharePost.class, MessengerPackets.SharePost::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

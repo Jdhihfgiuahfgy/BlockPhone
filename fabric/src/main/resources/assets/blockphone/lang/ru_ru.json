@@ -685,7 +685,7 @@
   "settings.notify.app.feed": "Лента",
   "settings.notify.app.telegram": "Telegram",
   "settings.notify.app.calls": "Звонки",
-  "telegram.forwarded": "Переслано от %s",
+  "telegram.forwarded": "Переслано",
   "telegram.edited": "изм.",
   "telegram.editing": "Изменение сообщения",
   "telegram.reply_to": "Ответ: %s",
@@ -1050,5 +1050,15 @@
   "telegram.volume": "Громкость",
   "settings.telegram.media_volume": "Громкость голосовых и видео",
   "telegram.calls_unavailable": "Звонки Telegram в игре недоступны: библиотека TDLib не передаёт звук звонков. Позвоните с телефона или компьютера.",
-  "settings.right_click_back": "ПКМ вне телефона — «назад»"
+  "settings.right_click_back": "ПКМ вне телефона — «назад»",
+  "messenger.forward": "Переслать",
+  "messenger.forward_to": "Переслать в…",
+  "messenger.forwarded_from": "Переслано от %s",
+  "messenger.post_preview": "[Пост] %s",
+  "messenger.post_deleted": "Пост удалён",
+  "social.share_to_chat": "Поделиться в чате",
+  "social.error.post_not_found": "Пост не найден",
+  "messenger.error.not_found": "Сообщение не найдено",
+  "telegram.forward": "Переслать",
+  "telegram.forward_to": "Переслать в…"
 }

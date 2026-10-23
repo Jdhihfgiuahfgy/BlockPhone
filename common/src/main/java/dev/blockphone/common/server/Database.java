@@ -239,6 +239,9 @@ public final class Database implements AutoCloseable {
                     + "PRIMARY KEY (uuid, pack_id))");
         }
         column("messages", "sticker_id BIGINT NOT NULL DEFAULT 0");
+        // Пересланные сообщения и посты в чатах.
+        column("messages", "forwarded_from VARCHAR(64) NOT NULL DEFAULT ''");
+        column("messages", "post_id BIGINT NOT NULL DEFAULT 0");
         index("idx_stickers_pack", "stickers", "pack_id");
         index("idx_sticker_packs_owner", "sticker_packs", "owner");
         // Оформление личной страницы.

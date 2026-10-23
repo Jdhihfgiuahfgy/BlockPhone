@@ -54,6 +54,17 @@ public final class SocialApp extends PhoneApp {
         this.openStickers = openStickers;
     }
 
+    /** «Поделиться постом в чате» (общее приложение «Мессенджер»; null — нельзя). */
+    private java.util.function.LongConsumer sharePost;
+
+    public void setSharePost(java.util.function.LongConsumer share) {
+        sharePost = share;
+    }
+
+    java.util.function.LongConsumer sharePost() {
+        return embedded ? sharePost : null;
+    }
+
     /** «Мои стикеры» (есть только во вложенном режиме, null — нет). */
     Runnable stickers() {
         return embedded ? openStickers : null;

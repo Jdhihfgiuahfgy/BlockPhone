@@ -171,6 +171,10 @@ final class PostCard {
     /** Меню «⋯»: копировать, пожаловаться, удалить. */
     static PopupMenu menu(SocialView view, PostInfo post) {
         PopupMenu menu = new PopupMenu();
+        java.util.function.LongConsumer share = view.app.sharePost();
+        if (share != null) {
+            menu.add(tr("social.share_to_chat"), () -> share.accept(post.id()));
+        }
         if (!post.text().isEmpty()) {
             menu.add(tr("messenger.copy"), () -> Minecraft.getInstance().keyboardHandler.setClipboard(post.text()));
         }

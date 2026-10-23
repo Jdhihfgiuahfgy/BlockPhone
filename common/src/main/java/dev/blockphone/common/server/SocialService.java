@@ -797,6 +797,38 @@ public final class SocialService {
         return new String[]{t.text(), d.text()};
     }
 
+    /**
+     * Превью постов для сообщений («Поделиться»): автор — паблик или ник, начало текста, фото. Нет такого поста — нет в
+     * ответе; удалённый — с deleted.
+     */
+    public Map<Long, dev.blockphone.common.protocol.data.MessengerData.PostShare> sharePreviews(java.util.Collection<Long> postIds)
+            throws SQLException {
+        Map<Long, dev.blockphone.common.protocol.data.MessengerData.PostShare> result = new HashMap<>();
+        UUID nobody = new UUID(0, 0);
+        for (long id : new java.util.LinkedHashSet<>(postIds)) {
+            PostRow row = repo.post(id, nobody);
+            if (row == null) {
+                continue;
+            }
+            if (row.deleted()) {
+                result.put(id, new dev.blockphone.common.protocol.data.MessengerData.PostShare(id, "", "", null, true));
+                continue;
+            }
+            String author;
+            if (row.publicId() > 0) {
+                PublicRow pub = repo.publicRow(row.publicId());
+                author = pub != null ? pub.title() : "?";
+            } else {
+                author = backend.users().userNames(List.of(row.author())).getOrDefault(row.author(), "?");
+            }
+            String text = row.text().length() > dev.blockphone.common.protocol.data.MessengerData.PostShare.MAX_TEXT
+                    ? row.text().substring(0, dev.blockphone.common.protocol.data.MessengerData.PostShare.MAX_TEXT - 1) + "…" : row.text();
+            ImageRef image = row.imageId() > 0 ? backend.imageRepo().refs(List.of(row.imageId())).get(row.imageId()) : null;
+            result.put(id, new dev.blockphone.common.protocol.data.MessengerData.PostShare(id, author, text, image, false));
+        }
+        return result;
+    }
+
     /** Оформление страницы для пакета (фото баннера — с размерами). */
     private SocialData.ProfileLook look(UUID uuid) throws SQLException {
         SocialRepository.LookRow row = repo.look(uuid);

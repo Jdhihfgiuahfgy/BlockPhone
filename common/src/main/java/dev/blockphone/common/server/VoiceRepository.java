@@ -53,6 +53,24 @@ final class VoiceRepository {
         }
     }
 
+    /** Копия голосового в другой чат (пересылка). 0 — исходного нет. */
+    long copy(long id, UUID owner, long chatId, long now) throws SQLException {
+        try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + voices
+                + " (owner, chat_id, codec, duration_ms, size, data, created_at) SELECT ?, ?, codec, duration_ms, size, data, ? FROM "
+                + voices + " WHERE id = ?", Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, owner.toString());
+            ps.setLong(2, chatId);
+            ps.setLong(3, now);
+            ps.setLong(4, id);
+            if (ps.executeUpdate() == 0) {
+                return 0;
+            }
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                return keys.next() ? keys.getLong(1) : 0;
+            }
+        }
+    }
+
     VoiceMeta meta(long id) throws SQLException {
         try (PreparedStatement ps = c().prepareStatement("SELECT id, owner, chat_id, codec, duration_ms FROM " + voices + " WHERE id = ?")) {
             ps.setLong(1, id);
