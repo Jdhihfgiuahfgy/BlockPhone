@@ -82,7 +82,7 @@ public final class ModerationService {
             resolved = backend.users().userNames(List.of(uuid)).getOrDefault(uuid, uuid.toString().substring(0, 8));
         }
         return new PlayerStatus(backend.user(uuid, resolved), mute != null ? mute.until() : 0, mute != null ? mute.reason() : "",
-                ban != null ? ban.until() : 0, ban != null ? ban.reason() : "", backend.users().lastSeen(uuid));
+                ban != null ? ban.until() : 0, ban != null ? ban.reason() : "", backend.users().lastSeen(uuid), repo.warnings(uuid));
     }
 
     // --- Пакеты ---
@@ -150,7 +150,7 @@ public final class ModerationService {
 
     private void punish(UUID player, ModerationPackets.Punish p) throws SQLException {
         Permission needed = switch (p.action()) {
-            case MUTE, UNMUTE -> Permission.MOD_MUTE;
+            case MUTE, UNMUTE, WARN -> Permission.MOD_MUTE;
             case BAN, UNBAN -> Permission.MOD_BAN;
         };
         if (!backend.has(player, needed)) {
@@ -192,7 +192,9 @@ public final class ModerationService {
                 log(player, "unban", p.user(), reason);
                 command(backend.settings().moderation().unbanCommand, targetName, p.user(), reason, 0, modName);
             }
+            case WARN -> log(player, "warn", p.user(), reason);
         }
+        announce(p.action(), p.user(), targetName, modName, p.minutes(), reason);
         backend.platform().info("[moderation] " + modName + " " + p.action().name().toLowerCase(Locale.ROOT) + " " + targetName
                 + (p.action() == ModerationPackets.Action.MUTE || p.action() == ModerationPackets.Action.BAN ? " (" + duration + ")" : "")
                 + (reason.isEmpty() ? "" : ": " + reason));
@@ -205,6 +207,54 @@ public final class ModerationService {
         }
         send(player, new ModerationPackets.PlayerUpdated(status(p.user(), targetName)));
         send(player, new SocialPackets.Done("moderation.done." + p.action().name().toLowerCase(Locale.ROOT) + "|" + targetName));
+    }
+
+    /** Объявление о наказании в чат игры (всем или модераторам) и сообщение самому игроку — по настройкам. */
+    private void announce(ModerationPackets.Action action, UUID target, String targetName, String modName, int minutes, String reason) {
+        ModerationSettings.Announce a = backend.settings().moderation().announce;
+        String duration = minutes < 0 ? a.forever : minutes % 1440 == 0 ? minutes / 1440 + " " + a.days
+                : minutes % 60 == 0 ? minutes / 60 + " " + a.hours : minutes + " " + a.minutes;
+        String why = reason.isEmpty() ? "" : " (" + reason.replace('§', ' ') + ")";
+        String format = switch (action) {
+            case MUTE -> a.mute;
+            case UNMUTE -> a.unmute;
+            case BAN -> a.ban;
+            case UNBAN -> a.unban;
+            case WARN -> a.warn;
+        };
+        String personal = switch (action) {
+            case MUTE -> a.playerMute;
+            case BAN -> a.playerBan;
+            case WARN -> a.playerWarn;
+            default -> "";
+        };
+        String line = fill(format, targetName, modName, duration, why);
+        String own = fill(personal, targetName, modName, duration, why);
+        boolean all = !"staff".equalsIgnoreCase(a.to);
+        ServerPlatform platform = backend.platform();
+        platform.runOnMain(() -> {
+            if (a.enabled && !line.isBlank()) {
+                for (UUID viewer : platform.onlinePlayers()) {
+                    if (viewer.equals(target) && a.notifyPlayer && !own.isBlank()) {
+                        continue;
+                    }
+                    if (all || backend.has(viewer, Permission.MOD_MUTE) || backend.has(viewer, Permission.MOD_BAN)) {
+                        platform.sendChat(viewer, line);
+                    }
+                }
+            }
+            if (a.notifyPlayer && !own.isBlank()) {
+                platform.sendChat(target, own);
+            }
+        });
+    }
+
+    private static String fill(String format, String player, String moderator, String duration, String reason) {
+        if (format == null || format.isBlank()) {
+            return "";
+        }
+        return ModerationSettings.colors(format.replace("{reason}", "\u0000")).replace("{player}", player).replace("{moderator}", moderator)
+                .replace("{duration}", duration).replace("\u0000", reason);
     }
 
     /** Команда сервера при бане/разбане (из настроек), от имени консоли в главном потоке. */

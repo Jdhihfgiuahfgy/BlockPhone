@@ -122,6 +122,22 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         m.chatLog.sticker = c.getString("moderation.chat-log.sticker", m.chatLog.sticker);
         m.banCommand = c.getString("moderation.ban-command", m.banCommand);
         m.unbanCommand = c.getString("moderation.unban-command", m.unbanCommand);
+        dev.blockphone.common.server.ModerationSettings.Announce a = m.announce;
+        a.enabled = c.getBoolean("moderation.announce.enabled", a.enabled);
+        a.to = c.getString("moderation.announce.to", a.to);
+        a.notifyPlayer = c.getBoolean("moderation.announce.notify-player", a.notifyPlayer);
+        a.mute = c.getString("moderation.announce.mute", a.mute);
+        a.unmute = c.getString("moderation.announce.unmute", a.unmute);
+        a.ban = c.getString("moderation.announce.ban", a.ban);
+        a.unban = c.getString("moderation.announce.unban", a.unban);
+        a.warn = c.getString("moderation.announce.warn", a.warn);
+        a.playerMute = c.getString("moderation.announce.player-mute", a.playerMute);
+        a.playerBan = c.getString("moderation.announce.player-ban", a.playerBan);
+        a.playerWarn = c.getString("moderation.announce.player-warn", a.playerWarn);
+        a.forever = c.getString("moderation.announce.forever", a.forever);
+        a.minutes = c.getString("moderation.announce.minutes", a.minutes);
+        a.hours = c.getString("moderation.announce.hours", a.hours);
+        a.days = c.getString("moderation.announce.days", a.days);
         return m.fixNulls();
     }
 

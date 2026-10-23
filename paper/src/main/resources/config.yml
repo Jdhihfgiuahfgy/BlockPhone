@@ -90,6 +90,27 @@ moderation:
   ban-command: ""
   # Команда при снятии бана, например "pardon {player}".
   unban-command: ""
+  # Объявления в чат игры о мутах, банах и предупреждениях из панели модерации телефона (как у плагинов на баны).
+  # Подстановки: {player} — кого, {moderator} — кто, {duration} — срок, {reason} — « (причина)» или пусто.
+  # Пустая строка — это действие не объявлять.
+  announce:
+    enabled: true
+    # all — всем игрокам, staff — только модераторам.
+    to: all
+    # Наказанному — отдельное сообщение (player-*), а не общее.
+    notify-player: true
+    mute: "&c[Телефон] &f{moderator} &7выдал мут &f{player} &7на {duration}{reason}"
+    unmute: "&a[Телефон] &f{moderator} &7снял мут с &f{player}{reason}"
+    ban: "&4[Телефон] &f{moderator} &7заблокировал телефон &f{player} &7на {duration}{reason}"
+    unban: "&a[Телефон] &f{moderator} &7разблокировал телефон &f{player}{reason}"
+    warn: "&e[Телефон] &f{moderator} &7выдал предупреждение &f{player}{reason}"
+    player-mute: "&cВам выдан мут в телефоне на {duration}{reason}"
+    player-ban: "&4Ваш телефон заблокирован на этом сервере на {duration}{reason}"
+    player-warn: "&eВам выдано предупреждение{reason}"
+    forever: "навсегда"
+    minutes: "мин"
+    hours: "ч"
+    days: "д"
 
 # Автомодерация текста: сообщения, названия групп, посты, комментарии, «о себе», паблики.
 # Игроки с правом blockphone.filter.bypass (по умолчанию — операторы) не проверяются, если bypass-for-moderators: true.

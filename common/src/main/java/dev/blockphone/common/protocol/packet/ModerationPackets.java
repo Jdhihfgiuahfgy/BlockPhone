@@ -22,7 +22,8 @@ public final class ModerationPackets {
     /** Что за список игроков: результаты поиска или все наказанные сейчас. */
     public enum ListKind { SEARCH, PUNISHED }
 
-    public enum Action { MUTE, UNMUTE, BAN, UNBAN }
+    /** WARN — предупреждение (без ограничений: запись в журнал, сообщение игроку и объявление). */
+    public enum Action { MUTE, UNMUTE, BAN, UNBAN, WARN }
 
     /** C→S: найти игроков по началу ника (пусто — игроки онлайн). */
     public record SearchPlayers(String query) implements Packet {

@@ -18,15 +18,17 @@ public final class ModerationData {
      * @param mutedUntil  заглушён (не может писать сообщения, посты, комментарии) до этого времени; 0 — нет
      * @param bannedUntil заблокирован в телефоне (мессенджер, лента, звонки) до этого времени; 0 — нет
      */
-    public record PlayerStatus(UserInfo user, long mutedUntil, String muteReason, long bannedUntil, String banReason, long lastSeen) {
+    public record PlayerStatus(UserInfo user, long mutedUntil, String muteReason, long bannedUntil, String banReason, long lastSeen,
+                               int warnings) {
         public static PlayerStatus read(PacketReader r) {
             return new PlayerStatus(UserInfo.read(r), r.readLong(), r.readString(MAX_REASON * 2), r.readLong(), r.readString(MAX_REASON * 2),
-                    r.readLong());
+                    r.readLong(), r.readVarInt());
         }
 
         public static void write(PacketWriter w, PlayerStatus s) {
             UserInfo.write(w, s.user);
-            w.writeLong(s.mutedUntil).writeString(s.muteReason).writeLong(s.bannedUntil).writeString(s.banReason).writeLong(s.lastSeen);
+            w.writeLong(s.mutedUntil).writeString(s.muteReason).writeLong(s.bannedUntil).writeString(s.banReason).writeLong(s.lastSeen)
+                    .writeVarInt(s.warnings);
         }
     }
 

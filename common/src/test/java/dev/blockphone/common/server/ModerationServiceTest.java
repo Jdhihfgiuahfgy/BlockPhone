@@ -169,4 +169,31 @@ class ModerationServiceTest {
         // Модератор не участник — новых сообщений ему не приходит.
         assertTrue(platform.of(ADMIN, MessengerPackets.NewMessage.class).isEmpty());
     }
+
+    @Test
+    void announcesPunishmentsAndWarns() throws Exception {
+        platform.chat.clear();
+        send(ADMIN, "Admin", new ModerationPackets.Punish(ALEX, ModerationPackets.Action.MUTE, 120, "спам"));
+        List<String> steve = platform.chat.get(STEVE);
+        assertEquals(1, steve.size());
+        assertTrue(steve.get(0).contains("Admin") && steve.get(0).contains("Alex") && steve.get(0).contains("2 ч")
+                && steve.get(0).contains("(спам)"), steve.get(0));
+        // Наказанному — личное сообщение вместо общего.
+        assertEquals(1, platform.chat.get(ALEX).size());
+        assertTrue(platform.chat.get(ALEX).get(0).startsWith("§cВам выдан мут"), platform.chat.get(ALEX).get(0));
+
+        // Предупреждение: журнал и счётчик в состоянии игрока.
+        send(ADMIN, "Admin", new ModerationPackets.Punish(ALEX, ModerationPackets.Action.WARN, 0, ""));
+        assertEquals(1, platform.last(ADMIN, ModerationPackets.PlayerUpdated.class).player().warnings());
+        assertTrue(platform.chat.get(STEVE).get(1).contains("предупреждение"));
+        // Обычный игрок предупреждать не может.
+        send(STEVE, "Steve", new ModerationPackets.Punish(ALEX, ModerationPackets.Action.WARN, 0, ""));
+        assertEquals("moderation.error.no_permission", platform.last(STEVE, SocialPackets.Failure.class).key());
+
+        // Объявления выключены — общего сообщения нет, личное остаётся.
+        server.backend().settings().moderation().announce.enabled = false;
+        send(ADMIN, "Admin", new ModerationPackets.Punish(ALEX, ModerationPackets.Action.WARN, 0, ""));
+        assertEquals(2, platform.chat.get(STEVE).size());
+        assertEquals(3, platform.chat.get(ALEX).size());
+    }
 }

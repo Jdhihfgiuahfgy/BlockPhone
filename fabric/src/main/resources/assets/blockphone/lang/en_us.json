@@ -1035,5 +1035,9 @@
   "music.remote.spotify": "Spotify · volume is in Spotify itself",
   "call.mic_gain": "Mic boost",
   "call.noise_on": "Noise suppression: on",
-  "call.noise_off": "Noise suppression: off"
+  "call.noise_off": "Noise suppression: off",
+  "moderation.action.warn": "warning",
+  "moderation.done.warn": "%s: warned",
+  "moderation.do_warn": "Warn",
+  "moderation.warnings": "Warnings: %s"
 }

@@ -235,7 +235,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     переписка только для чтения — право MOD_CHATS, пишется в журнал); бан в телефоне — `Backend.handle` проверяет каждый
     пакет (кроме Refresh/LeaveCall; кэш 30 с) и отвечает *.error.banned; мут — и в мессенджере (`messenger.error.muted`).
     `ModerationSettings` (`moderation` в настройках): `chatLog` (лог сообщений в чат игры игрокам с правом CHAT_LOG,
-    формат с &-цветами, `ModerationSettings.colors`), `banCommand`/`unbanCommand` (через `ServerPlatform.runConsoleCommand`).
+    формат с &-цветами, `ModerationSettings.colors`), `banCommand`/`unbanCommand` (через `ServerPlatform.runConsoleCommand`). `announce` — объявления о MUTE/UNMUTE/BAN/UNBAN/WARN в чат
+    игры (всем или staff, личное сообщение наказанному); WARN — только журнал (`ModerationRepository.warnings`).
     `ServerPlatform.onlinePlayers/sendChat` — для лога. Клиент: `social/ModerationClient`, экраны `apps/social/ModerationView`
     (разделы Жалобы/Игроки/Наказ./Журнал), `PlayerModView`, `ModChatsView`, `ModChatView`.
   - `filter/FilterSettings` (POJO для Gson; Paper заполняет из `filter.*` в config.yml; `fixNulls()`) и `filter/ContentFilter` —

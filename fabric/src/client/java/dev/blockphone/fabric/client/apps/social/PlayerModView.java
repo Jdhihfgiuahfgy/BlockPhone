@@ -77,6 +77,10 @@ final class PlayerModView extends SocialView {
         // Состояние.
         y = statusCard(g, y, w, tr("moderation.mute"), s.mutedUntil(), s.muteReason());
         y = statusCard(g, y, w, tr("moderation.ban"), s.bannedUntil(), s.banReason());
+        if (s.warnings() > 0) {
+            PhoneDraw.text(g, tr("moderation.warnings", s.warnings()), 11, y, PhoneTheme.secondaryText(), 0.6f, false);
+            y += 10;
+        }
 
         section(g, tr("moderation.reason"), y + 2);
         y += 12;
@@ -96,6 +100,9 @@ final class PlayerModView extends SocialView {
                 button(g, 10 + bw, y, bw, 16, tr("moderation.do_unmute"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
                         () -> ModerationClient.punish(user, Action.UNMUTE, 0, reason.text().strip()));
             }
+            y += 20;
+            button(g, 6, y, w - 12, 16, tr("moderation.do_warn"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                    () -> ModerationClient.punish(user, Action.WARN, 0, reason.text().strip()));
             y += 20;
         }
         if (canBan) {

@@ -138,6 +138,12 @@ public final class ModerationRepository {
         return result;
     }
 
+    /** Сколько предупреждений у игрока (по журналу). */
+    public int warnings(UUID uuid) throws SQLException {
+        List<Integer> rows = list("SELECT COUNT(*) FROM " + modlog + " WHERE action = ? AND target = ?", rs -> rs.getInt(1), "warn", uuid.toString());
+        return rows.isEmpty() ? 0 : rows.get(0);
+    }
+
     // --- Журнал ---
 
     public void log(UUID moderator, String action, String target, String details, long now) throws SQLException {

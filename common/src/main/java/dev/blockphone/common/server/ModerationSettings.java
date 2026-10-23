@@ -6,6 +6,8 @@ package dev.blockphone.common.server;
  */
 public final class ModerationSettings {
     public ChatLog chatLog = new ChatLog();
+    /** Объявления о наказаниях из панели модерации в чат игры (как у плагинов на баны). */
+    public Announce announce = new Announce();
     /**
      * Команда консоли при бане в телефоне (пусто — только бан в телефоне). Подстановки: {player}, {uuid}, {reason},
      * {minutes} (-1 — навсегда), {moderator}. Например: "tempban {player} {minutes}m {reason}".
@@ -32,10 +34,52 @@ public final class ModerationSettings {
         public String sticker = "[стикер]";
     }
 
+    /**
+     * Объявления о наказаниях в чат игры. Подстановки: {player} — кого, {moderator} — кто, {duration} — срок,
+     * {reason} — « (причина)» или пусто. Цвета — &-коды.
+     */
+    public static final class Announce {
+        public boolean enabled = true;
+        /** all — всем игрокам; staff — только модераторам (у кого есть модераторские права). */
+        public String to = "all";
+        /** Наказанному — отдельное сообщение в чат (даже если объявления выключены). */
+        public boolean notifyPlayer = true;
+        public String mute = "&c[Телефон] &f{moderator} &7выдал мут &f{player} &7на {duration}{reason}";
+        public String unmute = "&a[Телефон] &f{moderator} &7снял мут с &f{player}{reason}";
+        public String ban = "&4[Телефон] &f{moderator} &7заблокировал телефон &f{player} &7на {duration}{reason}";
+        public String unban = "&a[Телефон] &f{moderator} &7разблокировал телефон &f{player}{reason}";
+        public String warn = "&e[Телефон] &f{moderator} &7выдал предупреждение &f{player}{reason}";
+        public String playerMute = "&cВам выдан мут в телефоне на {duration}{reason}";
+        public String playerBan = "&4Ваш телефон заблокирован на этом сервере на {duration}{reason}";
+        public String playerWarn = "&eВам выдано предупреждение{reason}";
+        /** Слова для {duration}. */
+        public String forever = "навсегда";
+        public String minutes = "мин";
+        public String hours = "ч";
+        public String days = "д";
+    }
+
     public ModerationSettings fixNulls() {
         if (chatLog == null) {
             chatLog = new ChatLog();
         }
+        Announce a = new Announce();
+        if (announce == null) {
+            announce = a;
+        }
+        announce.to = announce.to == null ? a.to : announce.to;
+        announce.mute = announce.mute == null ? a.mute : announce.mute;
+        announce.unmute = announce.unmute == null ? a.unmute : announce.unmute;
+        announce.ban = announce.ban == null ? a.ban : announce.ban;
+        announce.unban = announce.unban == null ? a.unban : announce.unban;
+        announce.warn = announce.warn == null ? a.warn : announce.warn;
+        announce.playerMute = announce.playerMute == null ? a.playerMute : announce.playerMute;
+        announce.playerBan = announce.playerBan == null ? a.playerBan : announce.playerBan;
+        announce.playerWarn = announce.playerWarn == null ? a.playerWarn : announce.playerWarn;
+        announce.forever = announce.forever == null ? a.forever : announce.forever;
+        announce.minutes = announce.minutes == null ? a.minutes : announce.minutes;
+        announce.hours = announce.hours == null ? a.hours : announce.hours;
+        announce.days = announce.days == null ? a.days : announce.days;
         ChatLog d = new ChatLog();
         chatLog.format = chatLog.format == null ? d.format : chatLog.format;
         chatLog.groupFormat = chatLog.groupFormat == null ? d.groupFormat : chatLog.groupFormat;
