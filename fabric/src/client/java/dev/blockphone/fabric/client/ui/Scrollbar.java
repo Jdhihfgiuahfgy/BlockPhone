@@ -137,7 +137,7 @@ public final class Scrollbar {
         double track = (bar.bottom - 2) - (bar.top + 2) - (t[1] - t[0]);
         double f = track <= 0 ? 0 : Math.max(0, Math.min(1, (y - grab - (bar.top + 2)) / track));
         double value = (bar.inverted ? 1 - f : f) * bar.max;
-        dragging = new Bar(bar.top, bar.bottom, value, bar.max, bar.inverted, bar.set);
+        dragging = new Bar(bar.top, bar.bottom, value, bar.max, bar.inverted, bar.set, bar.get);
         bar.set.accept(value);
     }
 

@@ -1233,7 +1233,7 @@ public final class DevShots {
         UUID self = mc.player.getUUID();
         core.social().runInThread(repo -> {
             // Страница Стива: фигура, машет рукой, оранжевый фон, фиолетовый баннер.
-            repo.setLook(STEVE, new dev.blockphone.common.server.SocialRepository.LookRow(1, 1, 2, 4, 0), System.currentTimeMillis());
+            repo.setLook(STEVE, new dev.blockphone.common.server.SocialRepository.LookRow(1, 1, 2, 4, 0, 0), System.currentTimeMillis());
             List<dev.blockphone.common.server.SocialRepository.PublicRow> existing = repo.searchPublics("Новости сервера", 1);
             if (!existing.isEmpty()) {
                 publicId.set(existing.get(0).id());

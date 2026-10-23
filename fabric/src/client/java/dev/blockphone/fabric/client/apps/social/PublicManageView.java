@@ -107,15 +107,15 @@ final class PublicManageView extends SocialView {
         int y = 4 - (int) scroll;
         // Аватар паблика.
         Avatars.drawPublic(g, info.title(), info.color(), info.avatar(), 6, y, 32);
-        int bx = 44;
-        int bw = (w - bx - 10) / 2;
-        button(g, bx, y + 8, bw, 16, tr("social.public_avatar"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, picker::open);
+        int ax = 44;
+        int aw = (w - ax - 10) / 2;
+        button(g, ax, y + 8, aw, 16, tr("social.public_avatar"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, picker::open);
         if (info.avatar() != null) {
-            button(g, bx + bw + 4, y + 8, bw, 16, tr("profile.banner.remove"), mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER,
+            button(g, ax + aw + 4, y + 8, aw, 16, tr("profile.banner.remove"), mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER,
                     () -> SocialClient.send(new SocialPackets.SetPublicAvatar(publicId, 0)));
         }
         if (upload != null && upload.busy()) {
-            PhoneDraw.text(g, tr("photo.uploading"), bx, y + 26, PhoneTheme.secondaryText(), 0.55f, false);
+            PhoneDraw.text(g, tr("photo.uploading"), ax, y + 26, PhoneTheme.secondaryText(), 0.55f, false);
         }
         y += 38;
         PhoneDraw.text(g, tr("social.public_title"), 8, y + 2, PhoneTheme.secondaryText(), 0.65f, false);
