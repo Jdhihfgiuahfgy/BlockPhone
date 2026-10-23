@@ -1098,6 +1098,73 @@ public final class Telegram {
     }
 
     /** Включить/выключить уведомления чата (как «Без звука» в Telegram). */
+    /** Можно ли писать в чат: WRITE — да; READ_ONLY — канал без прав админа или запрет в группе; JOIN — не участник. */
+    public enum Access { WRITE, READ_ONLY, JOIN }
+
+    /**
+     * Права на отправку в чат. Поля читаются по именам (у версий TDLib разный состав): статус участника супергруппы
+     * (создатель / админ с canPostMessages / участник / вышел), разрешения группы canSendBasicMessages (или canSendMessages).
+     * Не удалось разобрать — WRITE, как раньше.
+     */
+    public static Access access(TdApi.Chat chat) {
+        try {
+            TdApi.Supergroup sg = supergroup(chat);
+            Object status = sg != null ? field(sg, "status") : null;
+            String kind = status != null ? status.getClass().getSimpleName() : "";
+            if (kind.endsWith("Left") || kind.endsWith("Banned")) {
+                return Access.JOIN;
+            }
+            if (kind.endsWith("Creator")) {
+                return Access.WRITE;
+            }
+            if (sg != null && sg.isChannel) {
+                if (kind.endsWith("Administrator")) {
+                    Object rights = field(status, "rights");
+                    Object post = rights != null ? field(rights, "canPostMessages") : field(status, "canPostMessages");
+                    return Boolean.FALSE.equals(post) ? Access.READ_ONLY : Access.WRITE;
+                }
+                return Access.READ_ONLY;
+            }
+            if (kind.endsWith("Administrator")) {
+                return Access.WRITE;
+            }
+            if (kind.endsWith("Restricted")) {
+                Object perms = field(status, "permissions");
+                return perms != null && !canSend(perms) ? Access.READ_ONLY : Access.WRITE;
+            }
+            if (!(chat.type instanceof TdApi.ChatTypePrivate) && !(chat.type instanceof TdApi.ChatTypeSecret)) {
+                Object perms = field(chat, "permissions");
+                if (perms != null && !canSend(perms)) {
+                    return Access.READ_ONLY;
+                }
+            }
+        } catch (Throwable e) {
+            return Access.WRITE;
+        }
+        return Access.WRITE;
+    }
+
+    private static boolean canSend(Object permissions) throws ReflectiveOperationException {
+        Object v = field(permissions, "canSendBasicMessages");
+        if (v == null) {
+            v = field(permissions, "canSendMessages");
+        }
+        return !Boolean.FALSE.equals(v);
+    }
+
+    private static @Nullable Object field(Object target, String name) throws IllegalAccessException {
+        try {
+            return target.getClass().getField(name).get(target);
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+    }
+
+    /** Вступить в канал/группу (кнопка «Подписаться»). */
+    public static void join(long chatId) {
+        send(new TdApi.JoinChat(chatId), null);
+    }
+
     public static void setMuted(TdApi.Chat chat, boolean mute) {
         TdApi.ChatNotificationSettings n = chat.notificationSettings != null ? chat.notificationSettings : new TdApi.ChatNotificationSettings();
         n.useDefaultMuteFor = false;

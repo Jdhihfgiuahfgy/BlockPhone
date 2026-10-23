@@ -253,8 +253,7 @@ public final class VoiceMessages {
                     if (!line.isRunning()) {
                         line.start();
                     }
-                    float volume = PhoneSettings.get().musicVolume;
-                    float gain = Math.max(0.25f, volume) * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.MASTER);
+                    float gain = mediaGain();
                     int n = Math.min(1600, audio.length - position);
                     for (int i = 0; i < n; i++) {
                         int v = Math.max(-32768, Math.min(32767, Math.round(audio[position + i] * gain * 1.4f)));
@@ -276,5 +275,17 @@ public final class VoiceMessages {
     }
 
     private VoiceMessages() {
+    }
+
+    /** Множитель громкости голосовых и видео: своя настройка (0..300 %) × общая громкость игры. */
+    public static float mediaGain() {
+        return PhoneSettings.get().mediaVolume / 100f * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.MASTER);
+    }
+
+    /** Изменить громкость голосовых и видео на delta процентов (0..300) и сохранить. */
+    public static void changeMediaVolume(int delta) {
+        PhoneSettings s = PhoneSettings.get();
+        s.mediaVolume = Math.max(0, Math.min(300, s.mediaVolume + delta));
+        s.save();
     }
 }

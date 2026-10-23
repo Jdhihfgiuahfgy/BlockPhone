@@ -2,13 +2,11 @@ package dev.blockphone.fabric.client.telegram;
 
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.BlockPhoneFabric;
-import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.photo.ImageOps;
 import dev.blockphone.fabric.client.photo.Picture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
-import net.minecraft.sounds.SoundSource;
 import org.jcodec.api.FrameGrab;
 import org.jcodec.api.PictureWithMetadata;
 import org.jcodec.codecs.aac.AACDecoder;
@@ -207,8 +205,7 @@ public final class VideoPlayer implements AutoCloseable {
     }
 
     private static float volume() {
-        Minecraft mc = Minecraft.getInstance();
-        return Math.max(0.2f, PhoneSettings.get().musicVolume) * mc.options.getSoundSourceVolume(SoundSource.MASTER);
+        return dev.blockphone.fabric.client.voice.VoiceMessages.mediaGain();
     }
 
     /** Текущее время (секунды): по звуку, если он идёт, иначе по часам. */

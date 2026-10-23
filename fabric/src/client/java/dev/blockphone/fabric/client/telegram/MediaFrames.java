@@ -56,7 +56,12 @@ public final class MediaFrames {
 
     /** Первый кадр ролика (для панели GIF: много роликов сразу, анимировать все — дорого) или null. */
     public static @Nullable PhotoTextures.Image poster(Path file, int maxSide) {
-        String key = "poster|" + file + "|" + maxSide;
+        return poster(file, maxSide, false);
+    }
+
+    /** Первый кадр; circle — квадрат по центру с прозрачными углами (обложка «кружочка»). */
+    public static @Nullable PhotoTextures.Image poster(Path file, int maxSide, boolean circle) {
+        String key = "poster|" + file + "|" + maxSide + (circle ? "|o" : "");
         PhotoTextures.Image image = POSTERS.get(key);
         if (image != null || FAILED.contains(key) || !LOADING.add(key)) {
             return image;
@@ -64,7 +69,7 @@ public final class MediaFrames {
         DECODER.execute(() -> {
             Decoded decoded;
             try {
-                decoded = decode(file, maxSide, FPS, 1, 1);
+                decoded = decode(file, maxSide, FPS, 1, 1, circle);
             } catch (Throwable e) {
                 decoded = null;
             }
@@ -88,7 +93,12 @@ public final class MediaFrames {
 
     /** Текущий кадр анимации (поток рендера) или null — ещё декодируется / не получилось. */
     public static @Nullable PhotoTextures.Image frame(Path file, int maxSide) {
-        String key = file + "|" + maxSide;
+        return frame(file, maxSide, false);
+    }
+
+    /** Кадр анимации; circle — круглый кадр с прозрачными краями («кружочек» без квадратного фона). */
+    public static @Nullable PhotoTextures.Image frame(Path file, int maxSide, boolean circle) {
+        String key = file + "|" + maxSide + (circle ? "|o" : "");
         Clip clip = CLIPS.get(key);
         if (clip != null) {
             int index = (int) ((System.currentTimeMillis() - clip.startedAt()) / clip.frameMs() % clip.frames().size());
@@ -100,7 +110,7 @@ public final class MediaFrames {
         DECODER.execute(() -> {
             Decoded decoded;
             try {
-                decoded = decode(file, maxSide, FPS, MAX_SECONDS);
+                decoded = decode(file, maxSide, FPS, MAX_SECONDS, FPS * MAX_SECONDS, circle);
             } catch (Throwable e) {
                 BlockPhoneFabric.LOGGER.info("Animation {} is not decodable: {}", file.getFileName(), e.toString());
                 decoded = null;
@@ -133,10 +143,10 @@ public final class MediaFrames {
 
     /** Декодировать ролик: кадры по времени (шаг 1/fps), не дольше maxSeconds, сторона не больше maxSide. */
     public static Decoded decode(Path file, int maxSide, int fps, int maxSeconds) throws Exception {
-        return decode(file, maxSide, fps, maxSeconds, fps * maxSeconds);
+        return decode(file, maxSide, fps, maxSeconds, fps * maxSeconds, false);
     }
 
-    private static Decoded decode(Path file, int maxSide, int fps, int maxSeconds, int maxFrames) throws Exception {
+    private static Decoded decode(Path file, int maxSide, int fps, int maxSeconds, int maxFrames, boolean circle) throws Exception {
         List<Picture> frames = new ArrayList<>();
         try (SeekableByteChannel channel = NIOUtils.readableChannel(file.toFile())) {
             FrameGrab grab = FrameGrab.createFrameGrab(channel);
@@ -160,10 +170,30 @@ public final class MediaFrames {
                     rgb = org.jcodec.common.model.Picture.create(src.getWidth(), src.getHeight(), ColorSpace.RGB);
                 }
                 transform.transform(src, rgb);
-                frames.add(ImageOps.downscale(toPicture(rgb, src.getCroppedWidth(), src.getCroppedHeight()), maxSide, maxSide));
+                Picture frame = ImageOps.downscale(toPicture(rgb, src.getCroppedWidth(), src.getCroppedHeight()), maxSide, maxSide);
+                frames.add(circle ? circle(frame) : frame);
             }
         }
         return new Decoded(frames, 1000 / fps);
+    }
+
+    /** Квадрат по центру, всё за пределами вписанного круга — прозрачно (край сглажен на 1 пиксель). */
+    static Picture circle(Picture p) {
+        int side = Math.min(p.width(), p.height());
+        int ox = (p.width() - side) / 2;
+        int oy = (p.height() - side) / 2;
+        int[] out = new int[side * side];
+        float r = side / 2f;
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                float dx = x + 0.5f - r;
+                float dy = y + 0.5f - r;
+                float a = Math.max(0, Math.min(1, r - (float) Math.sqrt(dx * dx + dy * dy) + 0.5f));
+                int c = p.get(ox + x, oy + y);
+                out[y * side + x] = Math.round(a * (c >>> 24)) << 24 | (c & 0xFFFFFF);
+            }
+        }
+        return new Picture(side, side, out);
     }
 
     private static Picture toPicture(org.jcodec.common.model.Picture rgb, int w, int h) {

@@ -50,7 +50,8 @@ final class TgChatView extends TgView {
     private static final int GAP = 3;
     private static final int INPUT_H = 20;
     private static final int MEDIA_W = 112;
-    private static final int NOTE = 64;
+    /** Размер «кружочка» в переписке (как в Telegram — крупный круг без пузыря). */
+    private static final int NOTE = 100;
     private static final int REPLY_H = 17;
     private static final int CHIP_H = 10;
     private static final int MAX_PHOTOS = 10;
@@ -107,6 +108,9 @@ final class TgChatView extends TgView {
                         String time, List<Media> media, int mediaH, boolean note, List<Chip> chips, int chipsH,
                         @Nullable TdApi.VoiceNote voice, int kind, int width, int height) {
     }
+
+    /** До какого времени показывать громкость (после колеса над голосовым). */
+    private long volumeHintUntil;
 
     private record Bubble(int x, int y, int w, int h, Item item) {
     }
@@ -193,6 +197,19 @@ final class TgChatView extends TgView {
     @Override
     boolean capturesKeyboard() {
         return input.isFocused();
+    }
+
+    /** Трубка в шапке личного чата: звонки Telegram в игре невозможны (TDLib не передаёт звук) — объясняем. */
+    @Override
+    String headerAction() {
+        TdApi.Chat chat = Telegram.chat(chatId);
+        return chat != null && chat.type instanceof TdApi.ChatTypePrivate ? "☎" : null;
+    }
+
+    @Override
+    void onHeaderAction() {
+        app.showDialog(new PhoneDialog(tr("call.title"), tr("telegram.calls_unavailable"), "OK", false, () -> {
+        }));
     }
 
     private boolean group() {
@@ -349,7 +366,7 @@ final class TgChatView extends TgView {
                 case TdApi.MessageVideoNote v -> {
                     out.add(new Media(v.videoNote.thumbnail != null ? v.videoNote.thumbnail.file : null, 0, 0, NOTE, NOTE, "",
                             v.videoNote.video));
-                    return NOTE + 8;
+                    return NOTE + 2;
                 }
                 case TdApi.MessageSticker st -> {
                     // Без пузыря: квадрат STICKER, картинка вписана по пропорциям.
@@ -417,11 +434,11 @@ final class TgChatView extends TgView {
         return out.isEmpty() ? 0 : y + CHIP_H + 3;
     }
 
-    /** Размер фото не меньше 320 px по ширине (или самый большой из имеющихся). */
+    /** Размер фото не меньше 640 px по ширине (или самый большой из имеющихся). */
     private static TdApi.PhotoSize bestSize(TdApi.Photo photo) {
         TdApi.PhotoSize best = null;
         for (TdApi.PhotoSize s : photo.sizes) {
-            if (best == null || (best.width < 320 && s.width > best.width) || (s.width >= 320 && s.width < best.width)) {
+            if (best == null || (best.width < 640 && s.width > best.width) || (s.width >= 640 && s.width < best.width)) {
                 best = s;
             }
         }
@@ -478,7 +495,8 @@ final class TgChatView extends TgView {
         boolean own = m.isOutgoing;
         int x = own ? w - 6 - item.width() : 6;
         int bg = own ? TgTheme.outBubble() : TgTheme.inBubble();
-        boolean sticker = item.kind() == KIND_STICKER;
+        // Стикеры и «кружочки» — без пузыря.
+        boolean sticker = item.kind() == KIND_STICKER || item.note();
         if (!sticker) {
             // Пузырь как в Telegram: скругление 8 и «хвостик» у нижнего угла (у своих — справа).
             PhoneDraw.rawRoundedRect(g, x, y, x + item.width(), y + item.height(), 8, bg);
@@ -584,19 +602,31 @@ final class TgChatView extends TgView {
             if (TgMediaViewer.viewable(item.messages().get(Math.min(mediaIndex, item.messages().size() - 1)))) {
                 hit(mx, my, media.w(), media.h(), () -> app.openViewer(item.messages(), mediaIndex));
             }
+            boolean note = item.note();
             Path path = Telegram.localFile(media.file());
-            PhotoTextures.Image image = path != null ? PhotoTextures.preview(new PhotoStore.Photo(path, 0), 320) : null;
+            // «Кружочек» рисуется только круглыми кадрами (у квадратной обложки были бы видны углы).
+            PhotoTextures.Image image = path != null && !note ? PhotoTextures.preview(new PhotoStore.Photo(path, 0), 640) : null;
             boolean animated = false;
             if (media.anim() != null) {
-                // GIF и «кружочки» — анимацией (ролик скачивается сам; не вышло декодировать — остаётся обложка).
+                // GIF и «кружочки» — анимацией (ролик скачивается сам; не вышло декодировать — обложка).
                 Path video = Telegram.localFile(media.anim());
-                PhotoTextures.Image frame = video != null ? MediaFrames.frame(video, 112) : null;
+                PhotoTextures.Image frame = video != null ? MediaFrames.frame(video, note ? 200 : 224, note) : null;
+                if (frame == null && note && video != null) {
+                    frame = MediaFrames.poster(video, 200, true);
+                }
                 if (frame != null) {
                     image = frame;
                     animated = true;
                 }
             }
-            if (image != null) {
+            if (note) {
+                if (image != null) {
+                    PhoneDraw.texture(g, image.id(), mx, my, media.w(), media.h(), image.width(), image.height());
+                } else {
+                    PhoneDraw.roundedRect(g, mx, my, mx + media.w(), my + media.h(), media.w() / 2, TgTheme.dark() ? 0xFF1F2738 : 0xFFDCE3EE);
+                    PhoneDraw.centeredText(g, "...", mx + media.w() / 2f, my + media.h() / 2f - 3, TgTheme.secondaryText(), 0.75f, false);
+                }
+            } else if (image != null) {
                 PhoneDraw.textureCover(g, image.id(), mx, my, media.w(), media.h(), image.width(), image.height());
             } else {
                 g.fill(mx, my, mx + media.w(), my + media.h(), TgTheme.dark() ? 0xFF1F2738 : 0xFFDCE3EE);
@@ -609,11 +639,11 @@ final class TgChatView extends TgView {
             }
         }
         if (item.note() && item.main().content instanceof TdApi.MessageVideoNote v) {
-            // Круглая рамка «кружочка» поверх обложки (углы закрашены цветом пузыря).
-            int bubble = own ? TgTheme.accent() : TgTheme.card();
-            PhoneDraw.roundCornersMask(g, x, y, x + NOTE, y + NOTE, NOTE / 2, bubble);
-            String label = tr("telegram.video_note") + " " + v.videoNote.duration / 60 + ":" + String.format("%02d", v.videoNote.duration % 60);
-            PhoneDraw.text(g, label, x, y + NOTE + 1, own ? TgTheme.onAccent() : TgTheme.secondaryText(), SMALL, false);
+            // Длительность — «таблеткой» под кругом, как в Telegram.
+            String label = v.videoNote.duration / 60 + ":" + String.format("%02d", v.videoNote.duration % 60);
+            int lw = (int) PhoneDraw.width(label, SMALL) + 6;
+            PhoneDraw.roundedRect(g, x + 2, y + NOTE - 9, x + 2 + lw, y + NOTE - 1, 4, 0xA0000000);
+            PhoneDraw.text(g, label, x + 5, y + NOTE - 7, 0xFFFFFFFF, SMALL, false);
         }
     }
 
@@ -640,6 +670,10 @@ final class TgChatView extends TgView {
         }
         String time = VoiceMessages.time(voice.duration * 1000L);
         PhoneDraw.text(g, time, x + 20, y + 15, own ? TgTheme.outMeta() : TgTheme.secondaryText(), 0.5f, false);
+        if (System.currentTimeMillis() < volumeHintUntil) {
+            PhoneDraw.rightText(g, tr("telegram.volume") + " " + dev.blockphone.fabric.client.config.PhoneSettings.get().mediaVolume + "%",
+                    x + w, y + 15, own ? TgTheme.outMeta() : TgTheme.secondaryText(), 0.5f);
+        }
     }
 
     /** Панель стикеров и GIF над полем: вкладки (недавние, GIF, наборы) и сетка; нажатие — отправить. */
@@ -835,6 +869,32 @@ final class TgChatView extends TgView {
             return;
         }
         boolean ready = Telegram.status() == Telegram.Status.READY;
+        TdApi.Chat current = Telegram.chat(chatId);
+        Telegram.Access access = current != null ? Telegram.access(current) : Telegram.Access.WRITE;
+        if (access != Telegram.Access.WRITE && editing == 0) {
+            // Как в Telegram: в канале без прав админа вместо поля — «Подписаться» или «Вкл./выкл. уведомления».
+            input.setFocused(false);
+            boolean hover = PhoneDraw.inside(mouseX, mouseY, 0, top - 3, w, INPUT_H + 6);
+            String label;
+            Runnable action;
+            if (access == Telegram.Access.JOIN) {
+                label = tr("telegram.join");
+                action = () -> Telegram.join(chatId);
+            } else if (current.type instanceof TdApi.ChatTypeSupergroup s && s.isChannel) {
+                boolean muted = Telegram.muted(current);
+                label = tr(muted ? "telegram.unmute" : "telegram.mute");
+                action = () -> Telegram.setMuted(current, !muted);
+            } else {
+                PhoneDraw.centeredText(g, tr("telegram.read_only"), w / 2f, top + 6, TgTheme.secondaryText(), 0.7f, false);
+                return;
+            }
+            if (hover) {
+                g.fill(0, top - 3, w, top + INPUT_H + 3, TgTheme.cardHover());
+            }
+            PhoneDraw.centeredText(g, label, w / 2f, top + 6, TgTheme.accent(), 0.8f, false);
+            hit(0, top - 3, w, INPUT_H + 6, action);
+            return;
+        }
         int ix = 6;
         if (ready && editing == 0) {
             roundButton(g, ix, top + 1, "+", false, mouseX, mouseY, this::openAttachMenu);
@@ -1140,7 +1200,8 @@ final class TgChatView extends TgView {
             }
             return false;
         }
-        if (input.mouseClicked(x, y, button)) {
+        TdApi.Chat current = Telegram.chat(chatId);
+        if ((current == null || Telegram.access(current) == Telegram.Access.WRITE || editing != 0) && input.mouseClicked(x, y, button)) {
             return true;
         }
         return super.mouseClicked(x, y, button);
@@ -1172,6 +1233,14 @@ final class TgChatView extends TgView {
         }
         if (input.mouseScrolled(x, y, amount)) {
             return true;
+        }
+        // Колесо над голосовым или «кружочком» — громкость (общая с видео), подсказка с процентами на 1,5 с.
+        for (Bubble b : bubbles) {
+            if (PhoneDraw.inside(x, y, b.x(), b.y(), b.w(), b.h()) && (b.item().voice() != null || b.item().note())) {
+                VoiceMessages.changeMediaVolume(amount > 0 ? 10 : -10);
+                volumeHintUntil = System.currentTimeMillis() + 1500;
+                return true;
+            }
         }
         scroll += amount * 20;
         return true;

@@ -87,6 +87,8 @@ public final class PhoneSettings {
     public boolean notifyAll = true;
     /** Громкость звонков, % (0..200) и «звук выключен» (не слышать собеседников). */
     public int callVolume = 200;
+    /** Громкость голосовых сообщений, видео и «кружочков», % (0..300). */
+    public int mediaVolume = 100;
     public boolean callDeafened = false;
     /** Усиление своего микрофона в звонке, % (0..400) и шумодав (приглушать фоновый шум). */
     public int callMicGain = 150;

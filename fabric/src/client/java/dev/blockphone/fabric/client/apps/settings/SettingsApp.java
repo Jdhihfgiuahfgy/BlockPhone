@@ -371,6 +371,8 @@ public final class SettingsApp extends PhoneApp {
                                 }, null, false))));
             }
             case TELEGRAM -> result.add(new Section("settings.telegram.video_notes", List.of(
+                    slider("settings.telegram.media_volume", () -> s.mediaVolume + "%", 0, 300, 10,
+                            () -> s.mediaVolume, v -> s.mediaVolume = v),
                     toggle("settings.telegram.note_mic", () -> s.videoNoteMic, v -> s.videoNoteMic = v),
                     toggle("settings.telegram.note_music", () -> s.videoNoteMusic, v -> s.videoNoteMusic = v))));
             case ABOUT -> {

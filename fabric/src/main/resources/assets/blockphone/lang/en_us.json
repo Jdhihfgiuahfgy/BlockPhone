@@ -1042,5 +1042,12 @@
   "moderation.warnings": "Warnings: %s",
   "profile.avatar.photo": "Photo",
   "profile.avatar.choose": "Choose photo (gallery or PC)",
-  "social.public_avatar": "Avatar photo"
+  "social.public_avatar": "Avatar photo",
+  "telegram.join": "Join",
+  "telegram.mute": "Mute",
+  "telegram.unmute": "Unmute",
+  "telegram.read_only": "You can't send messages here",
+  "telegram.volume": "Volume",
+  "settings.telegram.media_volume": "Voice & video volume",
+  "telegram.calls_unavailable": "Telegram calls aren't available in game: TDLib doesn't carry call audio. Call from your phone or PC."
 }
