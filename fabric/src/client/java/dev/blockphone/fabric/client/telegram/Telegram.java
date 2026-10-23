@@ -153,6 +153,7 @@ public final class Telegram {
                     error -> BlockPhoneFabric.LOGGER.warn("Telegram update error", error),
                     error -> BlockPhoneFabric.LOGGER.warn("Telegram error", error));
             status = Status.STARTING;
+            TelegramProxy.onClientStarted();
         } catch (Throwable e) {
             BlockPhoneFabric.LOGGER.error("TDLib failed to start", e);
             fatal = e.getClass().getSimpleName() + ": " + e.getMessage();
@@ -175,6 +176,23 @@ public final class Telegram {
                 onResult.accept(result);
             }
         }), error -> BlockPhoneFabric.LOGGER.warn("Telegram request failed", error));
+    }
+
+    /** Клиент TDLib запущен (можно слать запросы). */
+    public static boolean running() {
+        return client != null;
+    }
+
+    /** Запрос без показа ошибок игроку (проверка прокси и т. п.); ответ — на потоке рендера. */
+    static void sendQuiet(TdApi.Function<?> function, Consumer<TdApi.Object> onResult) {
+        it.tdlight.TelegramClient c = client;
+        if (c == null) {
+            return;
+        }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        TdApi.Function<TdApi.Object> f = (TdApi.Function) function;
+        c.send(f, result -> Minecraft.getInstance().execute(() -> onResult.accept(result)),
+                error -> Minecraft.getInstance().execute(() -> onResult.accept(new TdApi.Error(500, String.valueOf(error)))));
     }
 
     private static void showError(TdApi.Error error) {
@@ -222,6 +240,7 @@ public final class Telegram {
     private static void handle(TdApi.Object update) {
         switch (update) {
             case TdApi.UpdateAuthorizationState u -> onAuth(u.authorizationState);
+            case TdApi.UpdateConnectionState u -> TelegramProxy.onConnectionState(u.state);
             case TdApi.UpdateNewChat u -> CHATS.put(u.chat.id, u.chat);
             case TdApi.UpdateChatTitle u -> withChat(u.chatId, c -> c.title = u.title);
             case TdApi.UpdateChatPhoto u -> withChat(u.chatId, c -> c.photo = u.photo);
@@ -334,6 +353,7 @@ public final class Telegram {
             case TdApi.AuthorizationStateClosing s -> status = Status.STARTING;
             case TdApi.AuthorizationStateClosed s -> {
                 client = null;
+                TelegramProxy.onClientClosed();
                 clearData();
                 status = Status.CLOSED;
                 if (restartAfterClose) {

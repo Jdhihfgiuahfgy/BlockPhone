@@ -400,6 +400,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   JCodec FrameGrab → до 8 с по 15 к/с, уменьшенные кадры-текстуры, своя очередь «BlockPhone Animation decoder»; `poster` —
   первый кадр для панели; не декодируется — обложка). Стикеры: `stickerImage` (WEBP — сам файл, TGS/WEBM — обложка),
   `loadStickerPanel` (наборы, недавние, сохранённые GIF), `stickerSet`, `sendSticker/sendAnimation/sendVoice`.
+- `telegram/TelegramProxy` — прокси (MTProto/SOCKS5/HTTP) для TDLib: режимы auto/custom/off (`PhoneSettings.telegramProxy`),
+  свои ссылки `telegramProxies`, общий список `LIST_URL` (proxies.json каталога, кэш `cache/telegram_proxies.json`);
+  подбор — AddProxy + PingProxy для всех, EnableProxy самого быстрого; запросы — через отражение по именам полей
+  (у версий TDLib разный состав). docs/TELEGRAM_PROXY.md.
 - `apps/telegram/` — приложение в стиле официального клиента: гладкий шрифт DejaVu Sans (`assets/blockphone/font/smooth.json`,
   `PhoneDraw.smoothText` — включает только `TelegramApp` на время отрисовки и ввода; остальной телефон — шрифтом игры),
   цвета `TgTheme` (Night/Classic по теме телефона), своя шапка `TelegramApp.HEADER` («‹», круглый аватар, название, статус —

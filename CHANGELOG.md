@@ -52,6 +52,15 @@
 - Файлы: `common/apps/{AppDefinition,AppLoader,AppsSettings}.java`, `store/AppStore.java`, `apps/store/StoreApp.java`,
   `apps/settings/SettingsApp.java`, `apps/custom/CustomApps.java`, `store-repo/{build_catalog.py,worker.js,.github}`,
   `tools/make_catalog.py`, `docs/{CUSTOM_APPS,APP_STORE}.md`, `paper/config.yml`, языковые файлы.
+- Telegram без VPN: встроенная поддержка прокси MTProto, SOCKS5 и HTTP (через них идут вход, переписка и файлы).
+  Режим «Авто» (по умолчанию): сначала напрямую, а если за 12 с не подключились — телефон проверяет свои прокси и общий
+  список (`proxies.json` в репозитории официального каталога, обновляется без новой версии мода), измеряет пинг и
+  включает самый быстрый; перестал работать — ищет заново. «Только мои», «Выключен». Свои прокси — вставить ссылку
+  `tg://proxy`, `t.me/proxy`, `tg://socks`, `socks5://`, `http://` в «Настройки → Telegram». Состояние — там же и на
+  экране входа. Запросы прокси собираются через отражение (у разных версий TDLib разный состав полей). Свой
+  MTProto-прокси и общий список — docs/TELEGRAM_PROXY.md. Файлы: новый `telegram/TelegramProxy.java`, `telegram/Telegram.java`
+  (`running`, `sendQuiet`, UpdateConnectionState), `apps/settings/SettingsApp.java`, `apps/telegram/TgLoginView.java`,
+  `PhoneSettings` (`telegramProxy`, `telegramProxies`), `store-repo/proxies.json`.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

@@ -68,6 +68,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
             dev.blockphone.fabric.client.clock.ClockService.tick();
             dev.blockphone.fabric.client.music.yandex.YandexMusic.tick();
             Spotify.tick();
+            dev.blockphone.fabric.client.telegram.TelegramProxy.tick();
             dev.blockphone.fabric.client.music.lyrics.LyricsService.tick();
             passMovementThrough(client);
             dev.blockphone.fabric.client.phone.PhoneHolders.tick(client);

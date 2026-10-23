@@ -125,6 +125,12 @@ final class TgLoginView extends TgView {
             button(g, 8, height() - 26, w - 16, 16, tr("telegram.change_keys"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL,
                     () -> editKeys = true);
         }
+        // Как идёт подключение: напрямую или через прокси (без VPN там, где Telegram заблокирован).
+        if (Telegram.running() && status != Telegram.Status.READY) {
+            String net = dev.blockphone.fabric.client.telegram.TelegramProxy.statusText();
+            int ny = height() - (status == Telegram.Status.WAIT_PHONE ? 50 : 26);
+            PhoneDraw.wrapped(g, "⇄ " + net, 10, ny, w - 20, PhoneTheme.secondaryText(), 0.55f, true);
+        }
     }
 
     /** Шаг входа: заголовок, пояснение, поле и кнопка. */

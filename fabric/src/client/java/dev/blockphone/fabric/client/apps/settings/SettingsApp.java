@@ -96,6 +96,9 @@ public final class SettingsApp extends PhoneApp {
     /** Ползунок, который сейчас тянут мышью. */
     private SliderHit dragging;
     private final TextArea hex = new TextArea(false, 0.85f);
+    /** Ссылка на прокси Telegram (страница TELEGRAM). */
+    private final TextArea proxyInput = new TextArea(false, 0.65f);
+    private String proxyError = "";
     private Page page = Page.MAIN;
     private double scroll;
     private boolean hexInvalid;
@@ -105,6 +108,8 @@ public final class SettingsApp extends PhoneApp {
     public SettingsApp() {
         super("settings");
         hex.setMaxLength(7);
+        proxyInput.setMaxLength(600);
+        proxyInput.setPlaceholder("tg://proxy?server=…&port=…&secret=…");
     }
 
     @Override
@@ -137,12 +142,13 @@ public final class SettingsApp extends PhoneApp {
 
     @Override
     public boolean capturesKeyboard() {
-        return hex.isFocused();
+        return hex.isFocused() || proxyInput.isFocused();
     }
 
     @Override
     public void onHidden() {
         hex.setFocused(false);
+        proxyInput.setFocused(false);
     }
 
     /** Открыть страницу настроек по имени: "main", "accent", "wallpaper" (для DevShots). */
@@ -160,6 +166,8 @@ public final class SettingsApp extends PhoneApp {
         page = next;
         scroll = 0;
         hex.setFocused(false);
+        proxyInput.setFocused(false);
+        proxyError = "";
         if (next == Page.ACCENT) {
             hex.setText(String.format(Locale.ROOT, "#%06X", PhoneTheme.accent() & 0xFFFFFF));
             hexInvalid = false;
@@ -399,7 +407,8 @@ public final class SettingsApp extends PhoneApp {
         sliderHits.clear();
         int bottom = switch (page) {
             case MAIN -> renderMenu(g, mouseX, mouseY);
-            case GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT -> renderSections(g, mouseX, mouseY, pageSections(page), 4 - (int) scroll);
+            case GENERAL, LOOK, MUSIC, LYRICS, ABOUT -> renderSections(g, mouseX, mouseY, pageSections(page), 4 - (int) scroll);
+            case TELEGRAM -> renderTelegram(g, mouseX, mouseY);
             case ACCENT -> renderAccent(g, mouseX, mouseY);
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
             case HUD -> renderHud(g, mouseX, mouseY);
@@ -410,6 +419,77 @@ public final class SettingsApp extends PhoneApp {
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
         Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v);
+    }
+
+    // --- Telegram: прокси ---
+
+    /** Раздел Telegram: «кружочки» и прокси (режим, состояние, свои прокси, поле для ссылки). */
+    private int renderTelegram(GuiGraphics g, int mouseX, int mouseY) {
+        int w = contentWidth();
+        dev.blockphone.fabric.client.telegram.TelegramProxy.tick();
+        List<Section> sections = new ArrayList<>(pageSections(Page.TELEGRAM));
+        sections.add(new Section("settings.telegram.proxy", List.of(
+                new Row(() -> PhoneLang.tr("settings.telegram.proxy_mode"),
+                        () -> PhoneLang.tr("settings.telegram.proxy_mode." + dev.blockphone.fabric.client.telegram.TelegramProxy.mode()),
+                        dir -> dev.blockphone.fabric.client.telegram.TelegramProxy.setMode(
+                                cycle(dev.blockphone.fabric.client.telegram.TelegramProxy.MODES,
+                                        dev.blockphone.fabric.client.telegram.TelegramProxy.mode(), dir)), null, false))));
+        int y = renderSections(g, mouseX, mouseY, sections, 4 - (int) scroll);
+        String state = dev.blockphone.fabric.client.telegram.Telegram.running()
+                ? dev.blockphone.fabric.client.telegram.TelegramProxy.statusText() : PhoneLang.tr("settings.telegram.proxy_idle");
+        y += PhoneDraw.wrapped(g, state, MARGIN + 2, y - 4, w - 2 * MARGIN - 4, PhoneTheme.secondaryText(), 0.6f, false) + 2;
+        y += PhoneDraw.wrapped(g, PhoneLang.tr("settings.telegram.proxy_help"), MARGIN + 2, y, w - 2 * MARGIN - 4,
+                PhoneTheme.secondaryText(), 0.55f, false) + 6;
+        PhoneDraw.text(g, PhoneLang.tr("settings.telegram.proxy_mine").toUpperCase(PhoneClock.locale()), MARGIN + 2, y + 3,
+                PhoneTheme.secondaryText(), 0.6f, false);
+        y += 12;
+        List<String> mine = dev.blockphone.fabric.client.telegram.TelegramProxy.custom();
+        if (!mine.isEmpty()) {
+            PhoneDraw.card(g, MARGIN, y, w - MARGIN, y + mine.size() * ROW_H, false);
+            for (int i = 0; i < mine.size(); i++) {
+                String link = mine.get(i);
+                int ry = y + i * ROW_H;
+                if (i > 0) {
+                    g.fill(MARGIN + 6, ry, w - MARGIN - 6, ry + 1, PhoneTheme.separator());
+                }
+                var parsed = dev.blockphone.fabric.client.telegram.TelegramProxy.parse(link);
+                String label = parsed != null ? parsed.label() : link;
+                PhoneDraw.text(g, PhoneDraw.ellipsize(label, w - 2 * MARGIN - 30, 0.65f), MARGIN + 6, ry + 7, PhoneTheme.text(), 0.65f, false);
+                int bx = w - MARGIN - 20;
+                PhoneDraw.button(g, bx, ry + 3, 14, 14, "✕", mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER);
+                hits.add(new Hit(bx, ry + 3, 14, 14, dir -> {
+                    if (dir > 0) {
+                        dev.blockphone.fabric.client.telegram.TelegramProxy.removeCustom(link);
+                    }
+                }));
+            }
+            y += mine.size() * ROW_H + 6;
+        }
+        int addW = 54;
+        proxyInput.setBounds(MARGIN, y, w - 2 * MARGIN - addW - 4, 18);
+        proxyInput.render(g, mouseX, mouseY);
+        int ax = w - MARGIN - addW;
+        PhoneDraw.button(g, ax, y, addW, 18, PhoneLang.tr("settings.telegram.proxy_add"), mouseX, mouseY, PhoneDraw.ButtonStyle.PRIMARY);
+        hits.add(new Hit(ax, y, addW, 18, dir -> addProxy()));
+        y += 22;
+        if (!proxyError.isEmpty()) {
+            y += PhoneDraw.wrapped(g, proxyError, MARGIN + 2, y, w - 2 * MARGIN - 4, PhoneTheme.danger(), 0.6f, false) + 4;
+        }
+        return y + 6;
+    }
+
+    private void addProxy() {
+        String link = proxyInput.text().strip();
+        if (link.isEmpty()) {
+            return;
+        }
+        if (dev.blockphone.fabric.client.telegram.TelegramProxy.addCustom(link)) {
+            proxyInput.setText("");
+            proxyInput.setFocused(false);
+            proxyError = "";
+        } else {
+            proxyError = PhoneLang.tr("settings.telegram.proxy_bad");
+        }
     }
 
     // --- Виджет музыки ---
@@ -934,6 +1014,9 @@ public final class SettingsApp extends PhoneApp {
         if (page == Page.ACCENT && hex.mouseClicked(mx, my, button)) {
             return true;
         }
+        if (page == Page.TELEGRAM && proxyInput.mouseClicked(mx, my, button)) {
+            return true;
+        }
         if (button != 0 && button != 1) {
             return false;
         }
@@ -975,11 +1058,21 @@ public final class SettingsApp extends PhoneApp {
             applyHex();
             return true;
         }
+        if (page == Page.TELEGRAM && proxyInput.isFocused()) {
+            if (event.key() == GLFW.GLFW_KEY_ENTER || event.key() == GLFW.GLFW_KEY_KP_ENTER) {
+                addProxy();
+                return true;
+            }
+            return proxyInput.keyPressed(event);
+        }
         return page == Page.ACCENT && hex.keyPressed(event);
     }
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        if (page == Page.TELEGRAM && proxyInput.isFocused()) {
+            return proxyInput.charTyped(event);
+        }
         return page == Page.ACCENT && hex.charTyped(event);
     }
 

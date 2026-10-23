@@ -83,6 +83,10 @@ public final class PhoneSettings {
     /** Источники магазина приложений: ссылки на catalog.json (docs/APP_STORE.md). */
     public java.util.List<String> storeSources = new java.util.ArrayList<>();
     public boolean notifyAll = true;
+    /** Прокси Telegram: auto (если напрямую не подключается), custom (всегда свои), off (`telegram/TelegramProxy`). */
+    public String telegramProxy = "auto";
+    /** Свои прокси Telegram: ссылки tg://proxy?…, https://t.me/proxy?…, socks5://…, http://…. */
+    public java.util.List<String> telegramProxies = new java.util.ArrayList<>();
     /** Звук в «кружочках» Telegram: микрофон и играющая музыка. */
     public boolean videoNoteMic = true;
     public boolean videoNoteMusic = true;

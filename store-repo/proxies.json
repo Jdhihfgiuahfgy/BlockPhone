@@ -1,0 +1,4 @@
+{
+  "_comment": "Общий список прокси Telegram для телефонов BlockPhone (режим «Авто»). Ссылки tg://proxy?server=...&port=...&secret=... или socks5://host:port. Как поднять свой прокси — docs/TELEGRAM_PROXY.md в репозитории мода.",
+  "proxies": []
+}
