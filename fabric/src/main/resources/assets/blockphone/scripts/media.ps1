@@ -1,5 +1,5 @@
 # BlockPhone: мост к системным медиа Windows (System Media Transport Controls).
-# Видит то же, что всплывающий регулятор громкости Windows: Spotify, Яндекс Музыку, браузеры, плееры.
+# Управляет приложением Spotify на этом компьютере (его сессией в медиа Windows).
 # Запускает мод (music/media/WindowsMedia.java): в stdout — строка JSON с состоянием раз в ~0,4 с,
 # из stdin — команды: toggle | play | pause | next | prev | seek <мс> | shuffle <0|1> | repeat <0|1|2>.
 # Закрытие stdin — выход.
@@ -65,8 +65,16 @@ function Read-Thumb($reference) {
     }
 }
 
+# Сессия Spotify (приложение для ПК или из Microsoft Store); другие плееры не трогаем.
+function Get-Spotify {
+    foreach ($s in $manager.GetSessions()) {
+        if ([string]$s.SourceAppUserModelId -like '*spotify*') { return $s }
+    }
+    return $null
+}
+
 function Get-State {
-    $session = $manager.GetCurrentSession()
+    $session = Get-Spotify
     if ($null -eq $session) { return @{ type = 'state'; active = $false } }
     $props = Await ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
     $info = $session.GetPlaybackInfo()
@@ -106,7 +114,7 @@ function Get-State {
 }
 
 function Run-Command([string]$line) {
-    $session = $manager.GetCurrentSession()
+    $session = Get-Spotify
     if ($null -eq $session) { return }
     $parts = $line.Trim().Split(' ')
     switch ($parts[0]) {

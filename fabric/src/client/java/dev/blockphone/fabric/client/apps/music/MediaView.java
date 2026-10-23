@@ -8,9 +8,9 @@ import dev.blockphone.fabric.client.photo.PhotoTextures;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * Вкладка «На ПК» — пульт плеера компьютера через системные медиа Windows ({@link WindowsMedia}): что играет в Spotify,
- * Яндекс Музыке, браузере и т. п. (обложка, название, перемотка), пауза, вперёд/назад, перемешивание и повтор
- * (если приложение их поддерживает). Ничего настраивать не нужно; звук играет само приложение на компьютере.
+ * Вкладка «Spotify» — пульт приложения Spotify на компьютере через системные медиа Windows ({@link WindowsMedia}):
+ * обложка, название, перемотка, пауза, вперёд/назад, перемешивание и повтор. Вход и Premium не нужны; Spotify должен
+ * быть запущен на этом компьютере (иначе — подсказка).
  */
 final class MediaView extends MusicView {
     private static final int COVER = 96;
@@ -26,8 +26,7 @@ final class MediaView extends MusicView {
 
     @Override
     String title() {
-        WindowsMedia.Playing p = WindowsMedia.playing();
-        return p != null ? p.appName() : tr("music.tab.media");
+        return "Spotify";
     }
 
     @Override
@@ -51,7 +50,7 @@ final class MediaView extends MusicView {
             hint(g, tr("music.media_nothing"), height() / 2 - 24);
             return;
         }
-        int accent = PhoneTheme.accent();
+        int accent = 0xFF1DB954;
         int cx = (w - COVER) / 2;
         int y = 8;
         PhotoTextures.Image cover = p.cover() != null ? Covers.file(p.cover()) : null;
@@ -59,7 +58,7 @@ final class MediaView extends MusicView {
             PhoneDraw.textureCover(g, cover.id(), cx, y, COVER, COVER, cover.width(), cover.height());
         } else {
             PhoneDraw.rawRoundedRect(g, cx, y, cx + COVER, y + COVER, 4, PhoneTheme.card());
-            PhoneDraw.tinted(g, NOTE, cx + COVER / 2 - 16, y + COVER / 2 - 16, 32, 32, 32, 32, accent);
+            PhoneDraw.tinted(g, NOTE, cx + COVER / 2 - 16, y + COVER / 2 - 16, 32, 32, 32, 32, 0xFF1DB954);
         }
         y += COVER + 6;
         PhoneDraw.centeredText(g, PhoneDraw.ellipsize(p.title().isEmpty() ? tr("music.media_untitled") : p.title(), w - 16, 0.9f), w / 2f, y,
@@ -83,7 +82,7 @@ final class MediaView extends MusicView {
         }
         iconButton(g, PREV, mid - 28, y, 13, mx, my, p.canPrev() ? PhoneTheme.text() : PhoneTheme.secondaryText(), WindowsMedia::previous);
         PhoneDraw.roundedRect(g, mid - 12, y - 12, mid + 12, y + 12, 12, accent);
-        PhoneDraw.tinted(g, p.playing() ? PAUSE : PLAY, mid - 7, y - 7, 14, 14, 32, 32, PhoneTheme.onAccent());
+        PhoneDraw.tinted(g, p.playing() ? PAUSE : PLAY, mid - 7, y - 7, 14, 14, 32, 32, 0xFF000000);
         hit(mid - 12, y - 12, 24, 24, WindowsMedia::togglePlay);
         iconButton(g, NEXT, mid + 28, y, 13, mx, my, p.canNext() ? PhoneTheme.text() : PhoneTheme.secondaryText(), WindowsMedia::next);
         if (p.canRepeat()) {
