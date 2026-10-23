@@ -208,7 +208,8 @@ local function drawSmoke(s)
   if r < 0.1 then return end
   local tex = R.T("smoke")
   for _, o in ipairs(PUFFS) do
-    g3d.sprite(tex, s.x + o[1] * r * 0.9, s.y + o[2] * r * 0.55, s.z + o[3] * r * 0.9, r * 1.15, r * 1.15, {tint = "#FFD8D8D8"})
+    -- pick = false: дым закрывает обзор, но пули проходят сквозь него (как в CS).
+    g3d.sprite(tex, s.x + o[1] * r * 0.9, s.y + o[2] * r * 0.55, s.z + o[3] * r * 0.9, r * 1.15, r * 1.15, {tint = "#FFD8D8D8", pick = false})
   end
 end
 

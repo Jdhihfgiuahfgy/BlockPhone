@@ -316,8 +316,8 @@ end
 | `g3d.camera(x, y, z, yaw, pitch[, fov])` | камера (углы в градусах) |
 | `g3d.light(dx, dy, dz[, ambient])`, `g3d.fog(color, near, far)` / `g3d.fog(nil)` | направленный свет; туман |
 | `g3d.begin(x, y, w, h[, clearColor[, quality]])` | начать кадр в прямоугольнике экрана (в `onDraw`); quality 0.2–1 |
-| `g3d.draw(model, x, y, z[, {yaw, pitch, roll, scale, sx, sy, sz, texture, tint, lit, cull, id}])` | нарисовать модель |
-| `g3d.sprite(texture, x, y, z, w, h[, {tint, id}])` | картинка, всегда повёрнутая к камере (враги, предметы, вспышки) |
+| `g3d.draw(model, x, y, z[, {yaw, pitch, roll, scale, sx, sy, sz, texture, tint, lit, cull, id, pick}])` | нарисовать модель (`pick = false` — не мешает `g3d.pick`) |
+| `g3d.sprite(texture, x, y, z, w, h[, {tint, id, pick}])` | картинка, всегда повёрнутая к камере (враги, предметы, вспышки); `pick = false` — видна, но `g3d.pick` смотрит сквозь неё (дым, листва) |
 | `g3d.free(model)` | освободить модель (например, при смене уровня — вернуть лимит вершин) |
 | `g3d.finish()` | вывести кадр (после — можно рисовать интерфейс `gfx` поверх) |
 | `g3d.pick(sx, sy)` | что видно в точке экрана: `id` объекта (из `draw`/`sprite`) и расстояние — для выстрелов |
@@ -363,6 +363,10 @@ end
   картинками — до 16 МБ). `sound.play("sounds/jump.ogg"[, volume])` — сыграть один раз, `sound.loop("music.ogg"[, volume])` —
   по кругу; обе возвращают номер звука, `sound.stop(номер)` — остановить, `sound.stop()` — все. Одновременно — до 8 звуков;
   громкость — «Громкость звуков» телефона × `volume` (0..1). Когда приложение закрывают, его звуки замолкают.
+* **Объёмный звук:** `sound.play(name, volume, pitch, pan[, muffle])` — `pan` от −1 (слева) до 1 (справа), `muffle` 0..1 —
+  «за стеной» (глуше и тише), `pitch` 0.5..2 — высота тона (и для своих файлов). Так в игре слышно, откуда стреляют и где
+  ходят. `sound.place(номер, pan[, muffle])` — подвинуть уже играющий свой звук. Ванильные звуки (шаги) с `pan` звучат
+  через объёмный звук игры.
 * `clipboard.set(text)` (`clipboard`), `openUrl(url)` (`links`), `runCommand("spawn")` (`commands`) — с подтверждением.
 * `app.id`, `app.version`, `app.player` (свой ник), `app.lang`. `print(...)` пишет в лог игры.
 

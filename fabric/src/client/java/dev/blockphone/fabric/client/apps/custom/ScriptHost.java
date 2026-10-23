@@ -338,6 +338,11 @@ final class ScriptHost {
 
     /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 8 звуков сразу. */
     private int playOwnSound(String path, float volume, boolean loop) {
+        return playOwnSound(path, volume, loop, Float.NaN, 0, 1);
+    }
+
+    /** pan = NaN — обычный звук; иначе объёмный (панорама, глухость, высота тона). */
+    private int playOwnSound(String path, float volume, boolean loop, float pan, float muffle, float pitch) {
         String name = path.replace('\\', '/');
         byte[] data = script.assets().get(name);
         if (data == null || !dev.blockphone.common.apps.AppScript.isSound(name)) {
@@ -358,7 +363,10 @@ final class ScriptHost {
                 java.nio.file.Files.write(file, data);
             }
             int id = nextSound++;
-            sounds.put(id, dev.blockphone.fabric.client.sound.PhoneSounds.playFile(file, Math.max(0, Math.min(1, volume)), loop));
+            float v = Math.max(0, Math.min(1, volume));
+            sounds.put(id, Float.isNaN(pan) && pitch == 1
+                    ? dev.blockphone.fabric.client.sound.PhoneSounds.playFile(file, v, loop)
+                    : dev.blockphone.fabric.client.sound.PhoneSounds.playFile(file, v, loop, Float.isNaN(pan) ? 0 : pan, muffle, pitch));
             return id;
         } catch (Exception e) {
             throw new LuaError("sound: " + e.getMessage());
@@ -1014,8 +1022,11 @@ final class ScriptHost {
         LuaTable sound = new LuaTable();
         sound.set("play", fn(a -> {
             String name = a.checkjstring(1).replace("minecraft:", "");
+            // Объёмный звук: 4-й параметр — панорама −1..1, 5-й — глухость 0..1 (за стеной), 3-й — высота тона.
+            float pan = a.isnoneornil(4) ? Float.NaN : (float) a.checkdouble(4);
             if (dev.blockphone.common.apps.AppScript.isSound(name)) {
-                return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false));
+                return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false, pan, (float) a.optdouble(5, 0),
+                        (float) a.optdouble(3, 1)));
             }
             // Шаги и падение на блоки (block.stone.step, block.grass.fall…) — для игр с ходьбой.
             boolean footstep = name.matches("block\\.[a-z_]+\\.(step|fall)");
@@ -1024,8 +1035,29 @@ final class ScriptHost {
             }
             SoundEvent event = BuiltInRegistries.SOUND_EVENT.getValue(Identifier.withDefaultNamespace(name));
             if (event != null) {
-                Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(event,
-                        (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1))), (float) Math.max(0, Math.min(1, a.optdouble(2, 1)))));
+                float pitch = (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1)));
+                float volume = (float) Math.max(0, Math.min(1, a.optdouble(2, 1)));
+                Minecraft mc = Minecraft.getInstance();
+                if (!Float.isNaN(pan) && mc.player != null) {
+                    // Панорама ванильного звука: источник в 2 блоках от игрока под нужным углом (OpenAL сам разведёт по ушам).
+                    double side = Math.asin(Math.max(-1, Math.min(1, pan)));
+                    double yaw = Math.toRadians(mc.player.getYRot());
+                    double fx = -Math.sin(yaw), fz = Math.cos(yaw);
+                    double rx = -Math.cos(yaw), rz = -Math.sin(yaw);
+                    double dx = fx * Math.cos(side) + rx * Math.sin(side), dz = fz * Math.cos(side) + rz * Math.sin(side);
+                    mc.getSoundManager().play(new SimpleSoundInstance(event, net.minecraft.sounds.SoundSource.MASTER, volume, pitch,
+                            net.minecraft.util.RandomSource.create(), mc.player.getX() + dx * 2, mc.player.getEyeY(), mc.player.getZ() + dz * 2));
+                } else {
+                    mc.getSoundManager().play(SimpleSoundInstance.forUI(event, pitch, volume));
+                }
+            }
+            return LuaValue.NONE;
+        }));
+        sound.set("place", fn(a -> {
+            // Подвинуть играющий объёмный звук: sound.place(номер, панорама, глухость).
+            dev.blockphone.fabric.client.sound.PhoneSounds.Handle h = sounds.get(a.checkint(1));
+            if (h != null) {
+                h.place((float) a.checkdouble(2), (float) a.optdouble(3, 0));
             }
             return LuaValue.NONE;
         }));
@@ -1343,14 +1375,15 @@ final class ScriptHost {
                     (float) o.get("sz").optdouble(scale));
             Raster3D.Tex tex = o.get("texture").isnil() ? null : tex3d(o.get("texture").checkint());
             raster.draw(mesh, tex, m, x, y, z, color(o.get("tint"), 0xFFFFFFFF), o.get("lit").optboolean(true),
-                    o.get("cull").optboolean(false), o.get("id").optint(0));
+                    o.get("cull").optboolean(false), o.get("pick").optboolean(true) ? o.get("id").optint(0) : Raster3D.NO_PICK);
             return LuaValue.NONE;
         }));
         g3d.set("sprite", fn(a -> {
             need3d();
             LuaTable o = a.opttable(7, new LuaTable());
             raster.sprite(tex3d(a.checkint(1)), (float) a.checkdouble(2), (float) a.checkdouble(3), (float) a.checkdouble(4),
-                    (float) a.checkdouble(5), (float) a.checkdouble(6), color(o.get("tint"), 0xFFFFFFFF), o.get("id").optint(0));
+                    (float) a.checkdouble(5), (float) a.checkdouble(6), color(o.get("tint"), 0xFFFFFFFF),
+                    o.get("pick").optboolean(true) ? o.get("id").optint(0) : Raster3D.NO_PICK);
             return LuaValue.NONE;
         }));
         g3d.set("finish", fn(a -> {
@@ -1367,7 +1400,7 @@ final class ScriptHost {
                 return LuaValue.varargsOf(LuaValue.valueOf(0), LuaValue.valueOf(-1));
             }
             int i = py * raster.w + px;
-            float d = raster.depth[i] > 0 ? 1 / raster.depth[i] : -1;
+            float d = raster.pickDepth[i] > 0 ? 1 / raster.pickDepth[i] : -1;
             return LuaValue.varargsOf(LuaValue.valueOf(raster.ids[i]), LuaValue.valueOf(d));
         }));
         g3d.set("project", fn(a -> {

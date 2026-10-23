@@ -52,7 +52,8 @@ local function saveSettings() storage.set("settings", G.set) end
 local LOW = {impact = true, ricochet = true, nade_bounce = true}
 local playing = {}
 
-local function sfx(name, vol)
+-- pan — панорама −1..1 (слева/справа), muffle — 0..1 «за стеной» (объёмный звук телефона).
+local function sfx(name, vol, pan, muffle)
   vol = (vol or 1) * (G.set.volume or 1)
   if vol < 0.03 then return end
   local now = time.clock()
@@ -68,22 +69,47 @@ local function sfx(name, vol)
     sound.stop(playing[victim].id)
     table.remove(playing, victim)
   end
-  local id = sound.play("sounds/" .. name .. ".wav", min(1, vol))
+  local id
+  if pan then
+    id = sound.play("sounds/" .. name .. ".wav", min(1, vol), 0.97 + random() * 0.06, pan, muffle or 0)
+  else
+    id = sound.play("sounds/" .. name .. ".wav", min(1, vol))
+  end
   if id and id > 0 then playing[#playing + 1] = {id = id, name = name, t = now + (SND[name] or 1)} end
 end
 
 local function camPos()
   local c = G.cam
-  if c then return c.x, c.z end
-  return G.me.x, G.me.z
+  if c then return c.x, c.z, c.y, c.yaw end
+  return G.me.x, G.me.z, G.me.y + Sim.EYE, G.me.yaw
 end
 
--- Звук в мире: тише с расстоянием (k² — как на слух).
-local function sfx3d(name, x, z, vol, range)
-  local cx, cz = camPos()
-  local d = sqrt((x - cx) ^ 2 + (z - cz) ^ 2)
+-- Где звук относительно слушателя: панорама (−1 слева … 1 справа), глухость (за стеной, другой этаж, сзади) и
+-- множитель громкости. Так по звуку понятно, откуда стреляют и где ходят.
+local function placeSound(x, y, z)
+  local cx, cz, cy, yaw = camPos()
+  local dx, dz = x - cx, z - cz
+  local d = sqrt(dx * dx + dz * dz)
+  if d < 0.6 then return 0, 0, 1, d end
+  local r = rad(yaw or 0)
+  local pan = (dx * cos(r) - dz * sin(r)) / d
+  local front = (dx * sin(r) + dz * cos(r)) / d
+  local muffle, k = 0, 1
+  if front < -0.2 then
+    muffle, k = 0.18, 0.88 -- сзади — чуть глуше
+  end
+  local map = G.V and G.V.map
+  if map and y and not M.los(map, cx, cy, cz, x, y + 0.6, z) then
+    muffle, k = 0.72, k * 0.6 -- за стеной или на другом этаже
+  end
+  return pan * 0.9, muffle, k, d
+end
+
+-- Звук в мире: тише с расстоянием (k² — как на слух), объёмный.
+local function sfx3d(name, x, z, vol, range, y)
+  local pan, muffle, kk, d = placeSound(x, y, z)
   local k = 1 - d / (range or 40)
-  if k > 0 then sfx(name, vol * (0.25 + 0.75 * k * k)) end
+  if k > 0 then sfx(name, vol * kk * (0.25 + 0.75 * k * k), pan, muffle) end
 end
 
 -- Шаги — ванильные звуки блоков (block.<материал>.step) по тому, на чём стоит игрок; материалы — steps в maps.lua.
@@ -96,12 +122,18 @@ local function material(x, z)
   return st.floor or "stone"
 end
 
-local function footstep(x, z, vol, kind, range)
-  local cx, cz = camPos()
-  local d = sqrt((x - cx) ^ 2 + (z - cz) ^ 2)
+local function footstep(x, z, vol, kind, range, y)
+  local pan, muffle, kk, d = placeSound(x, y, z)
   local k = range and (1 - d / range) or 1
-  vol = vol * k * (G.set.volume or 1)
-  if vol > 0.03 then sound.play("block." .. material(x, z) .. "." .. (kind or "step"), min(1, vol), 0.9 + random() * 0.2) end
+  vol = vol * k * kk * (1 - muffle * 0.4) * (G.set.volume or 1)
+  if vol > 0.03 then
+    local name = "block." .. material(x, z) .. "." .. (kind or "step")
+    if range then
+      sound.play(name, min(1, vol), (0.9 + random() * 0.2) * (1 - muffle * 0.15), pan)
+    else
+      sound.play(name, min(1, vol), 0.9 + random() * 0.2)
+    end
+  end
 end
 
 local function shotSound(w) return w.slot == 3 and "knife_swing" or "shot_" .. w.key end
@@ -463,7 +495,7 @@ local function updateOthers(dt, now)
     if p.id ~= me.id then
       if p.lastShots and p.shots > p.lastShots and p.alive then
         local w = D.WEAPONS[p.wpn] or D.WEAPONS[1]
-        sfx3d(shotSound(w), p.rx, p.rz, w.slot == 3 and 0.4 or 0.75, w.slot == 3 and 12 or 60)
+        sfx3d(shotSound(w), p.rx, p.rz, w.slot == 3 and 0.4 or 0.75, w.slot == 3 and 12 or 60, p.ry)
         p.flashT = now
       end
       p.lastShots = p.shots
@@ -471,7 +503,7 @@ local function updateOthers(dt, now)
         p.stepT = (p.stepT or 0) + dt
         if p.stepT > 0.38 then
           p.stepT = 0
-          footstep(p.rx, p.rz, 0.6, "step", 20)
+          footstep(p.rx, p.rz, 0.6, "step", 22, p.ry)
         end
       end
     end
@@ -530,11 +562,11 @@ local function onEvent(e, now)
   elseif kind == "he" then
     local x, y, z = e[3] / 100, e[4] / 100, e[5] / 100
     R.addFx("boom", x, y, z, 0.5, 2.6)
-    sfx3d("he_explode", x, z, 1, 70)
+    sfx3d("he_explode", x, z, 1, 70, y)
   elseif kind == "fl" then
     local x, y, z = e[3] / 100, e[4] / 100, e[5] / 100
     R.addFx("flash", x, y, z, 0.3)
-    sfx3d("flash_bang", x, z, 1, 60)
+    sfx3d("flash_bang", x, z, 1, 60, y)
   elseif kind == "sm" then
     sfx3d("smoke_hiss", e[3] / 100, e[4] / 100, 0.8, 35)
   elseif kind == "half" then
@@ -555,7 +587,7 @@ local function onEvent(e, now)
     if e[3] == me.id then G.small = {text = "Вы подобрали бомбу (5 — в руки, E на точке — заложить)", t = now} end
   elseif kind == "planting" or kind == "defusing" then
     local p = V.players[e[3]]
-    if p and p.rx then sfx3d(kind == "planting" and "bomb_plant" or "defuse", p.rx, p.rz, 0.8, 30) end
+    if p and p.rx then sfx3d(kind == "planting" and "bomb_plant" or "defuse", p.rx, p.rz, 0.8, 30, p.ry) end
   end
 end
 
@@ -1012,7 +1044,7 @@ local function gameFrame(dt, sw, sh)
     G.beepT = G.beepT - dt
     if G.beepT <= 0 then
       G.beepT = max(0.12, min(1, b.timer / 30))
-      sfx3d("bomb_beep", b.x, b.z, 0.8, 50)
+      sfx3d("bomb_beep", b.x, b.z, 0.8, 50, b.y)
     end
   end
   -- Камера: своя или того, за кем наблюдаем.

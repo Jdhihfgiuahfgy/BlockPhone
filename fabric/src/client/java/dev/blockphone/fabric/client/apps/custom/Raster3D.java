@@ -40,6 +40,10 @@ final class Raster3D {
     int[] color = new int[0];
     float[] depth = new float[0];
     int[] ids = new int[0];
+    /** Глубина того, что видит g3d.pick (без объектов с pick = false: дым не останавливает пули). */
+    float[] pickDepth = new float[0];
+    /** id объекта, который рисуется, но не попадает в pick (виден, но «прозрачен» для выстрелов). */
+    static final int NO_PICK = Integer.MIN_VALUE;
     int triangles;
 
     // Камера.
@@ -55,12 +59,14 @@ final class Raster3D {
             color = new int[width * height];
             depth = new float[width * height];
             ids = new int[width * height];
+            pickDepth = new float[width * height];
         }
         w = width;
         h = height;
         Arrays.fill(color, clear);
         Arrays.fill(depth, 0f);
         Arrays.fill(ids, 0);
+        Arrays.fill(pickDepth, 0f);
         triangles = 0;
         double y = Math.toRadians(yaw);
         double p = Math.toRadians(pitch);
@@ -287,7 +293,10 @@ final class Raster3D {
                     bl = (bl * tA + (under & 255) * (255 - tA)) / 255;
                 } else {
                     depth[i] = iz;
-                    ids[i] = id;
+                    if (id != NO_PICK) {
+                        ids[i] = id;
+                        pickDepth[i] = iz;
+                    }
                 }
                 color[i] = 0xFF000000 | Math.min(255, r) << 16 | Math.min(255, g) << 8 | Math.min(255, bl);
             }
