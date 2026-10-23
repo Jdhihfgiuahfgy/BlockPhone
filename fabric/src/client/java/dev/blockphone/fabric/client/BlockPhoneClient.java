@@ -61,8 +61,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
             // с некоторыми модами (FastQuit и т. п.) не приходит, поэтому проверяем и здесь.
             boolean inWorld = client.level != null;
             if (wasInWorld && !inWorld) {
-                MusicPlayer.stop();
-                dev.blockphone.fabric.client.voice.VoiceMessages.stop();
+                dev.blockphone.fabric.client.network.ClientNetwork.forgetServer();
             }
             wasInWorld = inWorld;
             MusicPlayer.tick();

@@ -28,7 +28,7 @@ import org.jetbrains.annotations.Nullable;
 /** Клиентская сеть: приём пакетов сервера и состояние «есть ли BlockPhone на сервере». */
 public final class ClientNetwork {
     /** Приветствие сервера; {@code null}, если сервер без BlockPhone (или одиночная игра). */
-    private static @Nullable ServerHelloPacket serverHello;
+    private static volatile @Nullable ServerHelloPacket serverHello;
 
     public static void init() {
         ClientPlayNetworking.registerGlobalReceiver(RawPayload.TYPE, (payload, context) -> {
@@ -43,14 +43,24 @@ public final class ClientNetwork {
         });
 
         // Событие приходит из сетевого потока, а текстуры освобождать можно только в потоке рендера.
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(ClientNetwork::forgetServer));
+        // Новое подключение (сервер или одиночная игра) начинается «без BlockPhone», пока сервер не поздоровается.
+        // Раньше состояние прошлого сервера оставалось, если событие отключения не пришло (FastQuit и т. п.).
+        // INIT приходит до любых пакетов, а сброс встаёт в очередь потока рендера раньше приветствия.
+        ClientPlayConnectionEvents.INIT.register((handler, client) -> {
             serverHello = null;
-            // Вышли из мира — музыка и голосовые замолкают (то же — в BlockPhoneClient по исчезновению мира).
-            dev.blockphone.fabric.client.music.MusicPlayer.stop();
-            VoiceMessages.stop();
-            PhoneState.reset();
-            resetServerState();
-        }));
+            client.execute(ClientNetwork::forgetServer);
+        });
+    }
+
+    /** Вышли из мира или подключаемся заново: забыть сервер (вызывать в потоке рендера). */
+    public static void forgetServer() {
+        serverHello = null;
+        // Вышли из мира — музыка и голосовые замолкают (то же — в BlockPhoneClient по исчезновению мира).
+        dev.blockphone.fabric.client.music.MusicPlayer.stop();
+        VoiceMessages.stop();
+        PhoneState.reset();
+        resetServerState();
     }
 
     private static void handle(Packet packet) {

@@ -204,13 +204,14 @@ public final class StoreApp extends PhoneApp {
         PhoneDraw.text(g, PhoneDraw.ellipsize(e.author().isEmpty() ? e.catalog() : e.author(), tw, 0.6f), tx, cy + 16,
                 PhoneTheme.secondaryText(), 0.6f, false);
         meta(g, e, tx, cy + 27, tw, 0.55f);
-        actionButton(g, e, bx, by, ROW_BTN, 16, mx, my, visible);
+        // Клики проверяются с конца: строку — раньше кнопки, иначе «Установить» открывала страницу приложения.
         if (visible) {
             hits.add(new Hit(6, Math.max(top, cy), w - 12, ch, () -> {
                 detail = e;
                 scroll = 0;
             }));
         }
+        actionButton(g, e, bx, by, ROW_BTN, 16, mx, my, visible && by >= top && by + 16 <= bottom);
     }
 
     /** Строка «★ 4.6 · 1.2 MB · v1.0». */
