@@ -47,10 +47,15 @@ local function saveSettings() storage.set("settings", G.set) end
 
 -- --- Звук ---
 
--- Свои звуки (sounds/*.wav). Телефон играет не больше 8 одновременно: следим сами — тихие и частые (шаги,
--- попадания в стену) пропускаем, если звучит много, а важный звук вытесняет самый старый.
+-- Свои звуки (sounds/*.wav). Телефон играет до 16 одновременно (один — фон карты): следим сами — тихие и частые
+-- (шаги, гильзы, попадания в стену) пропускаем, если звучит много, а важный звук вытесняет самый старый.
 local LOW = {impact = true, ricochet = true, nade_bounce = true}
+local function isLow(name)
+  local p = name:sub(1, 4)
+  return LOW[name] or p == "step" or p == "land" or p == "shel"
+end
 local playing = {}
+local later = {} -- отложенные звуки: {t, name, vol}
 
 -- pan — панорама −1..1 (слева/справа), muffle — 0..1 «за стеной» (объёмный звук телефона).
 local function sfx(name, vol, pan, muffle)
@@ -60,11 +65,11 @@ local function sfx(name, vol, pan, muffle)
   for i = #playing, 1, -1 do
     if playing[i].t < now then table.remove(playing, i) end
   end
-  if #playing >= 7 then
-    if LOW[name] then return end
+  if #playing >= 14 then
+    if isLow(name) then return end
     local victim = 1
     for i, p in ipairs(playing) do
-      if LOW[p.name] then victim = i break end
+      if isLow(p.name) then victim = i break end
     end
     sound.stop(playing[victim].id)
     table.remove(playing, victim)
@@ -112,31 +117,60 @@ local function sfx3d(name, x, z, vol, range, y)
   if k > 0 then sfx(name, vol * kk * (0.25 + 0.75 * k * k), pan, muffle) end
 end
 
--- Шаги — ванильные звуки блоков (block.<материал>.step) по тому, на чём стоит игрок; материалы — steps в maps.lua.
+-- Шаги — свои звуки по поверхности (sounds/step_<поверхность>_1..4, land_<поверхность>): материалы карты —
+-- steps в maps.lua, в домах — пол интерьера темы (плитка, доски, ковёр).
+local SURF = {sand = "sand", gravel = "sand", stone = "concrete", wood = "wood", metal = "metal", grass = "grass",
+  snow = "snow", wool = "carpet", tile = "tile"}
 local function material(x, z)
   local m = G.V.map
   local ch = M.cell(m, floor(x), floor(z))
   local st = m.def.steps or {}
-  if ch == "," then return st.floor2 or st.floor or "stone" end
-  if ch == "x" or ch == "X" then return st.box or "wood" end
-  return st.floor or "stone"
+  if ch == "x" or ch == "X" then return SURF[st.box or "wood"] or "wood" end
+  local i = M.idx(m, x, z)
+  if i and m.roof[i] and not m.def.ceiling and R.indoorSurface then return R.indoorSurface end
+  if ch == "," then return SURF[st.floor2 or st.floor or "stone"] or "concrete" end
+  return SURF[st.floor or "stone"] or "concrete"
 end
 
 local function footstep(x, z, vol, kind, range, y)
-  local pan, muffle, kk, d = placeSound(x, y, z)
-  local k = range and (1 - d / range) or 1
-  vol = vol * k * kk * (1 - muffle * 0.4) * (G.set.volume or 1)
-  if vol > 0.03 then
-    local name = "block." .. material(x, z) .. "." .. (kind or "step")
-    if range then
-      sound.play(name, min(1, vol), (0.9 + random() * 0.2) * (1 - muffle * 0.15), pan)
-    else
-      sound.play(name, min(1, vol), 0.9 + random() * 0.2)
-    end
+  local surf = material(x, z)
+  local name = kind == "fall" and ("land_" .. surf) or ("step_" .. surf .. "_" .. random(1, 4))
+  if range then
+    local pan, muffle, kk, d = placeSound(x, y, z)
+    local k = 1 - d / range
+    if k > 0 then sfx(name, vol * kk * (0.3 + 0.7 * k * k) * (1 - muffle * 0.3), pan, muffle) end
+  else
+    sfx(name, vol)
   end
 end
 
 local function shotSound(w) return w.slot == 3 and "knife_swing" or "shot_" .. w.key end
+
+-- Выстрел другого игрока: вблизи — полный звук, дальше 18 блоков — «издалека» (эхо, без щелчка).
+local function shotAt(w, x, y, z)
+  local name = shotSound(w)
+  if w.slot == 3 then
+    sfx3d(name, x, z, 0.4, 12, y)
+    return
+  end
+  local pan, muffle, kk, d = placeSound(x, y, z)
+  if d > 18 then
+    local k = 1 - d / 140
+    if k > 0 then sfx(name .. "_far", 0.85 * kk * (0.35 + 0.65 * k), pan, muffle * 0.5) end
+  else
+    sfx(name, 0.75 * kk * (0.6 + 0.4 * (1 - d / 18)), pan, muffle)
+  end
+end
+
+-- Вид оружия для звуков перезарядки и затвора.
+local function reloadKind(w)
+  if w.slot == 2 then return "pistol" end
+  if w.key == "nova" then return "shotgun" end
+  if w.key == "awp" then return "sniper" end
+  if w.key == "mp9" or w.key == "p90" then return "smg" end
+  return "rifle"
+end
+
 
 -- --- Свой игрок (управление на этом телефоне) ---
 
@@ -332,7 +366,7 @@ local function startReload()
   if not w.clip or not am or am[2] <= 0 or am[1] >= w.clip or me.reload > 0 then return end
   me.reload, me.reloadFor, me.zoom = w.reload, me.wpn, 0
   me.reloadSnd = false
-  sfx("reload_out", 0.7)
+  sfx("reload_out_" .. reloadKind(w), 0.7)
 end
 
 local function finishReload()
@@ -342,6 +376,7 @@ local function finishReload()
   if w and am then
     local take = min(w.clip - am[1], am[2])
     am[1], am[2] = am[1] + take, am[2] - take
+    sfx("bolt_" .. reloadKind(w), 0.7)
   end
 end
 
@@ -441,6 +476,10 @@ local function fire(sw, sh, now, cam)
   me.lastShot = now
   me.flashT = now
   sfx(shotSound(w), 0.75)
+  if w.clip and w.slot ~= 3 then
+    -- гильза звякает о пол чуть позже
+    later[#later + 1] = {t = now + 0.3 + random() * 0.25, name = "shell_" .. random(1, 3), vol = 0.35}
+  end
   local spread = currentSpread(w)
   for _ = 1, w.pellets or 1 do
     local a = random() * math.pi * 2
@@ -501,8 +540,24 @@ local function updateOthers(dt, now)
     if p.id ~= me.id then
       if p.lastShots and p.shots > p.lastShots and p.alive then
         local w = D.WEAPONS[p.wpn] or D.WEAPONS[1]
-        sfx3d(shotSound(w), p.rx, p.rz, w.slot == 3 and 0.4 or 0.75, w.slot == 3 and 12 or 60, p.ry)
+        shotAt(w, p.rx, p.ry, p.rz)
         p.flashT = now
+        -- пуля пролетела рядом со мной: свист (у винтовок — щелчок), слева или справа
+        local mine = V.players[me.id]
+        if w.clip and mine and mine.alive and p.team ~= mine.team then
+          local fx, fy, fz = Sim.forward(p.ryaw or 0, p.rpitch or 0)
+          local ex, ey, ez = me.x - p.rx, me.y - p.ry, me.z - p.rz
+          local along = ex * fx + ey * fy + ez * fz
+          if along > 3 then
+            local cx, cy, cz = ex - fx * along, ey - fy * along, ez - fz * along
+            local miss = sqrt(cx * cx + cy * cy + cz * cz)
+            if miss < 1.2 and miss > 0.15 then
+              local pan = placeSound(p.rx + fx * along, p.ry + fy * along, p.rz + fz * along)
+              sfx((w.slot == 1 and w.key ~= "nova" and w.key ~= "mp9" and w.key ~= "p90") and "whiz_crack" or "whiz",
+                0.6 * (1.2 - miss), pan, 0)
+            end
+          end
+        end
       end
       p.lastShots = p.shots
       if p.alive and sp > 2.4 then
@@ -609,6 +664,12 @@ end
 
 -- --- Запуск и выход из игры ---
 
+-- Фон карты (ветер, город, гул помещения) — по кругу, тихо.
+local function startAmbient()
+  if G.amb then sound.stop(G.amb) end
+  G.amb = sound.loop and R.ambient and sound.loop("sounds/" .. R.ambient .. ".wav", 0.22 * (G.set.volume or 1)) or nil
+end
+
 local function startGame(role, o)
   local now = time.clock()
   G.role = role
@@ -641,6 +702,8 @@ local function startGame(role, o)
   if screen.background then screen.background(role ~= "offline") end
   R.buildMap(G.V.map)
   R.fx = {}
+  -- фон карты (ветер, город, гул помещения) — по кругу, тихо
+  startAmbient()
   G.state = "game"
   input.lockMouse(true)
 end
@@ -650,6 +713,7 @@ local function leaveGame(reason)
   if G.role == "host" and G.clients and next(G.clients) then N.send(now, nil, {t = "end", m = G.matchId}) end
   if G.role == "client" then N.send(now, G.hostName, {t = "bye", m = G.matchId}) end
   input.lockMouse(false)
+  if G.amb then sound.stop(G.amb) G.amb = nil end
   if screen.background then screen.background(false) end
   G.state, G.role, G.S, G.V, G.menu, G.joining = "title", nil, nil, nil, nil, nil
   if reason then toast(reason) end
@@ -1029,7 +1093,7 @@ local function gameFrame(dt, sw, sh)
     local wr = D.WEAPONS[me.reloadFor]
     if not me.reloadSnd and me.reload < (wr.reload or 1) * 0.45 then
       me.reloadSnd = true
-      sfx("reload_in", 0.7)
+      sfx("reload_in_" .. reloadKind(wr), 0.7)
     end
     me.reload = me.reload - dt
     if me.reload <= 0 then
@@ -1053,6 +1117,13 @@ local function gameFrame(dt, sw, sh)
   G.hitT = max(0, G.hitT - dt)
   updateOthers(dt, now)
   processEvents(now)
+  for k = #later, 1, -1 do
+    local l = later[k]
+    if now >= l.t then
+      sfx(l.name, l.vol)
+      table.remove(later, k)
+    end
+  end
   R.updateFx(dt)
   -- Пищалка бомбы.
   local b = V.bomb
@@ -1098,6 +1169,7 @@ local function gameFrame(dt, sw, sh)
     if me.zoom == 0 then VM.draw(cam, me, P.team, now) end
   end
   g3d.finish()
+  if R.loading then H.center("Загрузка карты…", sw / 2, sh / 2 - 4, "#FFFFFFFF", 0.7) end
   if alive then
     if me.zoom > 0 then H.scope(sw, sh) end
     G.inBuy = M.inBuyZone(V.map, P.team, me.x, me.z)
@@ -1375,6 +1447,7 @@ end
 
 function onHide()
   if G.state ~= "game" then return end
+  if G.amb then sound.stop(G.amb) G.amb = nil end
   if G.role == "offline" then
     G.menu = "pause"
   else
@@ -1384,6 +1457,7 @@ function onHide()
 end
 
 function onShow()
+  if G.state == "game" and not G.amb then startAmbient() end
   if G.state == "game" and G.afk then
     G.afk = false
     G.small = {text = "С возвращением!", t = time.clock()}

@@ -3,6 +3,8 @@
 local D = require("data")
 local M = require("maps")
 local Sim = require("sim")
+local City = require("city")
+local VM = require("viewmodel")
 
 local R = {tex = {}, fx = {}, mapMeshes = nil, mapIndex = nil}
 -- Движок 3D 2.0 (BlockPhone 0.10.2+): карта — статическая сцена с запечённым светом (тени, тёмные тоннели), небо,
@@ -154,6 +156,21 @@ function R.buildMap(map)
   if R.mapMeshes then
     for _, id in pairs(R.mapMeshes) do if type(id) == "number" then g3d.free(id) end end
   end
+  if R.cityMeshes then
+    for _, id in ipairs(R.cityMeshes) do g3d.free(id) end
+    R.cityMeshes = nil
+  end
+  R.indoorSurface, R.ambient = City.sounds(map)
+  if ADV then
+    -- Движок 2.0: карта — город (city.lua), собирается по частям в первых кадрах (R.drawWorld).
+    local letter = newMesh()
+    quad(letter, -1.5, 0, -1.5, 1.5, 0, -1.5, 1.5, 0, 1.5, -1.5, 0, 1.5, 1, 0, 0, 1)
+    R.mapMeshes = {letter = finishMesh(letter)}
+    R.mapIndex = map.index
+    g3d.clearStatic()
+    R.city = City.begin(map)
+    return
+  end
   if map.multi then
     local mm = buildMulti(map)
     local letter = newMesh()
@@ -161,7 +178,6 @@ function R.buildMap(map)
     mm.letter = finishMesh(letter)
     R.mapMeshes = mm
     R.mapIndex = map.index
-    if ADV then R.buildStatic(map) end
     return
   end
   local walls, walls2, crates, boxes, floor2, sites = newMesh(), newMesh(), newMesh(), newMesh(), newMesh(), newMesh()
@@ -189,7 +205,6 @@ function R.buildMap(map)
   mm.letter = finishMesh(letter)
   R.mapMeshes = mm
   R.mapIndex = map.index
-  if ADV then R.buildStatic(map) end
 end
 
 -- Цвет "#AARRGGBB" × k.
@@ -198,37 +213,16 @@ local function shade(c, k)
   return string.format("#FF%02X%02X%02X", min(255, floor(r * k)), min(255, floor(g * k)), min(255, floor(b * k)))
 end
 
--- Карта → статическая сцена движка (рисуется кусками, только видимое) и запекание света в фоне: солнце с тенями,
--- окружающий свет только с открытого неба (тоннели и «тёмки» темнее), лампы на закрытых картах.
-function R.buildStatic(map)
-  local def, tx, mm = map.def, map.def.tex, R.mapMeshes
-  g3d.clearStatic()
-  local function add(mesh, tex, o)
-    if not mesh then return end
-    o = o or {}
-    o.texture = R.T(tex)
-    g3d.static(mesh, o.x or 0, o.y or 0, o.z or 0, o)
-  end
-  if map.multi then
-    add(mm.floor, tx.floor)
-    add(mm.ledges, tx.ledge or tx.wall2)
-    add(mm.roofs, tx.roof or "ceiling")
-    add(mm.roofTops, tx.roofTop or tx.wall)
-  else
-    add(mm.floor, tx.floor, {x = map.W / 2, z = map.H / 2})
-    if def.ceiling then add(mm.floor, def.ceiling, {x = map.W / 2, y = M.WALL_H, z = map.H / 2}) end
-  end
-  add(mm.floor2, tx.floor2)
-  add(mm.sites, tx.site)
+-- Город готов: буквы точек, небо и запекание света в фоне: солнце с тенями, окружающий свет только с открытого
+-- неба (тоннели, комнаты и «тёмки» темнее), лампы на закрытых картах.
+function R.finishStatic(map)
+  local def, mm = map.def, R.mapMeshes
+  R.cityMeshes = City.commit(R.city, R.T)
   for _, s in ipairs(map.sites) do
     local c = map.siteCenter[s]
     local y = M.floorH(map, floor(c[1]), floor(c[2])) + 0.006
-    add(mm.letter, s == "A" and "letter_a" or "letter_b", {x = c[1], y = y, z = c[2], solid = false})
+    g3d.static(mm.letter, c[1], y, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), solid = false})
   end
-  add(mm.walls, tx.wall)
-  add(mm.walls2, tx.wall2)
-  add(mm.crates, tx.crate)
-  add(mm.boxes, tx.box)
   local l = def.light or {-0.45, -1, -0.3, 0.55}
   if def.ceiling then
     -- Закрытая карта: свет только от ламп под потолком.
@@ -333,9 +327,14 @@ function R.drawPlayer(p, now)
     local fx, fy, fz = Sim.forward(yaw, look)
     local hx, hy, hz = place(x, y, z, yaw, 0, 0.06, 0.6875 + dy, 0.3)
     local gx, gy, gz = hx + fx * len * 0.4, hy + fy * len * 0.4 + 0.02, hz + fz * len * 0.4
-    local gunTex = R.T(w.slot == 3 and "knife" or w.slot == 4 and "nade_" .. w.key or w.slot == 5 and "c4" or "gun")
-    g3d.draw(R.box, gx, gy, gz, {yaw = yaw, pitch = look, sx = 0.05, sy = w.slot == 1 and 0.08 or 0.06, sz = len,
-      texture = gunTex, id = id + 1})
+    if VM.tex then
+      -- настоящая модель оружия (та же, что от первого лица), в масштабе фигуры (рост 1 блок ≈ 1,8 м)
+      g3d.draw(VM.worldModel(w.key), hx, hy, hz, {yaw = yaw, pitch = look, scale = 0.55, texture = VM.tex, id = id + 1})
+    else
+      local gunTex = R.T(w.slot == 3 and "knife" or w.slot == 4 and "nade_" .. w.key or w.slot == 5 and "c4" or "gun")
+      g3d.draw(R.box, gx, gy, gz, {yaw = yaw, pitch = look, sx = 0.05, sy = w.slot == 1 and 0.08 or 0.06, sz = len,
+        texture = gunTex, id = id + 1})
+    end
     if p.flashT and now - p.flashT < 0.06 and w.clip then
       g3d.sprite(R.T("muzzle"), gx + fx * len * 0.6, gy + fy * len * 0.6, gz + fz * len * 0.6, 0.22, 0.22, GLOW)
     end
@@ -391,6 +390,17 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
   g3d.fog(def.fog, def.fogNear, def.fogFar)
   local l = def.light or {-0.45, -1, -0.3, 0.55}
   g3d.light(l[1], l[2], l[3], l[4])
+  if ADV and R.city and not R.city.ready then
+    -- Карта ещё собирается: по несколько строк за кадр, пока — экран загрузки.
+    if City.step(R.city, 8) then
+      R.finishStatic(map)
+      R.city.ready = true
+    end
+    R.loading = true
+    g3d.begin(sx, sy, sw, sh, "#FF0B0E12", quality)
+    return
+  end
+  R.loading = false
   g3d.begin(sx, sy, sw, sh, def.sky, quality)
   if ADV then
     -- Источники света кадра — до рисования того, что они освещают.

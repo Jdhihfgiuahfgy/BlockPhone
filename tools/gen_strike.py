@@ -1104,7 +1104,7 @@ def d2_textures():
     save(d2_block(), "d2_block")
 
 
-# --- Палитра 3D-оружия: клетки 32×32 на 256×256 — материал с фасками (металл, дерево, пластик, ткань) ---
+# --- Палитра 3D-оружия: клетки 64×64 на 512×512 — материал с фасками (металл, дерево, пластик, ткань) ---
 
 MATERIAL = {0: "metal", 1: "metal", 2: "metal", 3: "metal", 4: "wood", 5: "wood", 6: "poly", 7: "poly", 8: "poly",
             9: "poly", 10: "cloth", 11: "cloth", 12: "cloth", 13: "skin", 14: "poly", 15: "metal", 16: "poly",
@@ -1113,44 +1113,67 @@ MATERIAL = {0: "metal", 1: "metal", 2: "metal", 3: "metal", 4: "wood", 5: "wood"
 
 
 def palette_hd():
+    """Палитра оружия 512×512: клетки 64×64, по клетке на грань детали. Металл — шлифовка, потёртые до блеска рёбра,
+    царапины, грязь в глубине; пластик — мелкая шагрень; дерево — годичные кольца и поры под лаком; ткань — плетение;
+    кожа перчаток — зерно. Узкая фаска: светлое верхнее и левое ребро, тёмное нижнее и правое."""
     np = _np()
-    size, cell = 256, 32
+    cell = 64
+    size = cell * 8
     img = np.zeros((size, size, 3))
     ys, xs = np.mgrid[0:cell, 0:cell]
+    edge_d = np.minimum(np.minimum(xs, ys), np.minimum(cell - 1 - xs, cell - 1 - ys)).astype(float)
     for i, c in enumerate(PALETTE):
         kind = MATERIAL.get(i, "poly")
         base_c = np.array(c, dtype=float)
-        n = fractal(cell, 100 + i, ((4, 0.5), (8, 0.3), (16, 0.2)))
+        rng = np.random.default_rng(700 + i)
+        n = fractal(cell, 100 + i, ((4, 0.4), (8, 0.3), (16, 0.2), (32, 0.1)))
+        fine = rng.random((cell, cell))
         if kind == "metal":
-            brush = value_noise(cell, 16, 200 + i)[:1, :].repeat(cell, 0) * 0.6 + n * 0.4
-            t = base_c[None, None, :] * (0.9 + brush[:, :, None] * 0.2)
-            scratch = (np.random.default_rng(i).random((cell, cell)) < 0.004)
-            t[scratch] = np.minimum(255, t[scratch] * 1.25 + 12)
+            brush = value_noise(cell, 32, 200 + i)[:1, :].repeat(cell, 0) * 0.5 + value_noise(cell, 8, 210 + i) * 0.5
+            t = base_c[None, None, :] * (0.88 + brush[:, :, None] * 0.18 + (fine[:, :, None] - 0.5) * 0.06)
+            # потёртости на рёбрах — металл блестит
+            wear = np.clip(1 - edge_d / 6, 0, 1) * (n > 0.45)
+            t = t + wear[:, :, None] * (np.array([200, 204, 210]) - t) * 0.45
+            # царапины
+            for _ in range(3):
+                x0, y0 = rng.integers(0, cell), rng.integers(0, cell)
+                ang = rng.uniform(-0.5, 0.5)
+                for k in range(int(rng.integers(8, 30))):
+                    xx, yy = int(x0 + k * math.cos(ang)) % cell, int(y0 + k * math.sin(ang)) % cell
+                    t[yy, xx] = np.minimum(255, t[yy, xx] * 1.2 + 8)
+            # грязь в глубине (середина грани чуть темнее)
+            t *= (0.94 + np.clip(edge_d / 20, 0, 1)[:, :, None] * -0.06 + n[:, :, None] * 0.06)
         elif kind == "wood":
-            grain = np.sin((xs * 0.55 + n * 2.5) * 1.6) * 0.5 + 0.5
-            t = base_c[None, None, :] * (0.82 + grain[:, :, None] * 0.3)
+            ring = np.sin((ys * 0.3 + n * 3.5 + np.sin(xs * 0.08) * 0.8) * 1.6) * 0.5 + 0.5
+            pores = (fine < 0.05) * 0.12
+            t = base_c[None, None, :] * (0.78 + ring[:, :, None] * 0.3 - pores[:, :, None] + n[:, :, None] * 0.08)
+            t *= (1 + np.clip(1 - np.abs(ys - cell * 0.3) / 6, 0, 1)[:, :, None] * 0.12)  # блик лака
         elif kind == "cloth":
-            weave = ((xs + ys) % 3 == 0) * 0.08 + ((xs - ys) % 3 == 0) * 0.05
-            t = base_c[None, None, :] * (0.9 + n[:, :, None] * 0.15 - weave[:, :, None])
+            weave = (((xs // 2) + (ys // 2)) % 2) * 0.07 + ((xs + ys) % 4 == 0) * 0.04
+            t = base_c[None, None, :] * (0.88 + n[:, :, None] * 0.16 - weave[:, :, None])
+            t *= (1 + (value_noise(cell, 4, 300 + i)[:, :, None] - 0.5) * 0.12)  # складки
         elif kind == "skin":
-            t = base_c[None, None, :] * (0.95 + n[:, :, None] * 0.1)
+            t = base_c[None, None, :] * (0.94 + n[:, :, None] * 0.1 + (fine[:, :, None] - 0.5) * 0.04)
         elif kind == "flat":
-            t = base_c[None, None, :] * (0.97 + n[:, :, None] * 0.06)
+            t = base_c[None, None, :] * (0.96 + n[:, :, None] * 0.06 + (fine[:, :, None] - 0.5) * 0.03)
         else:
-            stipple = np.random.default_rng(300 + i).random((cell, cell)) * 0.1
-            t = base_c[None, None, :] * (0.9 + n[:, :, None] * 0.12 + stipple[:, :, None])
-        # фаска: светлый верх и левый край, тёмный низ и правый — каждая грань выглядит как деталь с ребром
+            stipple = value_noise(cell, 32, 400 + i) * 0.6 + fine * 0.4
+            t = base_c[None, None, :] * (0.88 + stipple[:, :, None] * 0.16 + n[:, :, None] * 0.06)
+            wear = np.clip(1 - edge_d / 4, 0, 1) * (n > 0.55)
+            t = t * (1 + wear[:, :, None] * 0.18)
         bevel = np.ones((cell, cell))
-        bevel[:2, :] = 1.28 if kind == "metal" else 1.18
-        bevel[:, :2] = np.maximum(bevel[:, :2], 1.12)
-        bevel[-2:, :] = 0.62
-        bevel[:, -2:] = np.minimum(bevel[:, -2:], 0.72)
+        hi = 1.3 if kind == "metal" else 1.18
+        bevel[:3, :] = hi
+        bevel[:, :3] = np.maximum(bevel[:, :3], 1.12)
+        bevel[-3:, :] = 0.6
+        bevel[:, -3:] = np.minimum(bevel[:, -3:], 0.7)
         if kind == "metal":
-            bevel[2:4, 2:-2] = 1.1  # блик
+            bevel[3:6, 3:-3] *= 1.08  # блик под ребром
         t = t * bevel[:, :, None]
         cx, cy = (i % 8) * cell, (i // 8) * cell
         img[cy:cy + cell, cx:cx + cell] = t
     return from_array(img)
+
 
 def app_icon():
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -1238,6 +1261,8 @@ def main():
     save(scope(), "scope")
     hd_world_textures()
     d2_textures()
+    import gen_strike_city
+    gen_strike_city.main()
     radars()
     app_icon()
     print("ok")

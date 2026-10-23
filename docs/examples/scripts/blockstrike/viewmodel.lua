@@ -11,7 +11,7 @@ local sin, cos, rad, sqrt, min, max, abs = math.sin, math.cos, math.rad, math.sq
 
 local S = 0.25 -- во сколько раз модель меньше «настоящей»
 
--- Палитра: номер клетки 32×32 на текстуре 256×256 (порядок — как в gen_strike.py PALETTE). Клетка — материал с
+-- Палитра: номер клетки 64×64 на текстуре 512×512 (порядок — как в gen_strike.py PALETTE). Клетка — материал с
 -- фасками (металл, дерево, пластик, ткань): каждая грань детали показывает всю клетку — выглядит как деталь с ребром.
 local C = {black = 0, dark = 1, gray = 2, steel = 3, wood = 4, wood2 = 5, green = 6, olive = 7, tan = 8, p90 = 9,
   glove = 10, sleeve_t = 11, sleeve_ct = 12, skin = 13, he = 14, flash = 15, smoke = 16, c4 = 17, screen = 18, red = 19,
@@ -19,7 +19,7 @@ local C = {black = 0, dark = 1, gray = 2, steel = 3, wood = 4, wood2 = 5, green 
 
 local function uv(col)
   local cx, cy = col % 8, math.floor(col / 8)
-  return (cx * 32 + 0.5) / 256, (cy * 32 + 0.5) / 256, (cx * 32 + 31.5) / 256, (cy * 32 + 31.5) / 256
+  return (cx * 64 + 0.5) / 512, (cy * 64 + 0.5) / 512, (cx * 64 + 63.5) / 512, (cy * 64 + 63.5) / 512
 end
 
 local function quad(m, a, b, c, d, col)
@@ -289,6 +289,19 @@ local function build(key, team)
   addArms(m, mdl, team)
   cache[id] = {mesh = g3d.mesh({vertices = m.v, indices = m.i}), mdl = mdl}
   return cache[id]
+end
+
+-- Модель оружия без рук — в руках у других игроков (render.lua).
+local worldCache = {}
+function VM.worldModel(key)
+  local id = worldCache[key]
+  if id then return id end
+  local mdl = MODELS[key] or MODELS.knife
+  local m = {v = {}, i = {}}
+  for _, b in ipairs(mdl.parts) do box(m, b) end
+  id = g3d.mesh({vertices = m.v, indices = m.i})
+  worldCache[key] = id
+  return id
 end
 
 function VM.init()

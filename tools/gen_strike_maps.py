@@ -71,6 +71,19 @@ class Map:
             if self.c[z][x] not in "#%":
                 self.roof[z][x] = h
 
+    def window(self, x, z):
+        """Окно-проём в стене между двумя открытыми клетками: подоконник 0,45 над более высоким полом, перемычка на 1,25 —
+        видно и можно стрелять, но не пролезть (щель ниже роста игрока)."""
+        sides = [(x - 1, z, x + 1, z), (x, z - 1, x, z + 1)]
+        for ax, az, bx, bz in sides:
+            if self.c[az][ax] not in "#%W" and self.c[bz][bx] not in "#%W":
+                h = max(self.base[az][ax], self.base[bz][bx])
+                self.c[z][x] = "W"
+                self.base[z][x] = h
+                self.roof[z][x] = h + 1.25
+                return
+        raise AssertionError("%s: окно %s без открытых клеток с двух сторон" % (self.key, (x, z)))
+
     def box(self, x, z, ch="x"):
         assert self.c[z][x] not in "#%", (self.key, x, z)
         self.c[z][x] = ch
@@ -87,7 +100,7 @@ class Map:
 
     def check(self):
         """Каждая ходовая клетка достижима от баз (с учётом ступеней) — иначе ошибка в разметке."""
-        walk = lambda x, z: self.c[z][x] not in "#%xX"
+        walk = lambda x, z: self.c[z][x] not in "#%xXW"
         start = [(x, z) for z in range(self.h) for x in range(self.w) if self.c[z][x] == "T"]
         seen = set(start)
         stack = list(start)
@@ -134,7 +147,7 @@ class Map:
 
     def distances(self, start_ch):
         from collections import deque
-        walk = lambda x, z: self.c[z][x] not in "#%xX"
+        walk = lambda x, z: self.c[z][x] not in "#%xXW"
         start = [(x, z) for z in range(self.h) for x in range(self.w) if self.c[z][x] == start_ch]
         dist = {p: 0 for p in start}
         q = deque(start)
@@ -150,7 +163,7 @@ class Map:
 
     def reachable(self):
         """Клетки, куда можно дойти от базы T (вверх — не больше 0,3 за шаг, ящики и стены не проходятся)."""
-        walk = lambda x, z: self.c[z][x] not in "#%xX"
+        walk = lambda x, z: self.c[z][x] not in "#%xXW"
         start = [(x, z) for z in range(self.h) for x in range(self.w) if self.c[z][x] == "T"]
         seen = set(start)
         stack = list(start)
@@ -274,13 +287,13 @@ class Map:
         """Радар: цвет по типу клетки, светлее — выше; крыши темнее (тоннели); A и B — буквы. Отражено по X (как hud.lua)."""
         img = Image.new("RGBA", (self.w * k, self.h * k))
         d = ImageDraw.Draw(img)
-        colors = {"#": (46, 50, 56), "%": (64, 70, 78), "X": (150, 120, 80), "x": (176, 150, 104), ".": (120, 124, 120),
+        colors = {"#": (46, 50, 56), "%": (64, 70, 78), "W": (90, 120, 140), "X": (150, 120, 80), "x": (176, 150, 104), ".": (120, 124, 120),
                   ",": (104, 108, 106), "A": (178, 104, 92), "B": (178, 104, 92), "T": (170, 150, 96), "C": (96, 130, 170)}
         for z in range(self.h):
             for x in range(self.w):
                 ch = self.c[z][x]
                 c = colors.get(ch, (120, 124, 120))
-                if ch not in "#%":
+                if ch not in "#%W":
                     lift = 1 + self.base[z][x] * 0.12
                     c = tuple(min(255, int(v * lift)) for v in c)
                     if self.roof[z][x] is not None:
@@ -375,6 +388,10 @@ def canyon():
     m.room(15, 29, 23, 31, 0.0)
     m.stairs(13, 29, 14, 31, "x-", 0.0, 0.5)
     m.roof_over(13, 29, 23, 31, 2.2)
+    # Дом у кэтвока: комната с окном на лонг (с кэтвока — дверь).
+    m.room(42, 26, 49, 27, 1.5)
+    m.roof_over(42, 26, 49, 27, 3.25)
+    m.window(50, 26)
     m.lanes = {"A": [(56, 48), (40, 32)], "B": [(11, 40), (18, 30)]}
     return m
 
@@ -430,6 +447,9 @@ def oasis():
     m.stairs(15, 14, 17, 21, "z+", 1.0, 2.5)
     m.room(15, 22, 20, 27, 2.5)
     m.roof_over(15, 22, 20, 27, 4.6)
+    m.wall(20, 22, 20, 27)
+    m.window(20, 24)
+    m.window(20, 25)
     # Коннектор (тёмный) и «джунгли» к A.
     m.room(24, 29, 36, 31, 0.0)
     m.roof_over(24, 29, 36, 31, 2.4)
@@ -502,6 +522,7 @@ def villa():
     m.room(15, 53, 17, 54, 0.0)
     m.stairs(15, 43, 17, 52, "z-", 0.0, 2.5)
     m.room(15, 40, 25, 42, 2.5)
+    m.window(26, 41)
     m.room(23, 27, 25, 39, 2.5)
     m.roof_over(15, 30, 25, 52, 4.8)
     m.room(26, 27, 33, 29, 2.5)

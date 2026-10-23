@@ -28,6 +28,7 @@
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
 | `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
 | `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, палитра 3D-оружия `vm_palette`, radar из maps.lua, icon) |
+| `python tools/gen_strike_city.py` | Городские текстуры Block Strike (`textures/city/*`: фасады, окна, двери, дороги, интерьеры по темам; вызывается и из gen_strike.py) |
 | `python tools/gen_strike_maps.py` | Многоуровневые карты Block Strike (`mapdata.lua`: rows/levels/roofs) и их радары; проверка достижимости |
 | `python tools/gen_strike_sounds.py` | Звуки Block Strike (`sounds/*.wav`, синтез numpy) + `sounds.lua` (длительности) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
@@ -581,7 +582,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
   onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`;
-  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud/viewmodel.lua, хост считает игру и ботов; оружие от
+  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud/viewmodel/city.lua, хост считает игру и ботов; на
+  движке 2.0 карта — город (`city.lua`: столбики твёрдого по клеткам, участки-дома с высотой и темой THEMES, фасады с
+  окнами/дверями/балконами, интерьеры у крыш, тротуары, горизонт; сборка по частям `City.step`; клетка `W` — окно-проём);
+  оружие от
   первого лица — 3D-модели из деталей рядом с глазом (масштаб 0,25 — не уходят в стены), рисуются после выстрелов-pick;
   звуки — свои WAV через `sound.play`, не больше 7 сразу; графика `tools/gen_strike.py`, звуки `tools/gen_strike_sounds.py`); DevShots `apps`
   снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,

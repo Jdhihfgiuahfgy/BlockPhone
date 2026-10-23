@@ -332,7 +332,7 @@ final class ScriptHost {
     private final java.util.Map<Integer, dev.blockphone.fabric.client.sound.PhoneSounds.Handle> sounds = new java.util.HashMap<>();
     private int nextSound = 1;
 
-    /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 8 звуков сразу. */
+    /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 16 звуков сразу. */
     private int playOwnSound(String path, float volume, boolean loop) {
         return playOwnSound(path, volume, loop, Float.NaN, 0, 1);
     }
@@ -345,7 +345,7 @@ final class ScriptHost {
             throw new LuaError("sound \"" + path + "\" not found in the app folder");
         }
         sounds.values().removeIf(h -> !h.playing());
-        if (sounds.size() >= 8) {
+        if (sounds.size() >= 16) {
             return 0;
         }
         try {
