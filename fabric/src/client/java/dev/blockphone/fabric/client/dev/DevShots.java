@@ -890,8 +890,8 @@ public final class DevShots {
         step(1, mc -> phone(mc, PhoneScreen::back));
         step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.YANDEX)));
         shot(40, "music_yandex_login");
-        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.SPOTIFY)));
-        shot(40, "music_spotify_connect");
+        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.MEDIA)));
+        shot(40, "music_media");
         step(1, mc -> {
             settings.darkTheme = true;
             music(app -> app.switchTab(MusicApp.Tab.LOCAL));

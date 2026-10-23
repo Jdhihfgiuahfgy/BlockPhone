@@ -1013,5 +1013,13 @@
   "hub.tab.chats": "Чаты",
   "hub.tab.profile": "Профиль",
   "hub.stickers": "Мои стикеры",
-  "moderation.open_player": "Модерация игрока"
+  "moderation.open_player": "Модерация игрока",
+  "music.tab.media": "На ПК",
+  "music.media_unsupported": "Пульт плеера компьютера работает только в Windows 10/11",
+  "music.media_error": "Не удалось подключиться к медиа Windows",
+  "music.media_nothing": "На компьютере ничего не играет.\nВключите музыку в Spotify, Яндекс Музыке, браузере или другом плеере — она появится здесь.",
+  "music.media_untitled": "Без названия",
+  "music.media_source": "Играет в: %s",
+  "music.media_hint": "Управление через системные медиа Windows — вход и Premium не нужны",
+  "settings.hud.pc_media": "Музыка с компьютера"
 }

@@ -22,7 +22,7 @@
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
 | `./gradlew :bungee:build` | Плагин BungeeCord/Waterfall: `bungee/build/libs/BlockPhone-bungee-*.jar` |
 | `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
-| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса, названия плееров Windows, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
@@ -51,7 +51,7 @@
   профили (Стив — фигура «машет»), «Оформление» (`profile_look`), своя страница после сохранения
   (`profile_self_look`), «Приватность» (`privacy`), паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
-  играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
+  играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/«На ПК», тёмную тему и виджет на HUD;
   в лог пишет позицию воспроизведения. Пишет рядом с треками придуманный тестовый `.lrc` и снимает текст в телефоне
   (`music_lyrics`), в мире (`music_lyrics_world`) и «перед глазами» (`music_lyrics_view`); поиск в сети на время выключен.
   Затем пять оформлений виджета в разных местах (`hud_<стиль>`) и страница настроек виджета (`settings_hud`).
@@ -274,7 +274,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (камера сразу), `compactKey` («на ходу», J), `cursorKey` (курсор «на ходу», левый Alt) и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст —
   Spotify; не назначены); `passMovementThrough` — в режиме «на ходу» клавиши ходьбы/прыжка/приседа/бега передаются игроку
   (`KeyMapping.setDown` по состоянию клавиатуры), пока приложение не ждёт текст;
-  каждый тик `MusicPlayer.tick()` и `Spotify.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
+  каждый тик `MusicPlayer.tick()` и `WindowsMedia.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
 - `network/ClientNetwork` — приём пакетов (Session → `ClientSession`, SocialPackets → `SocialClient`, фото → `ImageUploads`/
   `RemoteImages`, остальное → `MessengerClient`); `serverHello()`, `messengerAvailable()`, `socialAvailable()`; при выходе с сервера
   (в потоке рендера!) сбрасывает всё серверное состояние. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
@@ -487,9 +487,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     trackFinished/skip — `YandexMusic.tick` по смене трека), без них станция повторяет одну пачку; подгрузка отбрасывает уже
     бывшие треки и пробует от другого трека (до 3 раз). `yandex/YandexMusic` — состояние, вход вставкой адреса
     со страницы OAuth (`access_token=...`), кэш треков.
-  - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
-    браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,
-    команды play/pause/next/previous/seek/volume/shuffle/repeat (нужен Premium).
+  - `media/WindowsMedia` — пульт плеера компьютера через системные медиа Windows (SMTC; вместо Spotify Web API — Spotify,
+    Яндекс Музыка, браузеры, без входа и Premium): процесс PowerShell со скриптом `assets/blockphone/scripts/media.ps1`
+    (копируется в `blockphone/cache/media.ps1`) раз в 0,4 с пишет JSON (название, исполнитель, обложка base64 — один раз на
+    трек → `cache/media/*.img`, позиция, длительность, пауза, перемешивание, повтор, что поддерживает приложение), читает
+    команды (toggle/next/prev/seek/shuffle/repeat). Запускается по `watch()` (вкладка «На ПК», HUD при `hudWindowsMedia`,
+    клавиши музыки при пустом плеере телефона), закрывается через 30 с без `watch`. Только Windows.
   - `lyrics/Lyrics` — разбор текста: LRC (`[мм:сс.хх]`, несколько меток, `[offset:]`), расширенный LRC (`<мм:сс.хх>` у слов),
     обычный текст (строки равномерно по треку); слова без времени — пропорционально длине (к 75 % строки); строка не дольше 8 с;
     `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
@@ -517,9 +520,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     масштаб 50–200 %, что показывать (обложка, исполнитель, полоска, время, строка текста песни, показ на паузе). `current()` →
     `Info`, `measure()`/`draw()` рисуют в точке (0, 0) — их же использует предпросмотр в настройках (страница `HUD`).
     Полоска звонка — всегда слева сверху (под виджетом, если он там). Было: слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
-- `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
+- `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«На ПК», мини-плеер, стек `MusicView`),
   `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
-  поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
+  поиск, «Мне нравится»), `MediaView` (вкладка «На ПК»: пульт плеера компьютера), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
   `QueueView`, `YandexPlaylistView` (треки плейлиста, «Играть»; в `YandexView` переключатель «Мне нравится»/«Мои плейлисты»,
   `YandexApi.playlists/playlistTracks`, `YandexMusic.loadPlaylists/loadPlaylist`), `LyricsView` (текст в телефоне, текущая
   строка по центру, длинные — в два ряда, нажатие — перемотка к строке; в заголовке — «В мире: вкл/выкл»; `MusicApp.openLyrics()`).
@@ -650,7 +653,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
    админа (только снятые на этом сервере / любые / никакие); жалобы, модерация, заглушение, права (LuckPerms / fabric-permissions-api).
    Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.
 5. ✅ Музыка: свои файлы (MP3/OGG/WAV), плеер с очередью, виджет на HUD, клавиши; Яндекс Музыка (неоф. API: Моя волна,
-   Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
+   Мне нравится, поиск, лайки); пульт плеера компьютера (системные медиа Windows; был Spotify Web API). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
 6. ✅ Голос: голосовые сообщения (свой захват микрофона и ADPCM — работают без других модов) и звонки в личных и групповых чатах
    через скрытые группы Simple Voice Chat (Fabric/Paper с SVC). Не сделано: звонки через Velocity, выбор микрофона (берётся по умолчанию).
 7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, альбомы, ответы, реакции, правка/удаление,

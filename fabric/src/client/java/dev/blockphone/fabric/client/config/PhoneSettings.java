@@ -59,6 +59,8 @@ public final class PhoneSettings {
     public boolean hudShowTime = false;
     /** Текущая строка текста песни под виджетом. */
     public boolean hudShowLyrics = false;
+    /** Если плеер телефона молчит — показывать в виджете, что играет на компьютере (Spotify, браузер…, только Windows). */
+    public boolean hudWindowsMedia = true;
     /** Показывать на паузе (иначе — только когда играет). */
     public boolean hudShowPaused = true;
     /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */

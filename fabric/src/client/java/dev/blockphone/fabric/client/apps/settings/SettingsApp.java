@@ -559,7 +559,8 @@ public final class SettingsApp extends PhoneApp {
                 toggle("settings.hud.progress", () -> s.hudShowProgress, v -> s.hudShowProgress = v),
                 toggle("settings.hud.time", () -> s.hudShowTime, v -> s.hudShowTime = v),
                 toggle("settings.hud.lyrics", () -> s.hudShowLyrics, v -> s.hudShowLyrics = v),
-                toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v))));
+                toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v),
+                toggle("settings.hud.pc_media", () -> s.hudWindowsMedia, v -> s.hudWindowsMedia = v))));
         result.add(new Section("settings.hud.reset_section", List.of(
                 new Row(() -> PhoneLang.tr("settings.hud.reset"), () -> "", dir -> resetHud(s), null, false))));
         return result;

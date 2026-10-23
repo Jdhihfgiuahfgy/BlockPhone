@@ -8,7 +8,6 @@ import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.phone.PhoneScreen;
 import dev.blockphone.fabric.client.music.MusicHud;
 import dev.blockphone.fabric.client.music.MusicPlayer;
-import dev.blockphone.fabric.client.music.spotify.Spotify;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -67,7 +66,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
             MusicPlayer.tick();
             dev.blockphone.fabric.client.clock.ClockService.tick();
             dev.blockphone.fabric.client.music.yandex.YandexMusic.tick();
-            Spotify.tick();
+            dev.blockphone.fabric.client.music.media.WindowsMedia.tick();
             dev.blockphone.fabric.client.telegram.TelegramProxy.tick();
             dev.blockphone.fabric.client.music.lyrics.LyricsService.tick();
             passMovementThrough(client);
@@ -82,24 +81,24 @@ public final class BlockPhoneClient implements ClientModInitializer {
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.toggle();
                 } else {
-                    Spotify.togglePlay();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.togglePlay();
                 }
             }
             while (musicNextKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.next();
                 } else {
-                    Spotify.next();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.next();
                 }
             }
             while (musicPrevKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.previous();
                 } else {
-                    Spotify.previous();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.previous();
                 }
             }
             dev.blockphone.fabric.client.telegram.VideoNoteRecorder.tick();
@@ -140,6 +139,7 @@ public final class BlockPhoneClient implements ClientModInitializer {
         dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             MusicPlayer.stop();
+            dev.blockphone.fabric.client.music.media.WindowsMedia.stop();
             dev.blockphone.fabric.client.telegram.Telegram.shutdown();
         });
 

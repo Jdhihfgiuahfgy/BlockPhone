@@ -99,6 +99,14 @@
   модератора — «Модерация игрока». Если телефон заблокирован на сервере — красная полоса со сроком и причиной.
   Новый `apps/hub/HubApp.java`; `SocialApp.embed`, `MessengerApp.atRoot/openStickers`, `PhoneApp.setReservedBottom/attachChild`,
   `AppRegistry` (одна запись «messenger»), `SocialNotifications`, `MessengerNotifications`, `CallClient`, `ProfileView`, DevShots.
+- Spotify — через системные медиа Windows вместо Spotify Web API: вкладка «Музыка → На ПК» показывает и управляет тем, что
+  играет на компьютере — в приложении Spotify, Яндекс Музыке, браузере (YouTube, VK), VLC и т. п.: обложка, название,
+  исполнитель, перемотка, пауза, вперёд/назад, перемешивание и повтор (если приложение их поддерживает). Не нужны ни
+  Client ID, ни вход, ни Premium. Работает через PowerShell-скрипт `assets/blockphone/scripts/media.ps1` (Windows 10/11),
+  который мод запускает, пока на пульт смотрят. Виджет музыки на HUD показывает музыку с компьютера, если плеер телефона
+  молчит (Настройки → Музыка → Виджет → «Музыка с компьютера»), клавиши музыки управляют ею же. Удалены
+  `music/spotify/Spotify.java`, `apps/music/SpotifyView.java`, их тест; новые `music/media/WindowsMedia.java`,
+  `apps/music/MediaView.java`, тест `WindowsMediaTest`.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

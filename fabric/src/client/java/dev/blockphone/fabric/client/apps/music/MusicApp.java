@@ -2,7 +2,6 @@ package dev.blockphone.fabric.client.apps.music;
 
 import dev.blockphone.fabric.client.music.MusicPlayer;
 import dev.blockphone.fabric.client.music.Track;
-import dev.blockphone.fabric.client.music.spotify.Spotify;
 import dev.blockphone.fabric.client.phone.PhoneApp;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -14,14 +13,14 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * Музыка: вкладки «Моя музыка» (файлы из blockphone/music), «Яндекс» (Моя волна, Мне нравится, поиск) и «Spotify»
- * (пульт). Над вкладками — мини-плеер текущего трека (клик — полный плеер). Играет и с закрытым телефоном.
+ * Музыка: вкладки «Моя музыка» (файлы из blockphone/music), «Яндекс» (Моя волна, Мне нравится, поиск) и «На ПК»
+ * (пульт плеера компьютера — Spotify, браузер и др. через системные медиа Windows). Над вкладками — мини-плеер текущего трека (клик — полный плеер). Играет и с закрытым телефоном.
  */
 public final class MusicApp extends PhoneApp {
     static final int TAB_H = 18;
     static final int MINI_H = 26;
 
-    public enum Tab { LOCAL, YANDEX, SPOTIFY }
+    public enum Tab { LOCAL, YANDEX, MEDIA }
 
     private final Deque<MusicView> stack = new ArrayDeque<>();
     private Tab tab = Tab.LOCAL;
@@ -42,7 +41,7 @@ public final class MusicApp extends PhoneApp {
         MusicView root = switch (next) {
             case LOCAL -> new LocalView(this);
             case YANDEX -> new YandexView(this);
-            case SPOTIFY -> new SpotifyView(this);
+            case MEDIA -> new MediaView(this);
         };
         stack.push(root);
         root.onShown();
@@ -80,7 +79,7 @@ public final class MusicApp extends PhoneApp {
     }
 
     private boolean miniVisible(MusicView view) {
-        return view.root() && MusicPlayer.current() != null && tab != Tab.SPOTIFY;
+        return view.root() && MusicPlayer.current() != null && tab != Tab.MEDIA;
     }
 
     int viewHeight(MusicView view) {
@@ -119,8 +118,8 @@ public final class MusicApp extends PhoneApp {
 
     @Override
     public void tick() {
-        if (tab == Tab.SPOTIFY) {
-            Spotify.watch();
+        if (tab == Tab.MEDIA) {
+            dev.blockphone.fabric.client.music.media.WindowsMedia.watch();
         }
     }
 
@@ -139,7 +138,7 @@ public final class MusicApp extends PhoneApp {
         }
         String error = MusicPlayer.recentError();
         if (error == null) {
-            error = Spotify.recentError();
+            error = dev.blockphone.fabric.client.music.media.WindowsMedia.recentError();
         }
         if (error != null) {
             int w = contentWidth();
