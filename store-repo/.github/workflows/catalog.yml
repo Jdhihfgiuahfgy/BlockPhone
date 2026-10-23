@@ -4,7 +4,7 @@ name: Build catalog
 on:
   push:
     branches: [main]
-    paths: ["apps-src/**", "reviews/**", "build_catalog.py"]
+    paths: ["apps-src/**", "reviews/**", "changelogs/**", "build_catalog.py"]
   workflow_dispatch:
 permissions:
   contents: write

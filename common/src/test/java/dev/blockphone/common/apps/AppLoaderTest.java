@@ -101,6 +101,28 @@ class AppLoaderTest {
         assertTrue(AppsSettings.allowed("whitelist", List.of(), List.of("bank"), "bank", "def"));
         assertFalse(AppsSettings.allowed("whitelist", List.of(), List.of("bank"), "tapper", "def"));
         assertFalse(AppsSettings.allowed("none", List.of(), List.of(), "bank", "def"));
+        // uid: у двух приложений с одинаковым id (из разных каталогов) — разный.
+        List<String> byUid = List.of("uid:bpaaaaaaaaaa");
+        assertFalse(AppsSettings.allowed("blacklist", byUid, List.of(), "snake", "bpaaaaaaaaaa", "x"));
+        assertTrue(AppsSettings.allowed("blacklist", byUid, List.of(), "snake", "bpbbbbbbbbbb", "x"));
+        assertTrue(AppsSettings.allowed("whitelist", List.of(), List.of("bpbbbbbbbbbb"), "other", "bpbbbbbbbbbb", "x"));
+        assertFalse(AppsSettings.allowed("whitelist", List.of(), List.of("uid:bpbbbbbbbbbb"), "other", "", "x"));
+        assertTrue(AppsSettings.allowed("whitelist", List.of(), List.of("id:other"), "other", "bpbbbbbbbbbb", "x"));
+    }
+
+    @Test
+    void readsUidAndCategory() throws Exception {
+        AppDefinition app = AppLoader.parse("""
+                {"id": "game", "uid": "BPabcdefghjk", "category": "games", "pages": {"main": {}}}
+                """, null, "game", null);
+        assertEquals("bpabcdefghjk", app.uid());
+        assertEquals("games", app.category());
+        AppDefinition plain = AppLoader.parse("""
+                {"id": "x", "category": "weird", "pages": {"main": {}}}
+                """, null, "x", null);
+        assertEquals("", plain.uid());
+        assertEquals("other", plain.category());
+        assertTrue(AppDefinition.UID.matcher(AppDefinition.newUid()).matches());
     }
 
     @Test

@@ -1,5 +1,6 @@
 {
   "id": "bank",
+  "category": "finance",
   "name": {"ru_ru": "Банк", "en_us": "Bank"},
   "version": "1.0",
   "author": "Пример BlockPhone",

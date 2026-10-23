@@ -1,5 +1,6 @@
 {
   "id": "snake",
+  "category": "games",
   "name": {
     "ru_ru": "Змейка",
     "en_us": "Snake"

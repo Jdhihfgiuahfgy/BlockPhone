@@ -188,8 +188,13 @@ public final class AppLoader {
                 }
             }
         }
+        String uid = root.has("uid") ? root.get("uid").getAsString().toLowerCase(Locale.ROOT) : "";
+        if (!uid.isEmpty() && !AppDefinition.UID.matcher(uid).matches()) {
+            throw new AppException("uid must be 6-24 chars of a-z and 0-9 (the phone creates it when you publish the app)");
+        }
+        String category = root.has("category") ? root.get("category").getAsString().toLowerCase(Locale.ROOT) : "other";
         return new AppDefinition(id, name, version, author, color, icon, java.util.Collections.unmodifiableSet(permissions), start, order,
-                pages, actions, inputs, sha256, script);
+                pages, actions, inputs, sha256, script, uid, category);
     }
 
     private static final Pattern HOST = Pattern.compile("(\\*\\.)?[a-z0-9-]+(\\.[a-z0-9-]+)+|localhost");

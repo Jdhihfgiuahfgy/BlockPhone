@@ -855,7 +855,8 @@ public final class SettingsApp extends PhoneApp {
         }
         for (dev.blockphone.common.apps.AppDefinition app : apps) {
             int top = y;
-            int h = 62;
+            boolean hasUid = !app.uid().isEmpty();
+            int h = hasUid ? 74 : 62;
             PhoneDraw.card(g, MARGIN, top, w - MARGIN, top + h, false);
             dev.blockphone.fabric.client.phone.AppRegistry.Entry entry = dev.blockphone.fabric.client.phone.AppRegistry.get(dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX + app.id());
             if (entry != null) {
@@ -883,7 +884,15 @@ public final class SettingsApp extends PhoneApp {
             boolean hover = PhoneDraw.inside(mouseX, mouseY, MARGIN, top + 44, w - 2 * MARGIN, 16);
             PhoneDraw.text(g, PhoneDraw.ellipsize(hash, w - 2 * MARGIN - 12, 0.5f), MARGIN + 6, top + 48,
                     hover ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.5f, false);
-            hits.add(new Hit(MARGIN, top + 44, w - 2 * MARGIN, 16, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(hash)));
+            hits.add(new Hit(MARGIN, top + 44, w - 2 * MARGIN, 14, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(hash)));
+            if (hasUid) {
+                // Уникальный id из магазина — им админ сервера разрешает/блокирует приложение (нажатие — копировать).
+                String uid = "uid:" + app.uid();
+                boolean uidHover = PhoneDraw.inside(mouseX, mouseY, MARGIN, top + 58, w - 2 * MARGIN, 14);
+                PhoneDraw.text(g, PhoneDraw.ellipsize(uid, w - 2 * MARGIN - 12, 0.55f), MARGIN + 6, top + 61,
+                        uidHover ? PhoneTheme.accent() : PhoneTheme.text(), 0.55f, false);
+                hits.add(new Hit(MARGIN, top + 58, w - 2 * MARGIN, 14, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(uid)));
+            }
             y += h + 6;
         }
         List<String> errors = dev.blockphone.fabric.client.apps.custom.CustomApps.errors();

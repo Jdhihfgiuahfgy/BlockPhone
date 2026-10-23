@@ -177,8 +177,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `AppScript` (AppDefinition.script, null — без скрипта): app.json `"script"` (главный .lua), все `*.lua` и `*.png` папки
     (пределы MAX_*), `orientation` (landscape), `fullscreen`, `hosts` (`hostAllowed`, «*.домен»); sha256 приложения со скриптом
     включает код. Разрешения `INTERNET` (нужны hosts) и `MULTIPLAYER`. `AppLoader.parse(text, icon, id, folder)`.
-  - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки id или «sha256:…»; `allowed(...)` — общая для
-    клиента и сервера. `AppResult` — итог функции (toast, error, navigate).
+  - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки «uid:…» (уникальный id приложения из
+    app.json `uid` — создаётся при первой публикации, `AppDefinition.newUid`), id («id:…» или просто) или «sha256:…»;
+    `allowed(...)` — общая для клиента и сервера. `AppDefinition.category` — категория магазина (`CATEGORIES`). `AppResult` — итог функции (toast, error, navigate).
 - `server/` — серверная логика для всех платформ:
   - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → `Backend.onJoin`,
     остальное → `Backend.handle`); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно,
@@ -352,7 +353,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (`AppLoader.parse`, id = id каталога), заменить `blockphone/apps/<id>`; `uninstall`; `installed` — версия; иконки — кэш
   `blockphone/cache/store/`; `allowFiles` — file: только для DevShots).
   Ход установки — `progress(id)` (0..1, 1 — распаковка), `formatSize`. Оценки и отзывы (только `OFFICIAL`, `reviewable`):
-  `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
+  Каталог: `uid`, `category`, `changelog`/`updated` («В последнем обновлении»; при публикации — страница чейнджлога,
+  заголовки `X-App-Uid`, `X-Changelog` (base64) → приёмник пишет `changelogs/<id>.json` → build_catalog.py); в каталоге —
+  фильтр по категории и сортировка (`StoreApp.category/sort`). `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
   `sendReview` → POST `PUBLISH_URL/review` (app, stars, text, player, version); приёмник: один отзыв на приложение с ника
   и с подсети (IPv4 /24, IPv6 /64, в файле — HMAC), пишет в main; сводку собирает `build_catalog.py` (Actions на reviews/**).
   Проверка Mojang невозможна: Mojang отвечает 403 на запросы с Cloudflare. Выкладка приёмника — `wrangler deploy` в

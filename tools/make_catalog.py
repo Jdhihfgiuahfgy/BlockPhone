@@ -19,6 +19,9 @@ import zipfile
 ALLOWED = {".json", ".lua", ".png", ".obj", ".txt", ".md"}
 
 
+CATEGORIES = {"games", "tools", "social", "media", "education", "finance", "server", "other"}
+
+
 def pick(value, lang="ru_ru"):
     if isinstance(value, dict):
         return value.get(lang) or value.get("en_us") or next(iter(value.values()), "")
@@ -60,7 +63,15 @@ def main():
             "download": "apps/" + app_id + ".zip",
             "size": len(data),
             "sha256": hashlib.sha256(data).hexdigest(),
+            "category": app.get("category", "other") if app.get("category") in CATEGORIES else "other",
         }
+        if app.get("uid"):
+            entry["uid"] = str(app["uid"]).lower()
+        # Чейнджлог: changelog.txt рядом с app.json (необязательно) — «В последнем обновлении» в магазине.
+        notes = os.path.join(folder, "changelog.txt")
+        if os.path.isfile(notes):
+            entry["changelog"] = open(notes, encoding="utf-8").read().strip()[:1500]
+            entry["updated"] = int(os.path.getmtime(notes) * 1000)
         icon = os.path.join(folder, "icon.png")
         if os.path.isfile(icon):
             shutil.copy(icon, os.path.join(out, "icons", app_id + ".png"))

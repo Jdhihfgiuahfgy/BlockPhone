@@ -42,10 +42,21 @@ import java.util.zip.ZipInputStream;
  * установка в blockphone/apps/&lt;id&gt;. Формат каталога и как выложить приложения — docs/APP_STORE.md.
  */
 public final class AppStore {
-    /** Приложение в каталоге. */
+    /**
+     * Приложение в каталоге.
+     *
+     * @param uid       постоянный уникальный id приложения ("" — нет; по нему серверы разрешают/блокируют приложение)
+     * @param category  категория ({@link AppDefinition#CATEGORIES})
+     * @param changelog что нового в последней версии (пишет автор при публикации; "" — нет)
+     * @param updated   когда вышла последняя версия (мс; 0 — неизвестно)
+     */
     public record Entry(String source, String catalog, String id, String name, String version, String author, String description,
-                        @Nullable String icon, String download, @Nullable String sha256, long size, List<String> permissions) {
+                        @Nullable String icon, String download, @Nullable String sha256, long size, List<String> permissions,
+                        String uid, String category, String changelog, long updated) {
     }
+
+    /** Предел чейнджлога при публикации (символов). */
+    public static final int MAX_CHANGELOG = 1500;
 
     public enum State { IDLE, LOADING, READY }
 
@@ -188,10 +199,19 @@ public final class AppStore {
                     perms.add(p.getAsString());
                 }
             }
+            String uid = str(a, "uid", "").toLowerCase(Locale.ROOT);
+            if (!uid.isEmpty() && !AppDefinition.UID.matcher(uid).matches()) {
+                uid = "";
+            }
+            String category = str(a, "category", "other").toLowerCase(Locale.ROOT);
+            if (!AppDefinition.CATEGORIES.contains(category)) {
+                category = "other";
+            }
             list.add(new Entry(source, catalog, id, str(a, "name", id), str(a, "version", "1.0"), str(a, "author", ""),
                     str(a, "description", ""), a.has("icon") ? resolve(source, a.get("icon").getAsString()) : null,
                     resolve(source, a.get("download").getAsString()), a.has("sha256") ? a.get("sha256").getAsString() : null,
-                    a.has("size") ? a.get("size").getAsLong() : 0, List.copyOf(perms)));
+                    a.has("size") ? a.get("size").getAsLong() : 0, List.copyOf(perms), uid, category,
+                    str(a, "changelog", ""), a.has("updated") ? a.get("updated").getAsLong() : 0));
         }
         return list;
     }
@@ -290,7 +310,7 @@ public final class AppStore {
                         throw new IOException("checksum does not match (the file was changed)");
                     }
                 }
-                installZip(entry.id(), zip);
+                installZip(entry.id(), entry.uid(), zip);
             } catch (Exception e) {
                 BlockPhoneFabric.LOGGER.warn("App store: installing {} failed", entry.id(), e);
                 error = e.getMessage() == null ? e.toString() : e.getMessage();
@@ -305,8 +325,12 @@ public final class AppStore {
         });
     }
 
-    /** Распаковать архив во временную папку, проверить app.json и заменить папку приложения. */
     public static void installZip(String id, byte[] zip) throws IOException {
+        installZip(id, "", zip);
+    }
+
+    /** Распаковать архив во временную папку, проверить app.json (id и uid — как в каталоге) и заменить папку приложения. */
+    public static void installZip(String id, String uid, byte[] zip) throws IOException {
         Path apps = CustomApps.folder();
         Files.createDirectories(apps);
         Path tmp = apps.resolve(".install-" + id);
@@ -337,6 +361,9 @@ public final class AppStore {
             }
             if (!app.id().equals(id)) {
                 throw new IOException("app id is \"" + app.id() + "\", catalog says \"" + id + "\"");
+            }
+            if (!uid.isEmpty() && !uid.equals(app.uid())) {
+                throw new IOException("app uid is \"" + app.uid() + "\", catalog says \"" + uid + "\"");
             }
             Path target = apps.resolve(id);
             deleteTree(target);
@@ -388,6 +415,14 @@ public final class AppStore {
      * done(null) — заявка отправлена, иначе текст ошибки. На потоке рендера.
      */
     public static void publish(String id, Consumer<String> done) {
+        publish(id, "", done);
+    }
+
+    /**
+     * То же с чейнджлогом («что нового» — автор пишет сам; уходит в заявку и после одобрения виден в «Магазине»).
+     * Если у приложения ещё нет uid, он создаётся и записывается в app.json (дальше не меняется).
+     */
+    public static void publish(String id, String changelog, Consumer<String> done) {
         if (PUBLISH_URL.isEmpty()) {
             done.accept("not_configured");
             return;
@@ -405,13 +440,20 @@ public final class AppStore {
             return;
         }
         String player = Minecraft.getInstance().getUser().getName();
+        String notes = changelog == null ? "" : changelog.strip();
+        if (notes.length() > MAX_CHANGELOG) {
+            notes = notes.substring(0, MAX_CHANGELOG);
+        }
+        String encodedNotes = java.util.Base64.getEncoder().encodeToString(notes.getBytes(StandardCharsets.UTF_8));
         ClientFiles.IO.execute(() -> {
             String error = null;
             try {
+                String uid = ensureUid(folder, app);
                 byte[] zip = zipFolder(folder);
                 HttpRequest request = HttpRequest.newBuilder(URI.create(PUBLISH_URL)).timeout(Duration.ofSeconds(60))
                         .header("Content-Type", "application/zip").header("X-App-Id", id)
                         .header("X-App-Version", app.version()).header("X-Player", player).header("X-Author-Key", key)
+                        .header("X-App-Uid", uid).header("X-Changelog", encodedNotes)
                         .POST(HttpRequest.BodyPublishers.ofByteArray(zip)).build();
                 HttpResponse<String> response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
@@ -429,9 +471,32 @@ public final class AppStore {
             String result = error;
             Minecraft.getInstance().execute(() -> {
                 BUSY.remove(id);
+                CustomApps.scan(true);
                 done.accept(result);
             });
         });
+    }
+
+    /**
+     * uid приложения: из app.json или новый — тогда дописывается в app.json первой строкой объекта (остальное оформление
+     * файла автора не трогаем). На фоновом потоке.
+     */
+    static String ensureUid(Path folder, AppDefinition app) throws IOException {
+        if (!app.uid().isEmpty()) {
+            return app.uid();
+        }
+        String uid = AppDefinition.newUid();
+        Path json = folder.resolve("app.json");
+        String text = Files.readString(json, StandardCharsets.UTF_8);
+        int brace = text.indexOf('{');
+        if (brace < 0) {
+            throw new IOException("app.json is not an object");
+        }
+        String rest = text.substring(brace + 1);
+        boolean empty = rest.strip().startsWith("}");
+        Files.writeString(json, text.substring(0, brace + 1) + "\n  \"uid\": \"" + uid + "\"" + (empty ? "" : ",") + rest,
+                StandardCharsets.UTF_8);
+        return uid;
     }
 
     /**

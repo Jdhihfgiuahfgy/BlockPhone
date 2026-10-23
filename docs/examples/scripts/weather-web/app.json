@@ -1,5 +1,6 @@
 {
   "id": "weather-web",
+  "category": "tools",
   "name": {
     "ru_ru": "Погода в мире",
     "en_us": "Real weather"

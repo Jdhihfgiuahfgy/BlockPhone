@@ -83,7 +83,7 @@ public final class CustomApps {
     /** Разрешено ли приложение на текущем сервере (в одиночной игре и на серверах без BlockPhone — да). */
     public static boolean allowedHere(AppDefinition app) {
         AppPackets.Policy p = policy;
-        return p == null || AppsSettings.allowed(p.mode(), p.blacklist(), p.whitelist(), app.id(), app.sha256());
+        return p == null || AppsSettings.allowed(p.mode(), p.blacklist(), p.whitelist(), app.id(), app.uid(), app.sha256());
     }
 
     /** Есть ли у приложения серверная часть на текущем сервере. */

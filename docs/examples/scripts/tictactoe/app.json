@@ -1,5 +1,6 @@
 {
   "id": "tictactoe",
+  "category": "games",
   "name": {
     "ru_ru": "Крестики-нолики",
     "en_us": "Tic-tac-toe"

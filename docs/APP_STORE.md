@@ -83,7 +83,9 @@ https://raw.githubusercontent.com/<ваш-ник>/blockphone-apps/main/catalog.j
 
 ## Обновление приложения
 
-1. Поменяйте код и увеличьте `"version"` в `app.json` (например, `1.0` → `1.1`).
+1. Поменяйте код и увеличьте `"version"` в `app.json` (например, `1.0` → `1.1`). Что нового — напишите в
+   `changelog.txt` рядом с `app.json` (покажется в магазине как «В последнем обновлении»). При публикации в официальный
+   каталог с телефона чейнджлог пишется прямо в телефоне.
 2. Снова соберите каталог (`tools/make_catalog.py`) и загрузите на GitHub новые `catalog.json` и `apps/<id>.zip`.
 3. В телефоне: «Магазин» → ⟳ (обновить) — у приложения появится кнопка **Обновить**.
 
@@ -105,7 +107,11 @@ https://raw.githubusercontent.com/<ваш-ник>/blockphone-apps/main/catalog.j
       "icon": "icons/snake.png",
       "download": "apps/snake.zip",
       "size": 2014,
-      "sha256": "5d41…"
+      "sha256": "5d41…",
+      "uid": "bpk3m9x2q7wz",
+      "category": "games",
+      "changelog": "Новые уровни, исправлен счёт",
+      "updated": 1761200000000
     }
   ]
 }
@@ -119,6 +125,9 @@ https://raw.githubusercontent.com/<ваш-ник>/blockphone-apps/main/catalog.j
 | `permissions` | нет | Показываются перед установкой (сами права всё равно берутся из `app.json`) |
 | `icon` | нет | PNG до 256 КБ |
 | `sha256`, `size` | нет, но лучше указать | Проверка целостности архива |
+| `uid` | нет | Уникальный id приложения из `app.json` (магазин проверяет, что в архиве тот же) |
+| `category` | нет | `games`, `tools`, `social`, `media`, `education`, `finance`, `server`, `other` — фильтр в магазине |
+| `changelog`, `updated` | нет | «В последнем обновлении»: текст и время (мс) — сортировка «Новые обновления» |
 
 ## Безопасность
 

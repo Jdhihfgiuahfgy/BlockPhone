@@ -33,6 +33,25 @@
   ПКМ — шаг назад. `SettingsApp`: `Row.slider`, `slider(...)`, `drawSlider`, `dragSlider`.
 - Телефон в руке у других игроков больше не лежит плашмя вдоль руки: он стоит в кулаке вертикально, экраном к лицу
   (коробка модели повёрнута на 90° вокруг X, `PHONE_GRIP_Y/Z` — место в кулаке). Файл: `phone/PhoneInHandLayer.java`.
+- Уникальный id приложений (uid) для белого/чёрного списка серверов: раньше списки работали по id из app.json, а у
+  разных приложений (например, двух «Змеек» из разных каталогов) он может совпадать. uid (`bp` + 10 знаков) телефон
+  создаёт при первой публикации в магазин и дописывает в app.json; при обновлениях он не меняется. Записи политики:
+  `uid:bp…` (или просто uid), `id:snake` (или просто id), `sha256:…`. uid виден на странице приложения в «Магазине» и в
+  «Настройки → Свои приложения» (нажатие — копировать); магазин проверяет, что uid в архиве совпадает с каталогом.
+  `AppDefinition.uid/category/newUid`, `AppsSettings.allowed(…, uid, …)`, тест `AppLoaderTest`.
+- Категории приложений (`category` в app.json: games, tools, social, media, education, finance, server, other) и в
+  «Магазине» — фильтр по категории и сортировка (по названию, по оценке, новые обновления, по размеру) под поиском;
+  категория — на странице приложения (нажатие — показать всю категорию). Примеры в docs/examples получили категории.
+- Чейнджлог обновлений: при публикации с телефона открывается страница «Что нового в этой версии» — текст уходит в
+  заявку (Pull Request, в описании и файлом `changelogs/<id>.json`), после одобрения build_catalog.py кладёт его в
+  catalog.json (`changelog`, `updated`) и «Магазин» показывает раздел «В последнем обновлении». Для своих каталогов —
+  `changelog.txt` рядом с app.json (`tools/make_catalog.py`).
+- **Владельцу официального каталога:** скопировать в репозиторий blockphone-apps новые `build_catalog.py` и
+  `.github/workflows/*.yml` из `store-repo/` и обновить приёмник (`wrangler deploy` с новым `worker.js`) — без этого
+  чейнджлог и uid в каталог не попадут (старые телефоны и старый приёмник продолжают работать).
+- Файлы: `common/apps/{AppDefinition,AppLoader,AppsSettings}.java`, `store/AppStore.java`, `apps/store/StoreApp.java`,
+  `apps/settings/SettingsApp.java`, `apps/custom/CustomApps.java`, `store-repo/{build_catalog.py,worker.js,.github}`,
+  `tools/make_catalog.py`, `docs/{CUSTOM_APPS,APP_STORE}.md`, `paper/config.yml`, языковые файлы.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 
