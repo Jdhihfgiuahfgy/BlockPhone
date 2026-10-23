@@ -61,6 +61,13 @@
   MTProto-прокси и общий список — docs/TELEGRAM_PROXY.md. Файлы: новый `telegram/TelegramProxy.java`, `telegram/Telegram.java`
   (`running`, `sendQuiet`, UpdateConnectionState), `apps/settings/SettingsApp.java`, `apps/telegram/TgLoginView.java`,
   `PhoneSettings` (`telegramProxy`, `telegramProxies`), `store-repo/proxies.json`.
+- Картинки с компьютера: в окне выбора фото (фото в чат, пост, баннер/оформление страницы, стикер, Telegram) — кнопка
+  «С компьютера». Открывается системное окно «Открыть файл» (tinyfd из LWJGL, в своём потоке — игра не замирает),
+  PNG/JPEG/GIF/BMP/WEBP копируются в галерею телефона (`*_PC.png`, в сведениях `importedFrom`) и сразу выбираются;
+  в Telegram — можно несколько. Новый `storage/FileChooser.java`, `ui/PhotoPicker.java`, `photo/PhotoMeta.java`.
+- Политика фото на сервере по умолчанию — `any` (была `server` — только снимки камерой на этом сервере; с ней картинки с
+  компьютера не отправить, кнопка подсказывает это). В существующих конфигах значение не меняется. Стикеры принимают
+  любые картинки (сервер и раньше не применял к ним политику фото).
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

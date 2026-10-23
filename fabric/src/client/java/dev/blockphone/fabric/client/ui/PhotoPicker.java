@@ -37,6 +37,10 @@ public final class PhotoPicker {
     private double scroll;
     private int width = 160;
     private long deniedAt;
+    /** Сообщение об ошибке импорта с компьютера (до 4 с) или о запрете сервера. */
+    private String notice = "";
+    private long noticeAt;
+    private static final int PC_W = 64;
 
     /** Не null — выбор нескольких: окно не закрывается, отмеченные — с галочкой, onPick переключает отметку. */
     private final @Nullable Predicate<PhotoStore.Photo> selected;
@@ -93,13 +97,19 @@ public final class PhotoPicker {
                 selected != null ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
         String hint = selected != null ? PhoneLang.tr("photo.pick_many")
                 : ClientSession.photoPolicy() == PhotoPolicy.SERVER ? PhoneLang.tr("photo.only_server") : PhoneLang.tr("photo.any");
-        PhoneDraw.text(g, PhoneDraw.ellipsize(hint, w - 16, 0.6f), 8, 18, PhoneTheme.secondaryText(), 0.6f, false);
+        PhoneDraw.text(g, PhoneDraw.ellipsize(hint, w - 20 - PC_W, 0.6f), 8, 18, PhoneTheme.secondaryText(), 0.6f, false);
+        // Картинка с компьютера: системное окно выбора файла.
+        boolean pcAllowed = pcAllowed();
+        String pcLabel = dev.blockphone.fabric.client.storage.FileChooser.busy() ? "…" : PhoneLang.tr("photo.from_pc");
+        PhoneDraw.button(g, w - PC_W - 4, 16, PC_W, 12, pcLabel, mouseX, mouseY,
+                pcAllowed ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
         if (loading) {
             PhoneDraw.centeredText(g, PhoneLang.tr("messenger.loading"), w / 2f, h / 2f, PhoneTheme.secondaryText(), 0.75f, false);
             return;
         }
         if (items.isEmpty()) {
             PhoneDraw.wrapped(g, PhoneLang.tr("photo.no_photos"), 12, h / 2f - 10, w - 24, PhoneTheme.secondaryText(), 0.75f, true);
+            renderNotice(g, w, h);
             return;
         }
         clampScroll(h);
@@ -132,6 +142,16 @@ public final class PhotoPicker {
             }
         }
         g.disableScissor();
+        renderNotice(g, w, h);
+    }
+
+    private void renderNotice(GuiGraphics g, int w, int h) {
+        if (!notice.isEmpty() && System.currentTimeMillis() - noticeAt < 4000) {
+            int th = PhoneDraw.wrappedHeight(notice, w - 28, 0.7f) + 10;
+            PhoneDraw.roundedRect(g, 8, h - th - 8, w - 8, h - 8, 4, 0xE0B8403A);
+            PhoneDraw.wrapped(g, notice, 14, h - th - 3, w - 28, 0xFFFFFFFF, 0.7f, true);
+            return;
+        }
         if (System.currentTimeMillis() - deniedAt < 3000) {
             String text = PhoneLang.tr("photo.error.not_this_server");
             int th = PhoneDraw.wrappedHeight(text, w - 28, 0.75f) + 10;
@@ -155,6 +175,10 @@ public final class PhotoPicker {
             close();
             return true;
         }
+        if (PhoneDraw.inside(x, y, width - PC_W - 4, 16, PC_W, 12)) {
+            fromComputer();
+            return true;
+        }
         if (y < TOP || loading) {
             return true;
         }
@@ -174,6 +198,38 @@ public final class PhotoPicker {
             }
         }
         return true;
+    }
+
+    /** С компьютера можно, если сервер принимает любые фото (или это не для сервера, например Telegram). */
+    private boolean pcAllowed() {
+        return anyPhoto || ClientSession.photoPolicy() == PhotoPolicy.ANY;
+    }
+
+    private void fromComputer() {
+        if (!pcAllowed()) {
+            notice = PhoneLang.tr("photo.error.pc_not_allowed");
+            noticeAt = System.currentTimeMillis();
+            return;
+        }
+        dev.blockphone.fabric.client.storage.FileChooser.pickImages(PhoneLang.tr("photo.from_pc_title"), selected != null,
+                (photos, error) -> {
+                    if (error != null) {
+                        notice = PhoneLang.tr("photo.error.import", error);
+                        noticeAt = System.currentTimeMillis();
+                    }
+                    if (photos.isEmpty() || !open) {
+                        return;
+                    }
+                    if (selected == null) {
+                        close();
+                        onPick.accept(photos.get(0));
+                        return;
+                    }
+                    for (PhotoStore.Photo photo : photos) {
+                        onPick.accept(photo);
+                    }
+                    open();
+                });
     }
 
     public boolean mouseScrolled(double amount) {

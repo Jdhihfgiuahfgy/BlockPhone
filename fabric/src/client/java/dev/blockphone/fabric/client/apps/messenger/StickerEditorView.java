@@ -32,7 +32,7 @@ final class StickerEditorView extends MessengerView {
     private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "sticker_preview");
 
     private final long packId;
-    private final PhotoPicker picker = new PhotoPicker(this::pick);
+    private final PhotoPicker picker = new PhotoPicker(this::pick, true, null);
     private final List<Hit> hits = new ArrayList<>();
     private PhotoStore.Photo photo;
     private Picture source;

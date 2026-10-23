@@ -100,7 +100,7 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
                 c.getString("storage.mysql.password", ""),
                 c.getString("storage.table-prefix", "bp_"));
         ServerSettings.Social social = new ServerSettings.Social(c.getBoolean("social.enabled", true),
-                ImageRef.PhotoPolicy.parse(c.getString("social.photos", "server")),
+                ImageRef.PhotoPolicy.parse(c.getString("social.photos", "any")),
                 c.getInt("social.max-photo-kb", 600) * 1024, c.getInt("social.max-photo-side", 1280),
                 c.getInt("social.max-publics-per-player", 3));
         List<String> moderators = c.getStringList("moderators");

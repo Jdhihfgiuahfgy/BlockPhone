@@ -49,7 +49,7 @@ public final class FabricServerConfig {
     public static final class Social {
         public boolean enabled = true;
         /** Фото в ленте и чатах: "any" — любые, "server" — только снятые на этом сервере, "none" — без фото. */
-        public String photos = "server";
+        public String photos = "any";
         public int maxPhotoKb = 600;
         public int maxPhotoSide = 1280;
         public int maxPublicsPerPlayer = 3;

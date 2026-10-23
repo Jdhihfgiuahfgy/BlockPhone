@@ -935,5 +935,9 @@
   "telegram.proxy.state.proxy": "Подключение через %s (%d мс)…",
   "telegram.proxy.state.proxy_ok": "Через прокси %s · %d мс",
   "telegram.proxy.state.none": "Ни один прокси не ответил. Добавьте свой в «Настройки → Telegram»",
-  "telegram.proxy.state.off": "Прокси выключен — напрямую"
+  "telegram.proxy.state.off": "Прокси выключен — напрямую",
+  "photo.from_pc": "С компьютера",
+  "photo.from_pc_title": "Выберите картинку",
+  "photo.error.pc_not_allowed": "Сервер принимает только снимки камерой телефона, сделанные на нём (photos: server в настройках сервера)",
+  "photo.error.import": "Не удалось открыть картинку: %s"
 }

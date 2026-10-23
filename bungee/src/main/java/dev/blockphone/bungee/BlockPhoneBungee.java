@@ -55,7 +55,7 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         static final class Social {
             boolean enabled = true;
             /** "any" — любые фото, "server" — только снятые в этой сети, "none" — без фото. */
-            String photos = "server";
+            String photos = "any";
             int maxPhotoKb = 600;
             int maxPhotoSide = 1280;
             int maxPublicsPerPlayer = 3;

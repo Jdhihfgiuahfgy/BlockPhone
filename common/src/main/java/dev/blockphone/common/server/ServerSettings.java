@@ -92,7 +92,7 @@ public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisibl
      */
     public record Social(boolean enabled, PhotoPolicy photos, int maxPhotoBytes, int maxPhotoSide, int maxPublicsPerPlayer) {
         public static Social defaults() {
-            return new Social(true, PhotoPolicy.SERVER, 600 * 1024, 1280, 3);
+            return new Social(true, PhotoPolicy.ANY, 600 * 1024, 1280, 3);
         }
 
         public Social {

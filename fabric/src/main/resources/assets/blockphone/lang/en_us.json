@@ -935,5 +935,9 @@
   "telegram.proxy.state.proxy": "Connecting via %s (%d ms)…",
   "telegram.proxy.state.proxy_ok": "Via proxy %s · %d ms",
   "telegram.proxy.state.none": "No proxy answered. Add your own in Settings → Telegram",
-  "telegram.proxy.state.off": "Proxy off — direct connection"
+  "telegram.proxy.state.off": "Proxy off — direct connection",
+  "photo.from_pc": "From PC",
+  "photo.from_pc_title": "Choose a picture",
+  "photo.error.pc_not_allowed": "This server only accepts photos taken with the phone camera here (photos: server in the server config)",
+  "photo.error.import": "Could not open the picture: %s"
 }
