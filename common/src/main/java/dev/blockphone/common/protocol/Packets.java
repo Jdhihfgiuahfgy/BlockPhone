@@ -149,6 +149,10 @@ public final class Packets {
         register(106, ModerationPackets.UserChats.class, ModerationPackets.UserChats::read);
         register(107, ModerationPackets.RequestChat.class, ModerationPackets.RequestChat::read);
         register(108, ModerationPackets.ChatHistory.class, ModerationPackets.ChatHistory::read);
+
+        register(109, VoicePackets.CallAudio.class, VoicePackets.CallAudio::read);
+        register(110, VoicePackets.CallAudioFrom.class, VoicePackets.CallAudioFrom::read);
+        register(111, VoicePackets.CallControl.class, VoicePackets.CallControl::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

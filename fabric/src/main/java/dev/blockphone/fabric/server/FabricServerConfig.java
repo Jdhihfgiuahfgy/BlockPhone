@@ -46,6 +46,8 @@ public final class FabricServerConfig {
         public boolean calls = true;
         /** "normal" — в звонке слышно и тех, кто рядом; "isolated" — только участников звонка. */
         public String callGroupType = "normal";
+        /** Громкая связь: радиус (блоков), в котором слышно звонок; 0 — выключена. */
+        public int speakerRadius = 8;
     }
 
     public static final class Social {
@@ -78,7 +80,8 @@ public final class FabricServerConfig {
                 storage.user, storage.password, storage.tablePrefix);
         ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
                 social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
-        ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType);
+        ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType,
+                voice.speakerRadius);
         return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps, uploads,
                 moderation);
     }

@@ -72,7 +72,7 @@ public final class Backend {
         this.messenger = settings.messengerEnabled() ? new MessengerService(this) : null;
         this.social = settings.social().enabled() ? new SocialService(this) : null;
         this.voices = new VoiceService(this);
-        this.calls = new CallService(this, bridges);
+        this.calls = new CallService(this);
         this.filter = new ContentFilter(settings.filter());
         this.privacy = new PrivacyService(this);
         this.stickers = new StickerService(this);
@@ -80,7 +80,8 @@ public final class Backend {
         for (String bad : filter.badEntries()) {
             platform.warn("BlockPhone filter: bad entry ignored: " + bad, null);
         }
-        VoiceBridges.setLeaveListener((player, group) -> run(player, false, null, () -> calls.leftGroup(player, group)));
+        // Голоса из Simple Voice Chat (если он есть) — для громкой связи в звонках.
+        VoiceBridges.setMicrophoneListener((player, opus) -> run(player, false, null, () -> calls.nearbyVoice(player, opus)));
     }
 
     public void start() {
@@ -105,6 +106,15 @@ public final class Backend {
             }
         });
         executor.scheduleWithFixedDelay(() -> run(null, false, null, calls::tick), 5, 5, java.util.concurrent.TimeUnit.SECONDS);
+        // Позиции игроков для громкой связи — только пока она у кого-то включена.
+        executor.scheduleWithFixedDelay(() -> {
+            if (available && calls.needsPositions()) {
+                platform.runOnMain(() -> {
+                    Map<UUID, ServerPlatform.Position> snapshot = Map.copyOf(platform.positions());
+                    executor.execute(() -> calls.positions(snapshot));
+                });
+            }
+        }, 1, 500, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     public void stop() {

@@ -422,7 +422,7 @@
   "call.join": "Войти",
   "call.leave": "Выйти",
   "call.ended": "Звонок завершён",
-  "call.error.unavailable": "Звонки на этом сервере недоступны (нужен Simple Voice Chat).",
+  "call.error.unavailable": "Звонки на этом сервере выключены.",
   "call.error.no_permission": "У вас нет права звонить.",
   "call.error.no_voicechat": "Для звонков нужен Simple Voice Chat: установите мод, подключитесь к голосовому чату и не выключайте его (значок в углу экрана).",
   "telegram.unsupported": "Telegram в телефоне работает только на Windows (64 бит).",
@@ -1021,5 +1021,15 @@
   "music.media_untitled": "Без названия",
   "music.media_source": "Играет в: %s",
   "music.media_hint": "Управление через системные медиа Windows — вход и Premium не нужны",
-  "settings.hud.pc_media": "Музыка с компьютера"
+  "settings.hud.pc_media": "Музыка с компьютера",
+  "call.menu": "Меню",
+  "call.you": "Вы",
+  "call.mic_on": "Микрофон",
+  "call.mic_off": "Микр. выкл",
+  "call.speaker": "Громкая",
+  "call.sound_on": "Звук",
+  "call.sound_off": "Звук выкл",
+  "call.volume": "Громкость звонка",
+  "call.speaker_hint": "Громкая связь: игроки рядом с вами слышат звонок, а если на сервере есть Simple Voice Chat — собеседники слышат их.",
+  "call.hang_up": "Положить"
 }

@@ -164,6 +164,16 @@ public final class FabricServerHandler {
         }
 
         @Override
+        public java.util.Map<UUID, Position> positions() {
+            java.util.Map<UUID, Position> result = new java.util.HashMap<>();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                result.put(player.getUUID(), new Position(player.level().dimension().identifier().toString(), player.getX(), player.getY(),
+                        player.getZ()));
+            }
+            return result;
+        }
+
+        @Override
         public java.util.Collection<UUID> onlinePlayers() {
             java.util.List<UUID> result = new java.util.ArrayList<>();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {

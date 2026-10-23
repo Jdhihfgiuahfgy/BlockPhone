@@ -66,6 +66,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         static final class Voice {
             boolean messages = true;
             int maxSeconds = 60;
+            /** Звонки в чатах сети (голос идёт через прокси). */
+            boolean calls = true;
         }
 
         static final class Storage {
@@ -116,7 +118,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
                 config.storage.port, config.storage.database, config.storage.user, config.storage.password, config.storage.tablePrefix);
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled, ImageRef.PhotoPolicy.parse(config.social.photos),
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
-        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
+        // Звонки через прокси работают (голос пересылает сам BlockPhone); громкой связи нет — прокси не знает, кто где стоит.
+        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, config.voice.calls, "normal", 0);
         return new ServerSettings(config.messengerEnabled, true, storage, social,
                 List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }

@@ -422,7 +422,7 @@
   "call.join": "Join",
   "call.leave": "Leave",
   "call.ended": "Call ended",
-  "call.error.unavailable": "Calls are unavailable on this server (Simple Voice Chat is required).",
+  "call.error.unavailable": "Calls are turned off on this server.",
   "call.error.no_permission": "You are not allowed to make calls.",
   "call.error.no_voicechat": "Calls need Simple Voice Chat: install the mod, connect to voice chat and keep it enabled (icon in the screen corner).",
   "telegram.unsupported": "Telegram in the phone works only on Windows (64-bit).",
@@ -1021,5 +1021,15 @@
   "music.media_untitled": "Untitled",
   "music.media_source": "Playing in: %s",
   "music.media_hint": "Controlled via Windows system media — no login or Premium needed",
-  "settings.hud.pc_media": "Music from the PC"
+  "settings.hud.pc_media": "Music from the PC",
+  "call.menu": "Menu",
+  "call.you": "You",
+  "call.mic_on": "Mic on",
+  "call.mic_off": "Mic off",
+  "call.speaker": "Speaker",
+  "call.sound_on": "Sound",
+  "call.sound_off": "Sound off",
+  "call.volume": "Call volume",
+  "call.speaker_hint": "Speaker: players near you hear the call, and if the server has Simple Voice Chat, the call hears them.",
+  "call.hang_up": "Hang up"
 }

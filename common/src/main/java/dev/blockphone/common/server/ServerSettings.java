@@ -59,17 +59,23 @@ public record ServerSettings(boolean messengerEnabled, boolean phoneInHandVisibl
      *
      * @param messages      голосовые сообщения в мессенджере
      * @param maxSeconds    предел длины голосового
-     * @param calls         звонки через группы Simple Voice Chat (нужен мод/плагин SVC на сервере)
-     * @param callGroupType тип группы SVC: "normal" (слышно и тех, кто рядом), "isolated" (только участников звонка)
+     * @param calls         звонки в мессенджере (голос передаёт сам BlockPhone через сервер, другие моды не нужны)
+     * @param callGroupType  устарело (раньше — тип группы Simple Voice Chat), не используется
+     * @param speakerRadius на каком расстоянии (блоков) игроки слышат звонок с громкой связью; 0 — громкая связь выключена
      */
-    public record Voice(boolean messages, int maxSeconds, boolean calls, String callGroupType) {
+    public record Voice(boolean messages, int maxSeconds, boolean calls, String callGroupType, int speakerRadius) {
         public static Voice defaults() {
-            return new Voice(true, 60, true, "normal");
+            return new Voice(true, 60, true, "normal", 8);
+        }
+
+        public Voice(boolean messages, int maxSeconds, boolean calls, String callGroupType) {
+            this(messages, maxSeconds, calls, callGroupType, 8);
         }
 
         public Voice {
             maxSeconds = Math.max(5, Math.min(dev.blockphone.common.protocol.data.VoiceData.HARD_MAX_SECONDS, maxSeconds));
             callGroupType = callGroupType == null ? "normal" : callGroupType;
+            speakerRadius = Math.max(0, Math.min(64, speakerRadius));
         }
     }
 

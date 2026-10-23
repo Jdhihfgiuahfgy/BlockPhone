@@ -105,7 +105,7 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
                 c.getInt("social.max-publics-per-player", 3));
         List<String> moderators = c.getStringList("moderators");
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
-                c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
+                c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"), c.getInt("voice.speaker-radius", 8));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
                 social, moderators, voice, readFilter(c), readApps(c), readUploads(c), readModeration(c));
     }
@@ -327,6 +327,16 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         List<UUID> result = new java.util.ArrayList<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
             result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public Map<UUID, Position> positions() {
+        Map<UUID, Position> result = new HashMap<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            org.bukkit.Location l = player.getLocation();
+            result.put(player.getUniqueId(), new Position(player.getWorld().getName(), l.getX(), l.getY(), l.getZ()));
         }
         return result;
     }

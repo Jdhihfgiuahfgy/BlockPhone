@@ -111,6 +111,8 @@ public final class ClientNetwork {
             PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {
             CallClient.handle(state);
+        } else if (packet instanceof VoicePackets.CallAudioFrom audio) {
+            dev.blockphone.fabric.client.voice.CallAudio.onAudio(audio);
         } else {
             MessengerClient.handle(packet);
         }

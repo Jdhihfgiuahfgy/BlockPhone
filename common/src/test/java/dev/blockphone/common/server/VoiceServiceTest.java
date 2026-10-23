@@ -191,37 +191,75 @@ class VoiceServiceTest {
     @Test
     void directCallRingAnswerHangUp() throws Exception {
         long chat = directChat(ALEX, STEVE);
-        // Без голосового чата позвонить нельзя.
-        send(ALEX, new VoicePackets.StartCall(chat));
-        assertEquals("call.error.no_voicechat", platform.last(ALEX, MessengerPackets.Failure.class).key());
-
-        bridge.connected.add(ALEX);
-        bridge.connected.add(STEVE);
+        // Звонки свои — Simple Voice Chat не нужен.
         send(ALEX, new VoicePackets.StartCall(chat));
         CallInfo ringing = platform.last(STEVE, VoicePackets.CallState.class).call();
         assertTrue(ringing.active());
         assertEquals(List.of("Alex"), ringing.participants().stream().map(u -> u.name()).toList());
         assertEquals(List.of("Steve"), ringing.invited().stream().map(u -> u.name()).toList());
-        UUID group = bridge.groupOf.get(ALEX);
-        assertNotNull(group);
 
         send(STEVE, new VoicePackets.AnswerCall(chat, true));
         CallInfo talking = platform.last(ALEX, VoicePackets.CallState.class).call();
         assertEquals(2, talking.participants().size());
         assertTrue(talking.invited().isEmpty());
-        assertEquals(group, bridge.groupOf.get(STEVE));
 
         send(STEVE, new VoicePackets.LeaveCall(chat));
         assertFalse(platform.last(ALEX, VoicePackets.CallState.class).call().active(), "один остался — звонок завершён");
-        assertNull(bridge.groupOf.get(ALEX));
-        assertTrue(bridge.removed.contains(group));
+    }
+
+    @Test
+    void callAudioRelayMuteAndSpeaker() throws Exception {
+        long chat = directChat(ALEX, STEVE);
+        send(ALEX, new VoicePackets.StartCall(chat));
+        send(STEVE, new VoicePackets.AnswerCall(chat, true));
+        platform.clear();
+
+        // Звук Алекса — Стиву, но не самому Алексу и не Ноттчу (он не в звонке и далеко).
+        byte[] frame = {1, 2, 3, 4};
+        send(ALEX, new VoicePackets.CallAudio(chat, 7, frame));
+        VoicePackets.CallAudioFrom heard = platform.last(STEVE, VoicePackets.CallAudioFrom.class);
+        assertEquals(ALEX, heard.from());
+        assertEquals(VoiceData.NOBODY, heard.at());
+        assertEquals(7, heard.seq());
+        assertArrayEquals(frame, heard.data());
+        assertTrue(platform.of(ALEX, VoicePackets.CallAudioFrom.class).isEmpty());
+        assertTrue(platform.of(NOTCH, VoicePackets.CallAudioFrom.class).isEmpty());
+
+        // Микрофон выключен — звук не пересылается.
+        send(ALEX, new VoicePackets.CallControl(chat, true, false));
+        assertTrue(platform.last(STEVE, VoicePackets.CallState.class).call().muted(ALEX));
+        platform.clear();
+        send(ALEX, new VoicePackets.CallAudio(chat, 8, frame));
+        assertTrue(platform.of(STEVE, VoicePackets.CallAudioFrom.class).isEmpty());
+
+        // Громкая связь у Стива: Ноттч рядом с ним слышит Алекса из точки, где стоит Стив.
+        send(ALEX, new VoicePackets.CallControl(chat, false, false));
+        send(STEVE, new VoicePackets.CallControl(chat, false, true));
+        assertTrue(platform.last(ALEX, VoicePackets.CallState.class).call().speaker(STEVE));
+        java.util.Map<UUID, ServerPlatform.Position> where = java.util.Map.of(
+                STEVE, new ServerPlatform.Position("world", 0, 64, 0),
+                NOTCH, new ServerPlatform.Position("world", 3, 64, 4),
+                ALEX, new ServerPlatform.Position("world", 500, 64, 0));
+        server.backend().execute(() -> server.backend().calls().positions(where));
+        platform.clear();
+        send(ALEX, new VoicePackets.CallAudio(chat, 9, frame));
+        VoicePackets.CallAudioFrom loud = platform.last(NOTCH, VoicePackets.CallAudioFrom.class);
+        assertEquals(ALEX, loud.from());
+        assertEquals(STEVE, loud.at());
+        assertEquals(1, platform.of(STEVE, VoicePackets.CallAudioFrom.class).size());
+
+        // Голос Ноттча (из Simple Voice Chat) рядом со Стивом уходит в звонок Алексу, но не Стиву — тот слышит его в игре.
+        platform.clear();
+        server.backend().execute(() -> server.backend().calls().nearbyVoice(NOTCH, new byte[]{9, 9}));
+        flush();
+        VoicePackets.CallAudioFrom room = platform.last(ALEX, VoicePackets.CallAudioFrom.class);
+        assertEquals(NOTCH, room.from());
+        assertEquals(VoiceData.CODEC_SVC_OPUS48, room.codec());
+        assertTrue(platform.of(STEVE, VoicePackets.CallAudioFrom.class).isEmpty());
     }
 
     @Test
     void declineEndsCallAndQuitLeaves() throws Exception {
-        bridge.connected.add(ALEX);
-        bridge.connected.add(STEVE);
-        bridge.connected.add(NOTCH);
         long chat = directChat(ALEX, STEVE);
         send(ALEX, new VoicePackets.StartCall(chat));
         send(STEVE, new VoicePackets.AnswerCall(chat, false));
@@ -238,6 +276,5 @@ class VoiceServiceTest {
         server.onQuit(ALEX);
         flush();
         assertFalse(platform.last(NOTCH, VoicePackets.CallState.class).call().active());
-        assertNull(bridge.groupOf.get(NOTCH));
     }
 }

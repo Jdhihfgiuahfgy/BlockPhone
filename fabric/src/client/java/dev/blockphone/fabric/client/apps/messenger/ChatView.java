@@ -491,7 +491,7 @@ final class ChatView extends MessengerView {
             int bx = width() - 16;
             boolean hover = PhoneDraw.inside(mouseX, mouseY, bx - 2, 0, 14, STATUS_H);
             PhoneDraw.tinted(g, CALL, bx, 1, 10, 10, 32, 32, hover ? PhoneTheme.online() : PhoneTheme.secondaryText());
-            buttons.add(new ButtonHit(bx - 2, 0, 14, STATUS_H, () -> CallClient.start(chatId)));
+            buttons.add(new ButtonHit(bx - 2, 0, 14, STATUS_H, this::startCall));
         }
         List<String> typing = MessengerClient.typing(chatId);
         String status;
@@ -542,15 +542,25 @@ final class ChatView extends MessengerView {
         int right = w - 4;
         if (mine) {
             right = callButton(g, right, top, MessengerApp.tr("call.leave"), PhoneTheme.danger(), mouseX, mouseY, () -> CallClient.leave(chatId));
+            right = callButton(g, right, top, MessengerApp.tr("call.menu"), PhoneTheme.accent(), mouseX, mouseY,
+                    () -> app.push(new CallView(app, chatId))) - 2;
         } else if (ringingMe) {
             right = callButton(g, right, top, MessengerApp.tr("call.decline"), PhoneTheme.danger(), mouseX, mouseY,
                     () -> CallClient.answer(chatId, false));
-            right = callButton(g, right, top, MessengerApp.tr("call.answer"), PhoneTheme.online(), mouseX, mouseY,
-                    () -> CallClient.answer(chatId, true));
+            right = callButton(g, right, top, MessengerApp.tr("call.answer"), PhoneTheme.online(), mouseX, mouseY, () -> {
+                CallClient.answer(chatId, true);
+                app.push(new CallView(app, chatId));
+            });
         } else if (ClientSession.callsAvailable()) {
-            right = callButton(g, right, top, MessengerApp.tr("call.join"), PhoneTheme.online(), mouseX, mouseY, () -> CallClient.start(chatId));
+            right = callButton(g, right, top, MessengerApp.tr("call.join"), PhoneTheme.online(), mouseX, mouseY, this::startCall);
         }
         PhoneDraw.text(g, PhoneDraw.ellipsize(text, right - 22, 0.6f), 20, top + 5, PhoneTheme.text(), 0.6f, false);
+    }
+
+    /** Позвонить (или войти в идущий звонок) и открыть меню звонка. */
+    private void startCall() {
+        CallClient.start(chatId);
+        app.push(new CallView(app, chatId));
     }
 
     /** Кнопка в полосе звонка (справа налево). Возвращает новую правую границу. */

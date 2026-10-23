@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.9.16",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.10.0",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -78,6 +78,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         static final class Voice {
             boolean messages = true;
             int maxSeconds = 60;
+            /** Звонки в чатах сети (голос идёт через прокси). */
+            boolean calls = true;
         }
 
         static final class Social {
@@ -145,7 +147,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled,
                 ImageRef.PhotoPolicy.parse(config.social.photos), config.social.maxPhotoKb * 1024, config.social.maxPhotoSide,
                 config.social.maxPublicsPerPlayer);
-        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
+        // Звонки через прокси работают (голос пересылает сам BlockPhone); громкой связи нет — прокси не знает, кто где стоит.
+        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, config.voice.calls, "normal", 0);
         return new ServerSettings(config.messengerEnabled, true, storage, social,
                 List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }
