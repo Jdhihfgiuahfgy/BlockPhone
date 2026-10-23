@@ -62,11 +62,11 @@ public final class VoiceData {
         }
 
         public boolean muted(java.util.UUID player) {
-            return muted.contains(player);
+            return player != null && muted.contains(player);
         }
 
         public boolean speaker(java.util.UUID player) {
-            return speaker.contains(player);
+            return player != null && speaker.contains(player);
         }
     }
 
