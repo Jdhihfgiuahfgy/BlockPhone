@@ -25,9 +25,10 @@ final class CallView extends MessengerView {
 
     private final long chatId;
     private final List<Hit> hits = new ArrayList<>();
-    private boolean draggingVolume;
-    private int volumeX;
-    private int volumeW;
+    /** Какой ползунок тянут: -1 — никакой, 0 — громкость, 1 — усиление микрофона. */
+    private int dragging = -1;
+    private int sliderX;
+    private int sliderW;
 
     CallView(MessengerApp app, long chatId) {
         super(app);
@@ -137,21 +138,16 @@ final class CallView extends MessengerView {
                 mx, my, () -> CallClient.setDeafened(!CallClient.deafened()));
         y += 24;
 
-        // Громкость звонка.
+        // Громкость звонка и усиление микрофона (0..400 %), шумодав.
         PhoneSettings s = PhoneSettings.get();
-        PhoneDraw.text(g, MessengerApp.tr("call.volume"), 10, y, PhoneTheme.text(), 0.6f, false);
-        PhoneDraw.rightText(g, s.callVolume + "%", w - 10, y, PhoneTheme.secondaryText(), 0.6f);
-        y += 10;
-        volumeX = 12;
-        volumeW = w - 24;
-        float f = s.callVolume / 200f;
-        PhoneDraw.rawRoundedRect(g, volumeX, y, volumeX + volumeW, y + 3, 1, PhoneTheme.field());
-        PhoneDraw.rawRoundedRect(g, volumeX, y, volumeX + Math.round(volumeW * f), y + 3, 1, PhoneTheme.accent());
-        int knob = volumeX + Math.round(volumeW * f);
-        PhoneDraw.rawRoundedRect(g, knob - 4, y - 3, knob + 4, y + 5, 4, PhoneTheme.accent());
-        int sliderY = y;
-        hits.add(new Hit(volumeX - 4, sliderY - 6, volumeW + 8, 15, () -> draggingVolume = true));
-        y += 14;
+        y = slider(g, y, w, MessengerApp.tr("call.volume"), s.callVolume, 0);
+        y = slider(g, y, w, MessengerApp.tr("call.mic_gain"), s.callMicGain, 1);
+        toggle(g, 8, y, w - 16, MessengerApp.tr(s.callNoiseSuppression ? "call.noise_on" : "call.noise_off"), s.callNoiseSuppression, mx, my,
+                () -> {
+                    s.callNoiseSuppression = !s.callNoiseSuppression;
+                    s.save();
+                });
+        y += 24;
         if (CallClient.speaker()) {
             PhoneDraw.wrapped(g, MessengerApp.tr("call.speaker_hint"), 10, y, w - 20, PhoneTheme.secondaryText(), 0.5f, true);
             y += PhoneDraw.wrappedHeight(MessengerApp.tr("call.speaker_hint"), w - 20, 0.5f) + 4;
@@ -170,9 +166,30 @@ final class CallView extends MessengerView {
         hits.add(new Hit(x, y, w, h, action));
     }
 
-    private void setVolume(double x) {
-        int value = (int) Math.round(Math.max(0, Math.min(1, (x - volumeX) / Math.max(1, volumeW))) * 200 / 5) * 5;
-        PhoneSettings.get().callVolume = value;
+    /** Ползунок 0..400 %: подпись, значение, дорожка; возвращает y под ним. */
+    private int slider(GuiGraphics g, int y, int w, String label, int value, int index) {
+        PhoneDraw.text(g, label, 10, y, PhoneTheme.text(), 0.6f, false);
+        PhoneDraw.rightText(g, value + "%", w - 10, y, PhoneTheme.secondaryText(), 0.6f);
+        y += 10;
+        sliderX = 12;
+        sliderW = w - 24;
+        float f = Math.max(0, Math.min(1, value / 400f));
+        PhoneDraw.rawRoundedRect(g, sliderX, y, sliderX + sliderW, y + 3, 1, PhoneTheme.field());
+        PhoneDraw.rawRoundedRect(g, sliderX, y, sliderX + Math.round(sliderW * f), y + 3, 1, PhoneTheme.accent());
+        int knob = sliderX + Math.round(sliderW * f);
+        PhoneDraw.rawRoundedRect(g, knob - 4, y - 3, knob + 4, y + 5, 4, PhoneTheme.accent());
+        hits.add(new Hit(sliderX - 4, y - 6, sliderW + 8, 15, () -> dragging = index));
+        return y + 12;
+    }
+
+    private void setSlider(double x) {
+        int value = (int) Math.round(Math.max(0, Math.min(1, (x - sliderX) / Math.max(1, sliderW))) * 400 / 5) * 5;
+        PhoneSettings s = PhoneSettings.get();
+        if (dragging == 0) {
+            s.callVolume = value;
+        } else if (dragging == 1) {
+            s.callMicGain = value;
+        }
     }
 
     @Override
@@ -184,8 +201,8 @@ final class CallView extends MessengerView {
             Hit hit = hits.get(i);
             if (PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
                 hit.action().run();
-                if (draggingVolume) {
-                    setVolume(x);
+                if (dragging >= 0) {
+                    setSlider(x);
                 }
                 return true;
             }
@@ -195,8 +212,8 @@ final class CallView extends MessengerView {
 
     @Override
     boolean mouseDragged(double x, double y, int button) {
-        if (draggingVolume) {
-            setVolume(x);
+        if (dragging >= 0) {
+            setSlider(x);
             return true;
         }
         return false;
@@ -204,8 +221,8 @@ final class CallView extends MessengerView {
 
     @Override
     boolean mouseReleased(double x, double y, int button) {
-        if (draggingVolume) {
-            draggingVolume = false;
+        if (dragging >= 0) {
+            dragging = -1;
             PhoneSettings.get().save();
             return true;
         }

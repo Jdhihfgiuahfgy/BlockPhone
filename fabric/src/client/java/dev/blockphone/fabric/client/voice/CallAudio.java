@@ -168,6 +168,7 @@ public final class CallAudio {
             short[] samples = new short[inFrame];
             byte[] packet = new byte[255];
             ByteArrayOutputStream batch = new ByteArrayOutputStream();
+            MicProcessor processor = new MicProcessor();
             int batched = 0;
             int seq = 0;
             long voiceUntil = 0;
@@ -190,14 +191,10 @@ public final class CallAudio {
                 if (frame.length != FRAME) {
                     frame = java.util.Arrays.copyOf(frame, FRAME);
                 }
-                double sum = 0;
-                for (short s : frame) {
-                    sum += (double) s * s;
-                }
-                double rms = Math.sqrt(sum / FRAME);
+                double rms = processor.process(frame);
                 micLevel = (float) Math.min(1, rms / 6000);
                 long now = System.currentTimeMillis();
-                if (rms > VOICE_RMS) {
+                if (rms > processor.voiceThreshold()) {
                     voiceUntil = now + HANGOVER_MS;
                 }
                 if (now > voiceUntil) {
@@ -228,6 +225,73 @@ public final class CallAudio {
             }
             micLevel = 0;
         }
+    }
+
+    /**
+     * Обработка микрофона перед сжатием: срез низких частот (гул, стук по столу, ~100 Гц), шумодав (оценка уровня
+     * фонового шума и плавное приглушение всего, что не громче его заметно) и усиление ({@code callMicGain}) с мягким
+     * ограничением — громко, но без хрипа.
+     */
+    static final class MicProcessor {
+        private static final float HIGH_PASS = 0.962f;
+        private float prevIn;
+        private float prevOut;
+        /** Уровень фонового шума (RMS после фильтра). */
+        private double noiseFloor = 200;
+        private float gateGain = 1;
+
+        /** Обработать кадр на месте; вернуть RMS после обработки (для порога голоса и индикатора). */
+        double process(short[] frame) {
+            PhoneSettings s = PhoneSettings.get();
+            boolean denoise = s.callNoiseSuppression;
+            float gain = Math.max(0, Math.min(4, s.callMicGain / 100f));
+            float[] x = new float[frame.length];
+            double sum = 0;
+            for (int i = 0; i < frame.length; i++) {
+                float in = frame[i];
+                float out = HIGH_PASS * (prevOut + in - prevIn);
+                prevIn = in;
+                prevOut = out;
+                x[i] = out;
+                sum += (double) out * out;
+            }
+            double rms = Math.sqrt(sum / frame.length);
+            // Шум: быстро опускается к тихим кадрам, медленно поднимается (речь не успевает «стать шумом»).
+            noiseFloor = rms < noiseFloor ? noiseFloor * 0.8 + rms * 0.2 : Math.min(noiseFloor * 1.002 + 0.3, 3000);
+            float target = 1;
+            if (denoise) {
+                double ratio = rms / Math.max(1, noiseFloor);
+                // Ниже 1,8× шума — тишина, выше 3,5× — голос целиком, между — плавно.
+                target = (float) Math.max(0, Math.min(1, (ratio - 1.8) / 1.7));
+            }
+            // Плавно, чтобы не щёлкало: открывается быстро, закрывается медленнее.
+            gateGain += (target - gateGain) * (target > gateGain ? 0.6f : 0.15f);
+            double outSum = 0;
+            for (int i = 0; i < frame.length; i++) {
+                float v = softClip(x[i] * gain * gateGain);
+                frame[i] = (short) v;
+                outSum += (double) v * v;
+            }
+            return Math.sqrt(outSum / frame.length);
+        }
+
+        /** Порог «это голос»: с шумодавом — заметно выше фона. */
+        double voiceThreshold() {
+            return PhoneSettings.get().callNoiseSuppression ? Math.max(VOICE_RMS, noiseFloor * 2.5) : VOICE_RMS;
+        }
+    }
+
+    /** Мягкое ограничение: до ~70 % шкалы без изменений, выше — плавно к пределу (без резкого хрипа). */
+    static float softClip(float v) {
+        float limit = 32000;
+        float knee = 22000;
+        float a = Math.abs(v);
+        if (a <= knee) {
+            return v;
+        }
+        float over = (a - knee) / (limit - knee);
+        float shaped = knee + (limit - knee) * (float) Math.tanh(over);
+        return Math.copySign(Math.min(limit, shaped), v);
     }
 
     private static void send(byte[] data, int seq) {
@@ -341,7 +405,7 @@ public final class CallAudio {
             while (running || System.currentTimeMillis() - worldHeardAt < 3000) {
                 java.util.Arrays.fill(mix, 0);
                 PhoneSettings s = PhoneSettings.get();
-                float master = s.callDeafened ? 0 : Math.max(0, s.callVolume / 100f);
+                float master = s.callDeafened ? 0 : Math.max(0, Math.min(4, s.callVolume / 100f));
                 for (Voice v : VOICES.values()) {
                     if (!v.started) {
                         continue;
@@ -358,7 +422,7 @@ public final class CallAudio {
                     }
                 }
                 for (int i = 0; i < FRAME; i++) {
-                    int value = Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, mix[i]));
+                    int value = (int) softClip(mix[i]);
                     out[i * 2] = (byte) value;
                     out[i * 2 + 1] = (byte) (value >> 8);
                 }

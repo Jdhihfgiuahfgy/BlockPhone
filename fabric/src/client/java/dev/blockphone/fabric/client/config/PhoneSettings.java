@@ -86,8 +86,11 @@ public final class PhoneSettings {
     public java.util.List<String> storeSources = new java.util.ArrayList<>();
     public boolean notifyAll = true;
     /** Громкость звонков, % (0..200) и «звук выключен» (не слышать собеседников). */
-    public int callVolume = 100;
+    public int callVolume = 200;
     public boolean callDeafened = false;
+    /** Усиление своего микрофона в звонке, % (0..400) и шумодав (приглушать фоновый шум). */
+    public int callMicGain = 150;
+    public boolean callNoiseSuppression = true;
     /** Прокси Telegram: auto (если напрямую не подключается), custom (всегда свои), off (`telegram/TelegramProxy`). */
     public String telegramProxy = "auto";
     /** Свои прокси Telegram: ссылки tg://proxy?…, https://t.me/proxy?…, socks5://…, http://…. */

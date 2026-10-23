@@ -1032,5 +1032,8 @@
   "call.volume": "Громкость звонка",
   "call.speaker_hint": "Громкая связь: игроки рядом с вами слышат звонок, а если на сервере есть Simple Voice Chat — собеседники слышат их.",
   "call.hang_up": "Положить",
-  "music.remote.spotify": "Spotify · громкость — в самом Spotify"
+  "music.remote.spotify": "Spotify · громкость — в самом Spotify",
+  "call.mic_gain": "Усиление микрофона",
+  "call.noise_on": "Шумодав: вкл",
+  "call.noise_off": "Шумодав: выкл"
 }

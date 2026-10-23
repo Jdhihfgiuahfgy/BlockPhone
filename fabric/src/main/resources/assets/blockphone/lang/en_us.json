@@ -1032,5 +1032,8 @@
   "call.volume": "Call volume",
   "call.speaker_hint": "Speaker: players near you hear the call, and if the server has Simple Voice Chat, the call hears them.",
   "call.hang_up": "Hang up",
-  "music.remote.spotify": "Spotify · volume is in Spotify itself"
+  "music.remote.spotify": "Spotify · volume is in Spotify itself",
+  "call.mic_gain": "Mic boost",
+  "call.noise_on": "Noise suppression: on",
+  "call.noise_off": "Noise suppression: off"
 }
