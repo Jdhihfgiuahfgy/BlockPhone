@@ -52,7 +52,12 @@ public final class ProfileLooks {
         int r = Math.max(2, size / 6);
         PhoneDraw.rawRoundedRect(g, x, y, x + size, y + size, r, bg[1]);
         g.fillGradient(x + r / 2, y + r / 2, x + size - r / 2, y + size - r / 2, bg[0], bg[1]);
-        if (look.avatarType() == ProfileLook.AVATAR_HEAD) {
+        if (look.avatarType() == ProfileLook.AVATAR_PHOTO && look.avatarImage() != null) {
+            int inset = Math.max(1, size / 24);
+            Images.draw(g, look.avatarImage(), x + inset, y + inset, size - 2 * inset, size - 2 * inset, Images.THUMB);
+            return;
+        }
+        if (look.avatarType() != ProfileLook.AVATAR_BODY) {
             int face = Math.round(size * 0.7f);
             Avatars.drawUser(g, user, x + (size - face) / 2, y + (size - face) / 2, face);
             return;

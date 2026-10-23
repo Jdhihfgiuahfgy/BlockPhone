@@ -16,8 +16,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import java.util.UUID;
 
 /**
- * Оформление своей страницы: аватар (голова или фигура из скина в одной из поз), фон аватара, баннер (градиент или фото
- * из галереи). Сверху — предпросмотр; «Сохранить» в заголовке.
+ * Оформление своей страницы: аватар (голова, фигура из скина в одной из поз или своё фото из галереи / с компьютера), фон
+ * аватара, баннер (градиент или фото). Сверху — предпросмотр; «Сохранить» в заголовке.
  */
 final class ProfileLookView extends SocialView {
     private final UUID uuid;
@@ -29,6 +29,10 @@ final class ProfileLookView extends SocialView {
     /** −1 — оставить фото баннера, 0 — без фото, иначе — новое загруженное. */
     private long bannerImageId = -1;
     private ImageUploads.Upload upload;
+    /** Загрузка фото-аватара (null — оставить прежнее). */
+    private ImageUploads.Upload avatarUpload;
+    /** Для чего выбирается фото: true — аватар, false — баннер. */
+    private boolean pickingAvatar;
     private boolean loaded;
 
     ProfileLookView(SocialApp app, UUID uuid) {
@@ -43,7 +47,7 @@ final class ProfileLookView extends SocialView {
 
     @Override
     String headerAction() {
-        return upload != null && upload.busy() ? null : tr("messenger.save");
+        return (upload != null && upload.busy()) || (avatarUpload != null && avatarUpload.busy()) ? null : tr("messenger.save");
     }
 
     @Override
@@ -52,7 +56,9 @@ final class ProfileLookView extends SocialView {
         if (upload != null && upload.state() == ImageUploads.State.DONE && upload.image() != null) {
             banner = upload.image().id();
         }
-        SocialClient.send(new SocialPackets.UpdateLook(avatarType, pose, background, bannerStyle, banner));
+        long avatar = avatarUpload != null && avatarUpload.state() == ImageUploads.State.DONE && avatarUpload.image() != null
+                ? avatarUpload.image().id() : -1;
+        SocialClient.send(new SocialPackets.UpdateLook(avatarType, pose, background, bannerStyle, banner, avatar));
         app.pop();
     }
 
@@ -61,15 +67,30 @@ final class ProfileLookView extends SocialView {
         if (upload != null && upload.busy()) {
             ImageUploads.cancel(upload);
         }
+        if (avatarUpload != null && avatarUpload.busy()) {
+            ImageUploads.cancel(avatarUpload);
+        }
     }
 
     private void attach(PhotoStore.Photo photo) {
-        ImageUploads.cancel(upload);
-        upload = ImageUploads.start(photo, ImageRef.Purpose.POST, done -> {
-            if (done.state() == ImageUploads.State.FAILED) {
-                SocialClient.showMessage(tr(done.error()), true);
+        java.util.function.Consumer<ImageUploads.Upload> done = u -> {
+            if (u.state() == ImageUploads.State.FAILED) {
+                SocialClient.showMessage(tr(u.error()), true);
             }
-        });
+        };
+        if (pickingAvatar) {
+            ImageUploads.cancel(avatarUpload);
+            avatarUpload = ImageUploads.start(photo, ImageRef.Purpose.POST, done);
+            avatarType = ProfileLook.AVATAR_PHOTO;
+        } else {
+            ImageUploads.cancel(upload);
+            upload = ImageUploads.start(photo, ImageRef.Purpose.POST, done);
+        }
+    }
+
+    private void pick(boolean avatar) {
+        pickingAvatar = avatar;
+        picker.open();
     }
 
     /** Для автоскриншотов: выбрать оформление. */
@@ -88,7 +109,11 @@ final class ProfileLookView extends SocialView {
         } else if (bannerImageId == 0) {
             banner = null;
         }
-        return new ProfileLook(avatarType, pose, background, bannerStyle, banner);
+        ImageRef avatar = profile.look().avatarImage();
+        if (avatarUpload != null && avatarUpload.state() == ImageUploads.State.DONE && avatarUpload.image() != null) {
+            avatar = avatarUpload.image();
+        }
+        return new ProfileLook(avatarType, pose, background, bannerStyle, banner, avatar);
     }
 
     @Override
@@ -112,7 +137,7 @@ final class ProfileLookView extends SocialView {
         }
         int w = width();
         ProfileLook look = current(profile);
-        clampScroll(330, height());
+        clampScroll(370, height());
         beginList(g, 0, height());
         int y = 4 - (int) scroll;
 
@@ -128,13 +153,35 @@ final class ProfileLookView extends SocialView {
         section(g, tr("profile.avatar"), y);
         y += 14;
         int half = (w - 16) / 2;
-        button(g, 6, y, half, 16, tr("profile.avatar.head"), mouseX, mouseY,
+        int third = (w - 20) / 3;
+        button(g, 6, y, third, 16, tr("profile.avatar.head"), mouseX, mouseY,
                 avatarType == ProfileLook.AVATAR_HEAD ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL,
                 () -> avatarType = ProfileLook.AVATAR_HEAD);
-        button(g, 10 + half, y, half, 16, tr("profile.avatar.body"), mouseX, mouseY,
+        button(g, 10 + third, y, third, 16, tr("profile.avatar.body"), mouseX, mouseY,
                 avatarType == ProfileLook.AVATAR_BODY ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL,
                 () -> avatarType = ProfileLook.AVATAR_BODY);
+        button(g, 14 + 2 * third, y, third, 16, tr("profile.avatar.photo"), mouseX, mouseY,
+                avatarType == ProfileLook.AVATAR_PHOTO ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL, () -> {
+                    if (look.avatarImage() == null && avatarUpload == null) {
+                        pick(true);
+                    } else {
+                        avatarType = ProfileLook.AVATAR_PHOTO;
+                    }
+                });
         y += 20;
+        if (avatarType == ProfileLook.AVATAR_PHOTO) {
+            button(g, 6, y, w - 12, 16, tr("profile.avatar.choose"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, () -> pick(true));
+            y += 20;
+            String avatarStatus = avatarUpload == null ? null : switch (avatarUpload.state()) {
+                case PREPARING, UPLOADING -> tr("photo.uploading");
+                case FAILED -> tr(avatarUpload.error());
+                default -> null;
+            };
+            if (avatarStatus != null) {
+                PhoneDraw.text(g, avatarStatus, 8, y, PhoneTheme.secondaryText(), 0.6f, false);
+                y += 10;
+            }
+        }
         if (avatarType == ProfileLook.AVATAR_BODY) {
             button(g, 6, y, 18, 16, "<", mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL,
                     () -> pose = Math.floorMod(pose - 1, ProfileLook.POSES));
@@ -160,7 +207,7 @@ final class ProfileLookView extends SocialView {
             case FAILED -> tr(upload.error());
             default -> null;
         };
-        button(g, 6, y, half, 16, tr("profile.banner.photo"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, picker::open);
+        button(g, 6, y, half, 16, tr("profile.banner.photo"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, () -> pick(false));
         boolean hasPhoto = look.bannerImage() != null;
         button(g, 10 + half, y, half, 16, tr("profile.banner.remove"), mouseX, mouseY,
                 hasPhoto ? PhoneDraw.ButtonStyle.DANGER : PhoneDraw.ButtonStyle.NORMAL, () -> {
@@ -183,7 +230,7 @@ final class ProfileLookView extends SocialView {
         for (int i = 0; i < count; i++) {
             int x = 6 + (i % perRow) * (size + 4);
             int yy = y + (i / perRow) * (h + 4);
-            ProfileLook sample = new ProfileLook(0, 0, avatar ? i : 0, avatar ? 0 : i, null);
+            ProfileLook sample = new ProfileLook(0, 0, avatar ? i : 0, avatar ? 0 : i, null, null);
             if (avatar) {
                 PhoneDraw.rawRoundedRect(g, x, yy, x + size, yy + h, 3, ProfileLooks.backgroundTop(i));
                 g.fillGradient(x + 1, yy + 1, x + size - 1, yy + h - 1, ProfileLooks.backgroundTop(i), ProfileLooks.backgroundBottom(i));

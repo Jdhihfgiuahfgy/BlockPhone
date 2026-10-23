@@ -1039,5 +1039,8 @@
   "moderation.action.warn": "предупреждение",
   "moderation.done.warn": "%s: предупреждение выдано",
   "moderation.do_warn": "Предупредить",
-  "moderation.warnings": "Предупреждений: %s"
+  "moderation.warnings": "Предупреждений: %s",
+  "profile.avatar.photo": "Фото",
+  "profile.avatar.choose": "Выбрать фото (галерея или ПК)",
+  "social.public_avatar": "Аватар: фото"
 }

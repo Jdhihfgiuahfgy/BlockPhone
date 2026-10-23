@@ -45,7 +45,7 @@ final class Rows {
         if (PhoneDraw.inside(mx, my, 0, y, w, H)) {
             g.fill(0, y, w, y + H, PhoneTheme.cardHover());
         }
-        Avatars.drawPublic(g, info.title(), info.color(), 8, y + (H - AVATAR) / 2, AVATAR);
+        Avatars.drawPublic(g, info.title(), info.color(), info.avatar(), 8, y + (H - AVATAR) / 2, AVATAR);
         int tx = 8 + AVATAR + 6;
         float right = w - 8;
         if (info.role() != Role.NONE) {

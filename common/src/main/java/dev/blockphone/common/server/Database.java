@@ -247,6 +247,8 @@ public final class Database implements AutoCloseable {
         column("profiles", "avatar_bg INT NOT NULL DEFAULT 0");
         column("profiles", "banner_style INT NOT NULL DEFAULT 0");
         column("profiles", "banner_image BIGINT NOT NULL DEFAULT 0");
+        column("profiles", "avatar_image BIGINT NOT NULL DEFAULT 0");
+        column("publics", "avatar_image BIGINT NOT NULL DEFAULT 0");
         index("idx_follows_target", "follows", "target");
         index("idx_publics_title", "publics", "title_lower");
         index("idx_subscriptions_uuid", "subscriptions", "uuid");

@@ -153,6 +153,7 @@ public final class Packets {
         register(109, VoicePackets.CallAudio.class, VoicePackets.CallAudio::read);
         register(110, VoicePackets.CallAudioFrom.class, VoicePackets.CallAudioFrom::read);
         register(111, VoicePackets.CallControl.class, VoicePackets.CallControl::read);
+        register(112, SocialPackets.SetPublicAvatar.class, SocialPackets.SetPublicAvatar::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

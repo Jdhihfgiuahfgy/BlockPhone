@@ -1039,5 +1039,8 @@
   "moderation.action.warn": "warning",
   "moderation.done.warn": "%s: warned",
   "moderation.do_warn": "Warn",
-  "moderation.warnings": "Warnings: %s"
+  "moderation.warnings": "Warnings: %s",
+  "profile.avatar.photo": "Photo",
+  "profile.avatar.choose": "Choose photo (gallery or PC)",
+  "social.public_avatar": "Avatar photo"
 }

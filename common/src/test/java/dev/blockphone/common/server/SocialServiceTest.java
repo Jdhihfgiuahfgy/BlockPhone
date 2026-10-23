@@ -371,4 +371,29 @@ class SocialServiceTest {
         send(ALEX, new SocialPackets.RequestFollows(3, STEVE, true));
         assertEquals("Alex", platform.last(ALEX, SocialPackets.UserList.class).users().get(0).name());
     }
+
+    @Test
+    void customAvatarsForProfileAndPublic() throws Exception {
+        byte[] image = png(32, 32);
+        ImagePackets.UploadResult photo = upload(ALEX, image, ImageRef.Purpose.POST, serverId());
+        send(ALEX, new SocialPackets.UpdateLook(2, 0, 0, 0, -1, photo.image().id()));
+        dev.blockphone.common.protocol.data.SocialData.ProfileLook look = platform.last(ALEX, SocialPackets.Profile.class).profile().look();
+        assertEquals(2, look.avatarType());
+        assertEquals(photo.image().id(), look.avatarImage().id());
+        // Аватар видят все.
+        assertArrayEquals(image, download(STEVE, photo.image().id()));
+
+        send(ALEX, new SocialPackets.CreatePublic("Аватарки", ""));
+        long publicId = platform.last(ALEX, SocialPackets.PublicData.class).info().id();
+        ImagePackets.UploadResult pubPhoto = upload(ALEX, image, ImageRef.Purpose.POST, serverId());
+        // Чужой паблик менять нельзя.
+        send(STEVE, new SocialPackets.SetPublicAvatar(publicId, pubPhoto.image().id()));
+        assertEquals("social.error.not_admin", platform.last(STEVE, SocialPackets.Failure.class).key());
+        send(ALEX, new SocialPackets.SetPublicAvatar(publicId, pubPhoto.image().id()));
+        assertEquals(pubPhoto.image().id(), platform.last(ALEX, SocialPackets.PublicData.class).info().avatar().id());
+        PostInfo post = post(ALEX, publicId, "Привет", 0);
+        assertEquals(pubPhoto.image().id(), post.pub().avatar().id());
+        send(ALEX, new SocialPackets.SetPublicAvatar(publicId, 0));
+        assertNull(platform.last(ALEX, SocialPackets.PublicData.class).info().avatar());
+    }
 }

@@ -38,6 +38,17 @@ public final class Avatars {
     }
 
     /** Аватар паблика: квадрат его цвета с первой буквой названия. */
+    /** Аватар паблика: своё фото (обрезка по центру) или цветной квадрат с буквой. */
+    public static void drawPublic(GuiGraphics g, String title, int color, dev.blockphone.common.protocol.data.ImageRef avatar, int x, int y,
+                                  int size) {
+        if (avatar == null) {
+            drawPublic(g, title, color, x, y, size);
+            return;
+        }
+        PhoneDraw.roundedRect(g, x, y, x + size, y + size, size / 4, color | 0xFF000000);
+        dev.blockphone.fabric.client.ui.Images.draw(g, avatar, x + 1, y + 1, size - 2, size - 2, dev.blockphone.fabric.client.ui.Images.THUMB);
+    }
+
     public static void drawPublic(GuiGraphics g, String title, int color, int x, int y, int size) {
         PhoneDraw.roundedRect(g, x, y, x + size, y + size, size / 4, color | 0xFF000000);
         String letter = title.isEmpty() ? "?" : title.substring(0, 1).toUpperCase();

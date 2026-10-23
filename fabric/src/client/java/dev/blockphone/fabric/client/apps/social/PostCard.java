@@ -101,7 +101,7 @@ final class PostCard {
         String name;
         String sub = SocialFormat.ago(post.createdAt());
         if (post.pub() != null) {
-            Avatars.drawPublic(g, post.pub().title(), post.pub().color(), cx, ay, AVATAR);
+            Avatars.drawPublic(g, post.pub().title(), post.pub().color(), post.pub().avatar(), cx, ay, AVATAR);
             name = post.pub().title();
             sub = sub + " · " + post.author().name();
         } else {

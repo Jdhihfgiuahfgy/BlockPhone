@@ -104,7 +104,7 @@ final class PublicView extends SocialView {
 
     private void renderHeader(GuiGraphics g, PublicInfo info, int top, int w, int mx, int my) {
         int y = top + 6;
-        Avatars.drawPublic(g, info.title(), info.color(), 8, y, AVATAR);
+        Avatars.drawPublic(g, info.title(), info.color(), info.avatar(), 8, y, AVATAR);
         PhoneDraw.text(g, PhoneDraw.ellipsize(info.title(), w - 70, 1f), 46, y + 4, PhoneTheme.text(), 1f, false);
         String stats = tr("social.subscribers", SocialFormat.count(info.subscribers())) + " · "
                 + tr("social.posts_n", SocialFormat.count(info.posts()));

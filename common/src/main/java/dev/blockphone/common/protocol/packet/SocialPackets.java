@@ -329,14 +329,28 @@ public final class SocialPackets {
     }
 
     /** Оформление своей страницы. bannerImageId: 0 — без фото, -1 — оставить как есть, иначе — загруженное фото. */
-    public record UpdateLook(int avatarType, int pose, int background, int bannerStyle, long bannerImageId) implements Packet {
+    /** avatarImageId — как bannerImageId: 0 — без фото, −1 — оставить, иначе — загруженное фото (Purpose POST). */
+    public record UpdateLook(int avatarType, int pose, int background, int bannerStyle, long bannerImageId, long avatarImageId) implements Packet {
         public static UpdateLook read(PacketReader r) {
-            return new UpdateLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readLong());
+            return new UpdateLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readLong(), r.readLong());
         }
 
         @Override
         public void write(PacketWriter w) {
-            w.writeVarInt(avatarType).writeVarInt(pose).writeVarInt(background).writeVarInt(bannerStyle).writeLong(bannerImageId);
+            w.writeVarInt(avatarType).writeVarInt(pose).writeVarInt(background).writeVarInt(bannerStyle).writeLong(bannerImageId)
+                    .writeLong(avatarImageId);
+        }
+    }
+
+    /** C→S: аватар паблика (владелец, админ или модератор пабликов): imageId — загруженное фото (Purpose POST), 0 — убрать. */
+    public record SetPublicAvatar(long publicId, long imageId) implements Packet {
+        public static SetPublicAvatar read(PacketReader r) {
+            return new SetPublicAvatar(r.readLong(), r.readLong());
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(publicId).writeLong(imageId);
         }
     }
 
