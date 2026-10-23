@@ -60,6 +60,20 @@ public final class MessengerApp extends PhoneApp {
         }
     }
 
+    /** Открыт список чатов (корень вкладки «Чаты»). */
+    public boolean atRoot() {
+        return stack.size() == 1;
+    }
+
+    /** «Мои стикеры» поверх списка чатов. */
+    public void openStickers() {
+        view().onHidden();
+        while (stack.size() > 1) {
+            stack.pop();
+        }
+        push(new StickersView(this));
+    }
+
     /** Для автоскриншотов: «Мои стикеры». */
     public void debugStickers() {
         push(new StickersView(this));

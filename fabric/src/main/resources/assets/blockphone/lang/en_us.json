@@ -1008,5 +1008,10 @@
   "voice.error.banned": "Your phone is banned on this server",
   "moderation.banned_banner": "Banned until %s",
   "moderation.action.edit_public": "public edited",
-  "moderation.action.dismiss_report": "report dismissed"
+  "moderation.action.dismiss_report": "report dismissed",
+  "hub.tab.feed": "Feed",
+  "hub.tab.chats": "Chats",
+  "hub.tab.profile": "Profile",
+  "hub.stickers": "My stickers",
+  "moderation.open_player": "Moderate player"
 }

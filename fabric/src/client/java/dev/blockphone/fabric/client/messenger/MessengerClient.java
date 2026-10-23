@@ -143,6 +143,11 @@ public final class MessengerClient {
     }
 
     /** Забрать запрос «открыть чат» (после ответа сервера на «написать»/«создать группу»). */
+    /** Сервер прислал «открыть чат», и его ещё не открыли. */
+    public static boolean hasPendingOpen() {
+        return pendingOpen != null;
+    }
+
     public static @Nullable Long takePendingOpen() {
         Long id = pendingOpen;
         pendingOpen = null;

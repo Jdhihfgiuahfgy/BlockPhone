@@ -91,6 +91,14 @@
   `SessionPacket`, `ServerSettings`, тест `ModerationServiceTest`; клиент — `social/ModerationClient`,
   `apps/social/{ModerationView,PlayerModView,ModChatsView,ModChatView}`; платформы — `BlockPhonePaper` + config.yml,
   `FabricServerHandler`/`FabricServerConfig`, `BlockPhoneVelocity`, `BlockPhoneBungee`.
+- «Мессенджер» и «Лента» — одно приложение «Мессенджер» (как ВК): внизу вкладки «Лента» (слева), «Чаты» (по центру,
+  личные и группы) и «Профиль» (справа: своя страница, «Оформление», «Приватность», «Мои стикеры», «Паблики»,
+  «Модерация» с числом жалоб). Панель вкладок видна на корневых экранах; «Написать» в профиле открывает чат во вкладке
+  «Чаты»; уведомления ленты, сообщений и пропущенных звонков открывают нужную вкладку. Без ленты на сервере — только
+  чаты, без мессенджера — лента и профиль. Значок на иконке — непрочитанные + новое в ленте. В чужом профиле у
+  модератора — «Модерация игрока». Если телефон заблокирован на сервере — красная полоса со сроком и причиной.
+  Новый `apps/hub/HubApp.java`; `SocialApp.embed`, `MessengerApp.atRoot/openStickers`, `PhoneApp.setReservedBottom/attachChild`,
+  `AppRegistry` (одна запись «messenger»), `SocialNotifications`, `MessengerNotifications`, `CallClient`, `ProfileView`, DevShots.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

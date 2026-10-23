@@ -432,7 +432,11 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   листать), пустое поле — микрофон (запись голосового до 5 мин: «×»/«➤», Enter — отправить); стикер — без пузыря (80 px),
   голосовое — ▶ + «волна», GIF и «кружочки» — анимацией). Значки 8 быстрых реакций — свои цветные `textures/gui/reaction/*.png` (gen_icons.py), прочие эмодзи —
   шрифтом игры. `Telegram.debugInject` — поддельный чат для DevShots (сценарий telegram: `telegram_chat`, `_menu`, `_reply`). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
-- `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
+- `apps/hub/HubApp` — приложение «Мессенджер» (id `messenger`): общее для чатов и ленты, внизу вкладки Лента/Чаты/Профиль;
+  внутри — `SocialApp` (`embed(openChat, openStickers)`: без своей панели вкладок; паблики и модерация — кнопками в своём
+  профиле) и `MessengerApp` (`setReservedBottom` под панель на корне). `HubApp.get()`, `openChat`, `showFeed`,
+  `showModeration`; уведомления открывают его. Отдельного приложения `feed` на рабочем столе больше нет.
+- `apps/social/` — лента (внутри хаба; раньше — приложение «Лента», id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
   прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`
   (комментарии), `ComposeView` (от себя/от паблика, текст, фото), `ProfileView` («о себе», подписчики, подписка, «Написать»,

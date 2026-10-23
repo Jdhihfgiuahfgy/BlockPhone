@@ -90,8 +90,10 @@ public final class AppRegistry {
     private static final List<Entry> ENTRIES = new ArrayList<>();
 
     static {
-        ENTRIES.add(new Entry("messenger", MessengerApp::new, ClientNetwork::messengerAvailable, MessengerClient::unreadTotal, 0xFF3FB97A));
-        ENTRIES.add(new Entry("feed", SocialApp::new, ClientNetwork::socialAvailable, SocialClient::badge, 0xFF2EC4D6));
+        // «Мессенджер» — чаты, лента и профиль в одном приложении (apps/hub/HubApp).
+        ENTRIES.add(new Entry("messenger", dev.blockphone.fabric.client.apps.hub.HubApp::new,
+                () -> ClientNetwork.messengerAvailable() || ClientNetwork.socialAvailable(),
+                () -> MessengerClient.unreadTotal() + SocialClient.badge(), 0xFF3FB97A));
         ENTRIES.add(new Entry("telegram", dev.blockphone.fabric.client.apps.telegram.TelegramApp::new, () -> true,
                 dev.blockphone.fabric.client.telegram.Telegram::unreadTotal, 0xFF2AABEE));
         add("camera", CameraApp::new, 0xFF9AA5B8);

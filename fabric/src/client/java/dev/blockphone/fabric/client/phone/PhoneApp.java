@@ -132,7 +132,21 @@ public abstract class PhoneApp {
     }
 
     public final int contentHeight() {
-        return PhoneLayout.appH() - (hasHeader() ? PhoneLayout.HEADER_H : 0);
+        return PhoneLayout.appH() - (hasHeader() ? PhoneLayout.HEADER_H : 0) - reservedBottom;
+    }
+
+    /** Снизу занято приложением-хозяином (вложенное приложение над панелью вкладок), пикселей. */
+    private int reservedBottom;
+
+    public final void setReservedBottom(int pixels) {
+        reservedBottom = Math.max(0, pixels);
+    }
+
+    /** Вложенное приложение работает с тем же экраном телефона, что и хозяин. */
+    protected final void attachChild(PhoneApp child) {
+        if (child.phone != phone) {
+            child.attach(phone);
+        }
     }
 
     /** Телефон повёрнут набок, пока открыто это приложение (область — 340×132, без заголовка и в полном экране — больше). */

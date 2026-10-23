@@ -36,9 +36,10 @@ public final class MessengerNotifications {
         long chatId = chat.id();
         dev.blockphone.fabric.client.phone.PhoneNotifications.add("messenger:" + chatId, "messenger", title,
                 MessengerClient.previewText(message), message.sender().uuid(), phone -> {
-                    phone.openApp("messenger");
-                    if (PhoneState.app("messenger") instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
-                        app.openChat(chatId);
+                    phone.openApp(dev.blockphone.fabric.client.apps.hub.HubApp.ID);
+                    dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+                    if (hub != null) {
+                        hub.openChat(chatId);
                     }
                 });
     }

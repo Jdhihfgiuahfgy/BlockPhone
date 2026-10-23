@@ -1008,5 +1008,10 @@
   "voice.error.banned": "Телефон заблокирован на этом сервере",
   "moderation.banned_banner": "Бан до %s",
   "moderation.action.edit_public": "изменён паблик",
-  "moderation.action.dismiss_report": "жалоба отклонена"
+  "moderation.action.dismiss_report": "жалоба отклонена",
+  "hub.tab.feed": "Лента",
+  "hub.tab.chats": "Чаты",
+  "hub.tab.profile": "Профиль",
+  "hub.stickers": "Мои стикеры",
+  "moderation.open_player": "Модерация игрока"
 }

@@ -538,7 +538,7 @@ public final class DevShots {
                 dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:1", "messenger", "Пропущенный звонок", "Строители",
                         steve, p -> {
                         });
-                dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:1", "feed", "Steve оценил ваш пост",
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:1", "messenger", "Steve оценил ваш пост",
                         "Закат над морем с нового маяка", steve, p -> {
                         });
                 dev.blockphone.fabric.client.phone.PhoneNotifications.add("telegram:1", "telegram", "Мама", "Ужин в семь, не опаздывай",
@@ -700,7 +700,10 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
         });
         shot(30, "msg_home_badge");
-        step(1, mc -> phone(mc, p -> p.openApp("messenger")));
+        step(1, mc -> {
+            phone(mc, p -> p.openApp("messenger"));
+            messenger(app -> { });
+        });
         shot(20, "msg_list");
         step(1, mc -> messenger(app -> app.openChat(directChat.get())));
         shot(30, "msg_chat");
@@ -741,7 +744,10 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
         });
         shot(30, "social_home");
-        step(1, mc -> phone(mc, p -> p.openApp("feed")));
+        step(1, mc -> {
+            phone(mc, p -> p.openApp("messenger"));
+            social(app -> app.switchTab(SocialApp.Tab.FEED));
+        });
         shot(40, "social_feed");
         step(1, mc -> social(SocialApp::debugOpenFirstPost));
         shot(40, "social_post");
@@ -802,7 +808,7 @@ public final class DevShots {
         shot(60, "sticker_sent");
         step(1, mc -> {
             settings.darkTheme = true;
-            phone(mc, p -> p.openApp("feed"));
+            phone(mc, p -> p.openApp("messenger"));
             social(app -> app.switchTab(SocialApp.Tab.FEED));
         });
         shot(40, "social_feed_dark");
@@ -1211,8 +1217,9 @@ public final class DevShots {
     }
 
     private static void social(Consumer<SocialApp> action) {
-        if (PhoneState.app("feed") instanceof SocialApp app) {
-            action.accept(app);
+        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+        if (hub != null) {
+            action.accept(hub.socialShown());
         }
     }
 
@@ -1266,8 +1273,9 @@ public final class DevShots {
     }
 
     private static void messenger(Consumer<MessengerApp> action) {
-        if (PhoneState.app("messenger") instanceof MessengerApp app) {
-            action.accept(app);
+        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+        if (hub != null) {
+            action.accept(hub.chatsShown());
         }
     }
 

@@ -124,10 +124,10 @@ public final class CallClient {
             long chatId = call.chatId();
             dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:" + chatId, "messenger", PhoneLang.tr("call.missed"),
                     title(before), caller != null ? caller.uuid() : null, phone -> {
-                        phone.openApp("messenger");
-                        if (dev.blockphone.fabric.client.phone.PhoneState.app("messenger")
-                                instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
-                            app.openChat(chatId);
+                        phone.openApp(dev.blockphone.fabric.client.apps.hub.HubApp.ID);
+                        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+                        if (hub != null) {
+                            hub.openChat(chatId);
                         }
                     });
         }
