@@ -418,7 +418,7 @@ public final class SettingsApp extends PhoneApp {
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     // --- Telegram: прокси ---

@@ -62,7 +62,7 @@ final class StickersView extends MessengerView {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, total - height()), scroll));
-        Scrollbar.report(0, height(), scroll, Math.max(0, total - height()), false, v -> scroll = v);
+        Scrollbar.report(0, height(), scroll, Math.max(0, total - height()), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, 0, w, height());
         int y = 6 - (int) scroll;
         int top = y;

@@ -178,7 +178,7 @@ public final class ClockApp extends PhoneApp {
         int rowH = 44;
         double max = Math.max(0, alarms.size() * rowH + 8 - h);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, 0, w, h);
         for (int i = 0; i < alarms.size(); i++) {
             PhoneSettings.Alarm alarm = alarms.get(i);
@@ -332,7 +332,7 @@ public final class ClockApp extends PhoneApp {
         int top = y;
         double max = Math.max(0, laps.size() * rowH - (h - top));
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(top, h, scroll, max, false, v -> scroll = v);
+        Scrollbar.report(top, h, scroll, max, false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, top, w, h);
         // Лучший и худший круг — зелёным и красным, как на телефонах.
         long best = Long.MAX_VALUE;

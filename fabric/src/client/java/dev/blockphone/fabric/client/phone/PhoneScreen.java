@@ -578,7 +578,11 @@ public class PhoneScreen extends Screen {
         applyOrientation();
         double sx = toScreenX(mouseX);
         double sy = toScreenY(mouseY);
-        return inContent(sx, sy) && app.mouseScrolled(sx, sy - contentTop(), scrollY);
+        boolean handled = inContent(sx, sy) && app.mouseScrolled(sx, sy - contentTop(), scrollY);
+        if (handled) {
+            Scrollbar.clampCurrent();
+        }
+        return handled;
     }
 
     @Override

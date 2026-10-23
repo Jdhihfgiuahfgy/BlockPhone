@@ -180,7 +180,7 @@ final class ChatInfoView extends MessengerView {
         contentHeight = total;
         double max = Math.max(0, total - height());
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, height(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, height(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     @Override

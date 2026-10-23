@@ -137,7 +137,7 @@ abstract class MusicView {
 
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
-        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v);
+        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v, () -> scroll);
     }
 
     boolean keyPressed(KeyEvent event) {

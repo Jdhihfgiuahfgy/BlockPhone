@@ -797,7 +797,7 @@ final class ChatView extends MessengerView {
         int area = areaBottom() - areaTop();
         double max = Math.max(0, total - area);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(areaTop(), areaBottom(), scroll, max, true, v -> scroll = v);
+        Scrollbar.report(areaTop(), areaBottom(), scroll, max, true, v -> scroll = v, () -> scroll);
     }
 
     // --- Действия ---

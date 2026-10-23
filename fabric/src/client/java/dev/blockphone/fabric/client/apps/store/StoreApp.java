@@ -213,7 +213,7 @@ public final class StoreApp extends PhoneApp {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, list.size() * ROW_H - (h - top)), scroll));
-        Scrollbar.report(top, h, scroll, Math.max(0, list.size() * ROW_H - (h - top)), false, v -> scroll = v);
+        Scrollbar.report(top, h, scroll, Math.max(0, list.size() * ROW_H - (h - top)), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, top, w, h);
         for (int i = 0; i < list.size(); i++) {
             int y = top + i * ROW_H - (int) scroll;
@@ -493,7 +493,7 @@ public final class StoreApp extends PhoneApp {
         y += 14;
         double max = Math.max(0, y + (int) scroll + 12 - h);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     /** Заголовок раздела страницы приложения; возвращает y под ним. */
@@ -684,7 +684,7 @@ public final class StoreApp extends PhoneApp {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, apps.size() * ROW_H - h), scroll));
-        Scrollbar.report(0, h, scroll, Math.max(0, apps.size() * ROW_H - h), false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, Math.max(0, apps.size() * ROW_H - h), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, 0, w, h);
         for (int i = 0; i < apps.size(); i++) {
             AppDefinition app = apps.get(i);
