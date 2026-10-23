@@ -227,6 +227,14 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     ADD (отказавшиеся пропускаются, ошибка `privacy_invites` с числом), звонок в личном чате (`call.error.privacy`).
     Оформление страницы — колонки profiles.avatar_type/avatar_pose/avatar_bg/banner_style/banner_image (`SocialRepository.look/setLook`),
     фото баннера — images.kind 3 (KIND_BANNER, видно всем); старое фото баннера отвязывается и удаляется через сутки.
+  - `ModerationService` + `ModerationRepository` (таблицы mutes, bans, modlog) — панель модерации (`ModerationPackets` id 98–108:
+    поиск игроков, наказанные, Punish MUTE/UNMUTE/BAN/UNBAN с минутами (-1 — навсегда) и причиной, журнал, чаты игрока и
+    переписка только для чтения — право MOD_CHATS, пишется в журнал); бан в телефоне — `Backend.handle` проверяет каждый
+    пакет (кроме Refresh/LeaveCall; кэш 30 с) и отвечает *.error.banned; мут — и в мессенджере (`messenger.error.muted`).
+    `ModerationSettings` (`moderation` в настройках): `chatLog` (лог сообщений в чат игры игрокам с правом CHAT_LOG,
+    формат с &-цветами, `ModerationSettings.colors`), `banCommand`/`unbanCommand` (через `ServerPlatform.runConsoleCommand`).
+    `ServerPlatform.onlinePlayers/sendChat` — для лога. Клиент: `social/ModerationClient`, экраны `apps/social/ModerationView`
+    (разделы Жалобы/Игроки/Наказ./Журнал), `PlayerModView`, `ModChatsView`, `ModChatView`.
   - `filter/FilterSettings` (POJO для Gson; Paper заполняет из `filter.*` в config.yml; `fixNulls()`) и `filter/ContentFilter` —
     автомодерация: слова (чёрный/белый список; «слово», «слово*», «*слово», «*слово*», «regex:…»; сравнение по «скелету»:
     похожие буквы/цифры сведены, повторы схлопнуты, буквы через разделители склеены; censor → звёздочки или block) и ссылки

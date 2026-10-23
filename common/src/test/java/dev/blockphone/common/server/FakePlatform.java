@@ -67,6 +67,27 @@ final class FakePlatform implements ServerPlatform {
         denied.computeIfAbsent(player, k -> ConcurrentHashMap.newKeySet()).add(permission);
     }
 
+    /** Все игроки онлайн (для лога сообщений), сообщения в чат игры и команды консоли. */
+    final Set<UUID> online = ConcurrentHashMap.newKeySet();
+    final Map<UUID, List<String>> chat = new ConcurrentHashMap<>();
+    final List<String> consoleCommands = new CopyOnWriteArrayList<>();
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        return online;
+    }
+
+    @Override
+    public void sendChat(UUID player, String text) {
+        chat.computeIfAbsent(player, k -> new CopyOnWriteArrayList<>()).add(text);
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        consoleCommands.add(command);
+        return true;
+    }
+
     @Override
     public void info(String message) {
     }

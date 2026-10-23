@@ -3,6 +3,7 @@ package dev.blockphone.common.protocol;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
 import dev.blockphone.common.protocol.packet.ImagePackets;
 import dev.blockphone.common.protocol.packet.MessengerPackets;
+import dev.blockphone.common.protocol.packet.ModerationPackets;
 import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.StickerPackets;
@@ -136,6 +137,18 @@ public final class Packets {
         register(95, AppPackets.Relayed.class, AppPackets.Relayed::read);
         register(96, AppPackets.RequestPlayers.class, AppPackets.RequestPlayers::read);
         register(97, AppPackets.Players.class, AppPackets.Players::read);
+
+        register(98, ModerationPackets.SearchPlayers.class, ModerationPackets.SearchPlayers::read);
+        register(99, ModerationPackets.RequestPunished.class, ModerationPackets.RequestPunished::read);
+        register(100, ModerationPackets.Players.class, ModerationPackets.Players::read);
+        register(101, ModerationPackets.Punish.class, ModerationPackets.Punish::read);
+        register(102, ModerationPackets.PlayerUpdated.class, ModerationPackets.PlayerUpdated::read);
+        register(103, ModerationPackets.RequestLog.class, ModerationPackets.RequestLog::read);
+        register(104, ModerationPackets.Log.class, ModerationPackets.Log::read);
+        register(105, ModerationPackets.RequestUserChats.class, ModerationPackets.RequestUserChats::read);
+        register(106, ModerationPackets.UserChats.class, ModerationPackets.UserChats::read);
+        register(107, ModerationPackets.RequestChat.class, ModerationPackets.RequestChat::read);
+        register(108, ModerationPackets.ChatHistory.class, ModerationPackets.ChatHistory::read);
     }
 
     private static <T extends Packet> void register(int id, Class<T> type, Function<PacketReader, T> decoder) {

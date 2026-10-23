@@ -264,7 +264,14 @@ public final class MessengerClient {
                     .put(p.user().uuid(), new TypingInfo(p.user().name(), System.currentTimeMillis() + TYPING_SHOW_MS));
             case MessengerPackets.Presence p -> ONLINE.put(p.user().uuid(), p.user().online());
             case MessengerPackets.Failure p -> {
-                lastError = PhoneLang.tr(p.key(), p.arg());
+                String arg = p.arg();
+                if (p.key().equals("messenger.error.muted") || p.key().equals("messenger.error.banned")
+                        || p.key().equals("call.error.banned")) {
+                    // Аргумент — время окончания (пусто — навсегда).
+                    arg = arg.isEmpty() ? PhoneLang.tr("social.forever")
+                            : dev.blockphone.fabric.client.social.SocialFormat.dateTime(Long.parseLong(arg));
+                }
+                lastError = PhoneLang.tr(p.key(), arg);
                 lastErrorAt = System.currentTimeMillis();
                 // Неотправленные сообщения больше не ждём.
                 PENDING.clear();

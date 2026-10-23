@@ -53,7 +53,7 @@ public final class SocialApp extends PhoneApp {
 
     List<Tab> tabs() {
         List<Tab> tabs = new ArrayList<>(List.of(Tab.FEED, Tab.PUBLICS, Tab.PROFILE));
-        if (ClientSession.has(Rights.MOD_REPORTS)) {
+        if (ClientSession.moderator()) {
             tabs.add(Tab.MODERATION);
         }
         return tabs;
@@ -203,7 +203,7 @@ public final class SocialApp extends PhoneApp {
 
     @Override
     public void tick() {
-        if (tab == Tab.MODERATION && !ClientSession.has(Rights.MOD_REPORTS)) {
+        if (tab == Tab.MODERATION && !ClientSession.moderator()) {
             switchTab(Tab.FEED);
         }
         view().tick();

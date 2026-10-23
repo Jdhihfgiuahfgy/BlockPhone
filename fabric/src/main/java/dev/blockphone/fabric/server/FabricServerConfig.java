@@ -35,6 +35,8 @@ public final class FabricServerConfig {
     public dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
     /** Стикеры и квота загрузок игрока. */
     public dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+    /** Модерация: лог сообщений в чат игры (chatLog), команды при бане (banCommand, unbanCommand). */
+    public dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
     /** Хранилище переписки, ленты и фото. */
     public Storage storage = new Storage();
 
@@ -77,7 +79,8 @@ public final class FabricServerConfig {
         ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
                 social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
         ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType);
-        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps, uploads);
+        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps, uploads,
+                moderation);
     }
 
     public static FabricServerConfig load() {
@@ -112,6 +115,9 @@ public final class FabricServerConfig {
         config.apps.fixNulls();
         if (config.uploads == null) {
             config.uploads = new dev.blockphone.common.server.UploadSettings();
+        }
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
         }
         config.uploads.fixNulls();
         if (config.moderators == null) {

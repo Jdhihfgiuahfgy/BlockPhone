@@ -65,6 +65,29 @@ apps:
   blacklist: []
   whitelist: []
 
+# Модерация.
+moderation:
+  # Дублировать сообщения мессенджера в чат игры тем, у кого право blockphone.chatlog (по умолчанию — операторы).
+  # Участники самого чата копию не получают. Цвета — коды &0..&f (&8 — тёмно-серый), &l, &o.
+  # Подстановки: {sender} — отправитель, {receiver} — получатель(и), {group} — название группы, {message} — текст.
+  chat-log:
+    enabled: false
+    # Сообщения групп тоже (иначе только личные).
+    groups: true
+    # Писать и в консоль сервера.
+    console: false
+    format: "&8[ЛС] {sender} > {receiver}: {message}"
+    group-format: "&8[{group}] {sender}: {message}"
+    # Как показывать вложения в {message}.
+    photo: "[фото]"
+    voice: "[голосовое]"
+    sticker: "[стикер]"
+  # Команда консоли при бане в телефоне через панель модерации (пусто — бан только в телефоне).
+  # Подстановки: {player}, {uuid}, {reason}, {minutes} (-1 — навсегда), {moderator}. Пример: "tempban {player} {minutes}m {reason}"
+  ban-command: ""
+  # Команда при снятии бана, например "pardon {player}".
+  unban-command: ""
+
 # Автомодерация текста: сообщения, названия групп, посты, комментарии, «о себе», паблики.
 # Игроки с правом blockphone.filter.bypass (по умолчанию — операторы) не проверяются, если bypass-for-moderators: true.
 filter:

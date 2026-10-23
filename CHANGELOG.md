@@ -68,6 +68,29 @@
 - Политика фото на сервере по умолчанию — `any` (была `server` — только снимки камерой на этом сервере; с ней картинки с
   компьютера не отправить, кнопка подсказывает это). В существующих конфигах значение не меняется. Стикеры принимают
   любые картинки (сервер и раньше не применял к ним политику фото).
+- Панель модерации (вкладка «Модерация» — у всех, у кого есть любое модераторское право): разделы «Жалобы»,
+  «Игроки» (поиск по нику, пусто — кто в сети), «Наказ.» (у кого сейчас мут или бан) и «Журнал» (действия модераторов,
+  «Показать ещё»). Карточка игрока: состояние (в сети / был, мут и бан с причиной и сроком), поле причины, «Мут…» и
+  «Бан…» с меню сроков (15 мин, 1 ч, 1 д, 7 д, 30 д, навсегда — с подтверждением), «Снять мут», «Снять бан»,
+  «Чаты игрока», «Профиль». Мут теперь действует и в мессенджере (раньше — только в ленте). Бан в телефоне: сервер не
+  принимает от игрока ничего, кроме сведений о сессии (мессенджер, лента, фото, голосовые, звонки; идущий звонок
+  завершается), игроку показывается срок. Необязательно — команда сервера при бане/разбане (`moderation.ban-command`,
+  `unban-command`, подстановки {player} {uuid} {reason} {minutes} {moderator}). Новые права: `blockphone.moderate.ban`,
+  `blockphone.moderate.chats`, `blockphone.chatlog` (все входят в `blockphone.moderator`).
+- Просмотр личных и групповых чатов игроков модератором (право `blockphone.moderate.chats`): «Чаты игрока» → список →
+  переписка только для чтения; каждое открытие пишется в журнал модерации.
+- Лог личных сообщений в чат игры (настройка сервера `moderation.chat-log`, по умолчанию выключен): каждое сообщение
+  мессенджера дублируется в чат тем, у кого право `blockphone.chatlog` (по умолчанию — операторы/модераторы), кроме
+  участников этого чата; формат и цвета настраиваются (`format: "&8[ЛС] {sender} > {receiver}: {message}"`,
+  `group-format`, подписи вложений, `groups`, `console`). Работает на Paper, Fabric, Velocity и BungeeCord.
+- Протокол 9 (`PROTOCOL_VERSION`): новые пакеты `ModerationPackets` (id 98–108), у `SessionPacket` — `bannedUntil`,
+  `banReason`; права `Rights.MOD_BAN`, `Rights.MOD_CHATS`. Таблица `bans`, у `mutes` — колонка `reason`.
+  `ServerPlatform`: `onlinePlayers`, `sendChat`, `runConsoleCommand`.
+- Файлы: common — `ModerationService`, `ModerationRepository`, `ModerationSettings`, `ModerationData`, `ModerationPackets`,
+  `Backend` (маршрутизация, проверка бана, кэш 30 с), `MessengerService` (мут, лог), `Database`, `Permission`,
+  `SessionPacket`, `ServerSettings`, тест `ModerationServiceTest`; клиент — `social/ModerationClient`,
+  `apps/social/{ModerationView,PlayerModView,ModChatsView,ModChatView}`; платформы — `BlockPhonePaper` + config.yml,
+  `FabricServerHandler`/`FabricServerConfig`, `BlockPhoneVelocity`, `BlockPhoneBungee`.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

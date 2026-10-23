@@ -71,6 +71,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         /** Стикеры и квота загрузок игрока. */
         dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+        /** Модерация: лог сообщений в чат (chatLog), команды прокси при бане (banCommand, unbanCommand). */
+        dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
         Storage storage = new Storage();
 
         static final class Voice {
@@ -145,7 +147,7 @@ public final class BlockPhoneVelocity implements ServerPlatform {
                 config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         return new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads);
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }
 
     @Subscribe
@@ -218,6 +220,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             config.uploads = new dev.blockphone.common.server.UploadSettings();
         }
         config.uploads.fixNulls();
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
+        }
+        config.moderation.fixNulls();
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {
@@ -262,6 +268,27 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             proxy.getCommandManager().executeAsync(console ? proxy.getConsoleCommandSource() : p, command);
             return true;
         }).orElse(false);
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new ArrayList<>();
+        for (Player player : proxy.getAllPlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public void sendChat(UUID player, String text) {
+        proxy.getPlayer(player).ifPresent(p -> p.sendMessage(
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection().deserialize(text)));
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        proxy.getCommandManager().executeAsync(proxy.getConsoleCommandSource(), command);
+        return true;
     }
 
     @Override

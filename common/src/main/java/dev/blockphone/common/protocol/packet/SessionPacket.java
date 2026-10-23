@@ -19,20 +19,29 @@ import dev.blockphone.common.protocol.data.ImageRef.PhotoPolicy;
  * @param openReports    необработанных жалоб (только для модераторов, иначе 0)
  * @param maxVoiceSeconds предел длины голосового сообщения (0 — голосовые выключены)
  * @param callsAvailable на сервере есть Simple Voice Chat и звонки включены
+ * @param bannedUntil    игрок заблокирован в телефоне (мессенджер, лента, звонки) до этого времени (0 — нет)
+ * @param banReason      причина блокировки
  */
 public record SessionPacket(String serverId, boolean socialEnabled, PhotoPolicy photoPolicy, int maxPhotoBytes, int maxPhotoSide,
-                            int rights, long mutedUntil, int openReports, int maxVoiceSeconds, boolean callsAvailable) implements Packet {
+                            int rights, long mutedUntil, int openReports, int maxVoiceSeconds, boolean callsAvailable,
+                            long bannedUntil, String banReason) implements Packet {
+
+    public SessionPacket(String serverId, boolean socialEnabled, PhotoPolicy photoPolicy, int maxPhotoBytes, int maxPhotoSide,
+                         int rights, long mutedUntil, int openReports, int maxVoiceSeconds, boolean callsAvailable) {
+        this(serverId, socialEnabled, photoPolicy, maxPhotoBytes, maxPhotoSide, rights, mutedUntil, openReports, maxVoiceSeconds,
+                callsAvailable, 0, "");
+    }
 
     public static SessionPacket read(PacketReader r) {
         return new SessionPacket(r.readString(64), r.readBoolean(), r.readEnum(PhotoPolicy.values()), r.readVarInt(), r.readVarInt(),
-                r.readVarInt(), r.readLong(), r.readVarInt(), r.readVarInt(), r.readBoolean());
+                r.readVarInt(), r.readLong(), r.readVarInt(), r.readVarInt(), r.readBoolean(), r.readLong(), r.readString(200));
     }
 
     @Override
     public void write(PacketWriter w) {
         w.writeString(serverId).writeBoolean(socialEnabled).writeEnum(photoPolicy).writeVarInt(maxPhotoBytes).writeVarInt(maxPhotoSide)
                 .writeVarInt(rights).writeLong(mutedUntil).writeVarInt(openReports).writeVarInt(maxVoiceSeconds)
-                .writeBoolean(callsAvailable);
+                .writeBoolean(callsAvailable).writeLong(bannedUntil).writeString(banReason);
     }
 
     /** Клиент → сервер: прислать сведения о сессии заново (права могли измениться, например, в LuckPerms). */

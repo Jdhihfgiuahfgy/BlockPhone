@@ -20,6 +20,9 @@ public enum Permission {
     MOD_PUBLICS("blockphone.moderate.publics", false, Rights.MOD_PUBLICS, "Delete any public"),
     MOD_MUTE("blockphone.moderate.mute", false, Rights.MOD_MUTE, "Mute players in the feed"),
     MOD_REPORTS("blockphone.moderate.reports", false, Rights.MOD_REPORTS, "View and resolve reports"),
+    MOD_BAN("blockphone.moderate.ban", false, Rights.MOD_BAN, "Ban players from the phone (messenger, feed, calls)"),
+    MOD_CHATS("blockphone.moderate.chats", false, Rights.MOD_CHATS, "Read private and group chats of players"),
+    CHAT_LOG("blockphone.chatlog", false, 0, "See the private message log in the game chat (if enabled in the config)"),
     FILTER_BYPASS("blockphone.filter.bypass", false, 0, "Not checked by the automatic content filter"),
     MODERATOR("blockphone.moderator", false, 0, "All moderator permissions");
 

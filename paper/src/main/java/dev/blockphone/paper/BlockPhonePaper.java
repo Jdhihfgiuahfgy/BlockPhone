@@ -107,7 +107,22 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
                 c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators, voice, readFilter(c), readApps(c), readUploads(c));
+                social, moderators, voice, readFilter(c), readApps(c), readUploads(c), readModeration(c));
+    }
+
+    private static dev.blockphone.common.server.ModerationSettings readModeration(FileConfiguration c) {
+        dev.blockphone.common.server.ModerationSettings m = new dev.blockphone.common.server.ModerationSettings();
+        m.chatLog.enabled = c.getBoolean("moderation.chat-log.enabled", m.chatLog.enabled);
+        m.chatLog.groups = c.getBoolean("moderation.chat-log.groups", m.chatLog.groups);
+        m.chatLog.console = c.getBoolean("moderation.chat-log.console", m.chatLog.console);
+        m.chatLog.format = c.getString("moderation.chat-log.format", m.chatLog.format);
+        m.chatLog.groupFormat = c.getString("moderation.chat-log.group-format", m.chatLog.groupFormat);
+        m.chatLog.photo = c.getString("moderation.chat-log.photo", m.chatLog.photo);
+        m.chatLog.voice = c.getString("moderation.chat-log.voice", m.chatLog.voice);
+        m.chatLog.sticker = c.getString("moderation.chat-log.sticker", m.chatLog.sticker);
+        m.banCommand = c.getString("moderation.ban-command", m.banCommand);
+        m.unbanCommand = c.getString("moderation.unban-command", m.unbanCommand);
+        return m.fixNulls();
     }
 
     private static dev.blockphone.common.server.UploadSettings readUploads(FileConfiguration c) {
@@ -305,6 +320,29 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         } catch (ReflectiveOperationException | RuntimeException e) {
             return text;
         }
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new java.util.ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void sendChat(UUID player, String text) {
+        Player target = Bukkit.getPlayer(player);
+        if (target != null) {
+            target.sendMessage(text);
+        }
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        return Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
     }
 
     @Override

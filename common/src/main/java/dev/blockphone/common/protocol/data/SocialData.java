@@ -33,8 +33,12 @@ public final class SocialData {
         public static final int VOICE = 1 << 7;
         /** Звонки. */
         public static final int CALL = 1 << 8;
+        /** Блокировать игроков в телефоне (бан). */
+        public static final int MOD_BAN = 1 << 9;
+        /** Читать личные и групповые чаты игроков. */
+        public static final int MOD_CHATS = 1 << 10;
         /** Любое модераторское право. */
-        public static final int ANY_MOD = MOD_POSTS | MOD_PUBLICS | MOD_MUTE | MOD_REPORTS;
+        public static final int ANY_MOD = MOD_POSTS | MOD_PUBLICS | MOD_MUTE | MOD_REPORTS | MOD_BAN | MOD_CHATS;
 
         public static boolean has(int mask, int right) {
             return (mask & right) != 0;

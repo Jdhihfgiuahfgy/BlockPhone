@@ -170,11 +170,13 @@ public final class MessengerService {
         repo.markRead(p.chatId(), player, id);
         MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), text, image, voice, now, 0,
                 false);
-        for (UUID member : repo.members(p.chatId())) {
+        List<UUID> members = repo.members(p.chatId());
+        for (UUID member : members) {
             if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
             }
         }
+        backend.moderation().logMessage(repo.chat(p.chatId()), player, members, text, image != null, voice != null, false);
     }
 
     private void editMessage(UUID player, MessengerPackets.EditMessage p) throws SQLException {
@@ -439,7 +441,7 @@ public final class MessengerService {
         }
     }
 
-    private ChatInfo chatInfo(ChatRow row, UUID viewer) throws SQLException {
+    ChatInfo chatInfo(ChatRow row, UUID viewer) throws SQLException {
         List<UUID> memberIds = repo.members(row.id());
         MessageRow last = repo.lastMessage(row.id());
         Map<UUID, String> names = names(memberIds);
@@ -454,7 +456,7 @@ public final class MessengerService {
     }
 
     /** Сообщения для пакетов: ники отправителей и размеры фото одним запросом. */
-    private List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
+    List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
         Map<UUID, String> names = names(rows.stream().map(MessageRow::sender).toList());
         Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(MessageRow::imageId).toList());
         Map<Long, VoiceRef> voices = backend.voices().repo().refs(rows.stream().map(MessageRow::voiceId).toList());
@@ -509,15 +511,23 @@ public final class MessengerService {
         repo.markRead(p.chatId(), player, id);
         MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), "", sticker.image(), null, now, 0,
                 false, sticker);
-        for (UUID member : repo.members(p.chatId())) {
+        List<UUID> members = repo.members(p.chatId());
+        for (UUID member : members) {
             if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
             }
         }
+        backend.moderation().logMessage(repo.chat(p.chatId()), player, members, "", false, false, true);
     }
 
-    /** Автомьют фильтра: сообщить игроку, сколько ещё минут, и не пропустить сообщение. */
-    private boolean filterMuted(UUID player) {
+    /** Мут модератора или автомьют фильтра: сообщить игроку, до какого времени, и не пропустить сообщение. */
+    private boolean filterMuted(UUID player) throws SQLException {
+        long muted = backend.moderation().mutedUntil(player);
+        if (muted > 0) {
+            send(player, new MessengerPackets.Failure("messenger.error.muted",
+                    muted == dev.blockphone.common.protocol.data.ModerationData.FOREVER ? "" : String.valueOf(muted)));
+            return true;
+        }
         long until = backend.filterMutedUntil(player);
         if (until <= 0) {
             return false;

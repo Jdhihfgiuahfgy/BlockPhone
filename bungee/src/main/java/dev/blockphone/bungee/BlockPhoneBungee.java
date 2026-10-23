@@ -50,6 +50,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         /** Стикеры и квота загрузок игрока. */
         dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+        /** Модерация: лог сообщений в чат (chatLog), команды прокси при бане (banCommand, unbanCommand). */
+        dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
         Storage storage = new Storage();
 
         static final class Social {
@@ -116,7 +118,7 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
         return new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads);
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }
 
     @Override
@@ -188,6 +190,10 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             config.uploads = new dev.blockphone.common.server.UploadSettings();
         }
         config.uploads.fixNulls();
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
+        }
+        config.moderation.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }
@@ -237,6 +243,28 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             return false;
         }
         return getProxy().getPluginManager().dispatchCommand(console ? getProxy().getConsole() : target, command);
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new ArrayList<>();
+        for (ProxiedPlayer player : getProxy().getPlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public void sendChat(UUID player, String text) {
+        ProxiedPlayer target = getProxy().getPlayer(player);
+        if (target != null) {
+            target.sendMessage(net.md_5.bungee.api.chat.TextComponent.fromLegacyText(text));
+        }
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        return getProxy().getPluginManager().dispatchCommand(getProxy().getConsole(), command);
     }
 
     @Override

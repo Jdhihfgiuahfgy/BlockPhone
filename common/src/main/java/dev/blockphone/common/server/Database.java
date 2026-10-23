@@ -254,6 +254,16 @@ public final class Database implements AutoCloseable {
         index("idx_posts_author", "posts", "author, id");
         index("idx_comments_post", "comments", "post_id, id");
         index("idx_reports_open", "reports", "resolution, id");
+        // Панель модерации: бан в телефоне и причина мута.
+        try (Statement st = connection().createStatement()) {
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("bans") + " ("
+                    + "uuid CHAR(36) NOT NULL PRIMARY KEY,"
+                    + "until_at BIGINT NOT NULL,"
+                    + "reason VARCHAR(255) NOT NULL,"
+                    + "by_uuid CHAR(36) NOT NULL,"
+                    + "created_at BIGINT NOT NULL)");
+        }
+        column("mutes", "reason VARCHAR(255) NOT NULL DEFAULT ''");
     }
 
     /** ALTER TABLE ... ADD COLUMN без IF NOT EXISTS (его нет в MySQL): ошибку «уже есть» игнорируем. */

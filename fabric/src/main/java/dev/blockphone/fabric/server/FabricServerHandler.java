@@ -163,6 +163,30 @@ public final class FabricServerHandler {
             server.execute(task);
         }
 
+        @Override
+        public java.util.Collection<UUID> onlinePlayers() {
+            java.util.List<UUID> result = new java.util.ArrayList<>();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                result.add(player.getUUID());
+            }
+            return result;
+        }
+
+        /** Текст с кодами § — как в ванильном чате (коды форматирования работают и в обычном тексте). */
+        @Override
+        public void sendChat(UUID player, String text) {
+            ServerPlayer target = server.getPlayerList().getPlayer(player);
+            if (target != null) {
+                target.sendSystemMessage(net.minecraft.network.chat.Component.literal(text));
+            }
+        }
+
+        @Override
+        public boolean runConsoleCommand(String command) {
+            server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
+            return true;
+        }
+
         /** fabric-permissions-api (LuckPerms), иначе: обычные права — у всех, модераторские — у операторов уровня 2+. */
         @Override
         public boolean hasPermission(UUID player, Permission permission) {

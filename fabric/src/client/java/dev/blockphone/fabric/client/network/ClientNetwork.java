@@ -83,6 +83,8 @@ public final class ClientNetwork {
             SocialClient.onSession();
         } else if (group == SocialPackets.class) {
             SocialClient.handle(packet);
+        } else if (group == dev.blockphone.common.protocol.packet.ModerationPackets.class) {
+            dev.blockphone.fabric.client.social.ModerationClient.handle(packet);
         } else if (packet instanceof ImagePackets.UploadResult result) {
             ImageUploads.onResult(result);
         } else if (packet instanceof ImagePackets.ImageData data) {
@@ -118,6 +120,7 @@ public final class ClientNetwork {
     private static void resetServerState() {
         MessengerClient.reset();
         SocialClient.reset();
+        dev.blockphone.fabric.client.social.ModerationClient.reset();
         ImageUploads.reset();
         RemoteImages.reset();
         VoiceMessages.reset();
