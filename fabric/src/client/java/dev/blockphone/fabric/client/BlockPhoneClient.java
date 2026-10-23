@@ -77,6 +77,13 @@ public final class BlockPhoneClient implements ClientModInitializer {
                 }
             }
             dev.blockphone.fabric.client.phone.PhonePin.tick(client);
+            // Свёрнутое приложение, которое работает в фоне (хост сетевой игры), продолжает свой такт.
+            if (!(client.screen instanceof PhoneScreen) && !dev.blockphone.fabric.client.phone.PhonePin.active()) {
+                dev.blockphone.fabric.client.phone.PhoneApp bg = dev.blockphone.fabric.client.phone.PhoneState.current();
+                if (bg != null && bg.runsInBackground()) {
+                    bg.backgroundTick();
+                }
+            }
             dev.blockphone.fabric.client.music.MusicRemote.tick(client);
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();

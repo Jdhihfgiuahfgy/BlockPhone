@@ -118,7 +118,7 @@ public final class CustomApps {
         } else {
             ScriptHost.queue(r.appId(), r.fromName(), r.payload());
         }
-        if (!open) {
+        if (!open && !(existing != null && existing.runsInBackground())) {
             String name = name(def);
             dev.blockphone.fabric.client.phone.PhoneNotifications.add("app:" + r.appId(), PREFIX + r.appId(), name,
                     PhoneLang.tr("app.message_from", r.fromName()), r.from(), phone -> phone.openApp(PREFIX + r.appId()));

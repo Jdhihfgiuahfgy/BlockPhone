@@ -58,6 +58,7 @@ function N.decode(V, s)
     p.name, p.team = a[2], a[3]
     p.alive, p.bot, p.crouch, p.helmet, p.kit, p.bomb, p.using, p.spot =
       bit(f, 1), bit(f, 2), bit(f, 4), bit(f, 8), bit(f, 16), bit(f, 32), bit(f, 64), bit(f, 128)
+    p.afk = bit(f, 256)
     p.x, p.y, p.z, p.vx, p.vz = a[5] / 100, a[6] / 100, a[7] / 100, a[8] / 100, a[9] / 100
     p.yaw, p.pitch, p.hp, p.armor, p.wpn, p.pri, p.sec = a[10], a[11], a[12], a[13], a[14], a[15], a[16]
     p.he, p.fl, p.sm = math.floor(a[17] / 100), math.floor(a[17] / 10) % 10, a[17] % 10

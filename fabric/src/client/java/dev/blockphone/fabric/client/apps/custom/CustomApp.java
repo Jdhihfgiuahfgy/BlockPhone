@@ -952,6 +952,23 @@ public final class CustomApp extends PhoneApp {
     }
 
     @Override
+    public boolean typingText() {
+        return host != null ? host.typingText() : capturesKeyboard();
+    }
+
+    @Override
+    public boolean runsInBackground() {
+        return host != null && host.background && ready();
+    }
+
+    @Override
+    public void backgroundTick() {
+        if (runsInBackground()) {
+            host.tick();
+        }
+    }
+
+    @Override
     public boolean capturesKeyboard() {
         if (host != null) {
             return host.capturesKeyboard();

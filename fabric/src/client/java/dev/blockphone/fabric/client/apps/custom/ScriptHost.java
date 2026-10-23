@@ -116,6 +116,10 @@ final class ScriptHost {
     boolean landscape;
     boolean fullscreen;
     boolean captureKeys;
+    /** screen.background(true): onTick идёт и с закрытым телефоном (хост сетевой игры). */
+    boolean background;
+    /** screen.minimizeKey(true): клавиша телефона сворачивает приложение, даже когда оно забирает клавиши. */
+    boolean minimizeKey;
     private @Nullable String title;
 
     // Рисование (только в onDraw).
@@ -518,6 +522,9 @@ final class ScriptHost {
                 return area.keyPressed(event);
             }
         }
+        if (minimizeKey && dev.blockphone.fabric.client.BlockPhoneClient.openPhoneKey.matches(event)) {
+            return false; // телефон свернётся (PhoneScreen), приложение получит onHide
+        }
         String name = keyName(event.key());
         if (name == null) {
             return false;
@@ -547,6 +554,10 @@ final class ScriptHost {
             return true;
         }
         return callback("onBack").arg1().toboolean();
+    }
+
+    boolean typingText() {
+        return error == null && inputs.values().stream().anyMatch(TextArea::isFocused);
     }
 
     boolean capturesKeyboard() {
@@ -930,6 +941,14 @@ final class ScriptHost {
         }));
         screen.set("captureKeys", fn(a -> {
             captureKeys = a.optboolean(1, true);
+            return LuaValue.NONE;
+        }));
+        screen.set("background", fn(a -> {
+            background = a.optboolean(1, true);
+            return LuaValue.NONE;
+        }));
+        screen.set("minimizeKey", fn(a -> {
+            minimizeKey = a.optboolean(1, true);
             return LuaValue.NONE;
         }));
         screen.set("close", fn(a -> {

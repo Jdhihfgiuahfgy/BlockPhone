@@ -113,7 +113,8 @@ class Map:
         roofs = ["".join("." if self.roof[z][x] is None else level_char(self.roof[z][x]) for x in range(self.w))
                  for z in range(self.h)]
         p = self.props
-        out = ['  {key = "%s", name = "%s", wallH = %s,' % (self.key, self.name, self.wall_h)]
+        out = ['  {key = "%s", name = "%s", wallH = %s,%s' % (self.key, self.name, self.wall_h,
+                                                            " wingman = true," if self.props.get("wingman") else "")]
         for k in ("sky", "fog"):
             out.append('    %s = "%s",' % (k, p[k]))
         out.append("    fogNear = %d, fogFar = %d," % (p["fogNear"], p["fogFar"]))
@@ -375,8 +376,54 @@ def villa():
     return m
 
 
+# --- Карта «Напарников»: Shortdust (CS:GO) — короткий Dust II: одна точка A, кэтвок, мид с ящиком, обход справа ---
+
+def shortdust():
+    m = Map("shortdust", "Shortdust", 40, 37, 4.5)
+    m.props = {"wingman": True, "sky": "#FF9CC7E8", "fog": "#FFDCD6C8", "fogNear": 22, "fogFar": 60,
+               "steps": {"floor": "sand", "floor2": "stone", "box": "wood"},
+               "tex": {"wall": "sandstone", "wall2": "sandbrick", "floor": "sand", "floor2": "tiles", "site": "site_sand",
+                       "crate": "crate", "box": "box", "ledge": "sandbrick", "roof": "planks", "roofTop": "sandbrick"}}
+    # База T внизу, CT — справа вверху за точкой.
+    m.room(13, 29, 27, 34, 0.5)
+    m.spawn(15, 30, 25, 33, "T")
+    m.room(31, 2, 37, 9, 1.0)
+    m.spawn(32, 3, 36, 8, "C")
+    # Точка A вверху (1,0) — как A на Dust II: ящики, «стенка», выход CT.
+    m.room(15, 2, 30, 11, 1.0)
+    m.site(16, 3, 29, 10, "A")
+    m.box(21, 6, "X")
+    m.box(22, 6, "X")
+    m.box(18, 9, "x")
+    m.box(27, 4, "x")
+    m.box(26, 9, "x")
+    # Кэтвок (short): слева от базы T по коридору, лестница на 1,5, мостик к точке и спуск на неё.
+    m.room(6, 14, 10, 28, 0.5)
+    m.room(10, 29, 12, 32, 0.5)
+    m.stairs(6, 10, 10, 13, "z-", 0.5, 1.5)
+    m.room(6, 5, 12, 9, 1.5)
+    m.stairs(13, 5, 14, 9, "x+", 1.5, 1.0)
+    m.box(8, 6, "x")
+    # Мид: из базы T вниз в «низину» с ящиком (xbox), подъём к точке.
+    m.stairs(17, 27, 23, 28, "z+", 0.0, 0.5)
+    m.room(17, 16, 23, 26, 0.0)
+    m.box(19, 21, "X")
+    m.box(20, 21, "X")
+    m.stairs(17, 12, 23, 15, "z-", 0.0, 1.0)
+    # Обход справа: крытый проход из базы, двор и подъём к точке у CT.
+    m.room(28, 27, 31, 31, 0.5)
+    m.roof_over(28, 27, 31, 31, 2.6)
+    m.room(26, 16, 34, 26, 0.5)
+    m.room(24, 18, 25, 21, 0.25)
+    m.stairs(30, 12, 34, 15, "z-", 0.5, 1.0)
+    m.box(31, 20, "x")
+    m.box(28, 24, "x")
+    m.lanes = {"A": [(8, 20), (20, 19), (30, 20)]}
+    return m
+
+
 def main():
-    maps = [canyon(), oasis(), villa()]
+    maps = [canyon(), oasis(), villa(), shortdust()]
     for m in maps:
         m.check()
         m.radar()

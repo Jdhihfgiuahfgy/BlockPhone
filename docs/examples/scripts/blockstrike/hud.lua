@@ -297,34 +297,50 @@ end
 
 -- --- Таблица счёта ---
 
+-- Колонки — по правому краю, заголовки над своими числами; высота строки подстраивается под число игроков (5×5 и
+-- больше помещаются на экране целиком).
 function H.scoreboard(G, sw, sh, list)
   local V = G.V
   local my = V.players[G.me.id]
-  local w = 230
+  local counts = {0, 0}
+  for _, p in ipairs(list) do
+    if counts[p.team] then counts[p.team] = counts[p.team] + 1 end
+  end
+  local rows = counts[1] + counts[2]
+  local top, bottom = 6, sh - 6
+  local fixed = 13 + 2 * (11 + 3) + 2
+  local rowH = max(6, min(10, floor((bottom - top - fixed) / max(1, rows))))
+  local ts = min(0.5, rowH * 0.058)
+  local w = min(sw - 20, 260)
   local x = floor((sw - w) / 2)
-  local y = 22
-  gfx.rect(x, y, w, sh - 40, "#E0101418")
+  local h = fixed + rows * rowH
+  local y = max(top, floor((sh - h) / 2))
+  gfx.rect(x, y, w, h, "#E0101418")
   center((V.wingman and "Напарники · " or "") .. V.map.def.name .. " · раунд " .. V.round .. " · до " .. V.firstTo .. " побед",
     sw / 2, y + 3, "#FFE0E0E0", 0.55)
   y = y + 13
+  local colMoney, colD, colK = x + w - 6, x + w - 46, x + w - 64
   for _, team in ipairs({2, 1}) do
     gfx.rect(x + 2, y, w - 4, 10, a(D.TEAM_COLOR[team], 0.35))
     text(D.TEAM_NAME[team] .. "  " .. V.score[team], x + 5, y + 2, "#FFFFFFFF", 0.55)
-    right("У   С   $", x + w - 6, y + 2, "#FFE0E0E0", 0.5)
+    right("У", colK, y + 2, "#FFE0E0E0", 0.5)
+    right("С", colD, y + 2, "#FFE0E0E0", 0.5)
+    right("$", colMoney, y + 2, "#FFE0E0E0", 0.5)
     y = y + 11
     for _, p in ipairs(list) do
       if p.team == team then
         local c = p.alive and "#FFFFFFFF" or "#FF808080"
-        if p.id == G.me.id then gfx.rect(x + 2, y - 1, w - 4, 9, "#40FFFFFF") end
-        text((p.alive and "" or "✝ ") .. p.name .. (p.bomb and my and my.team == D.T and "  [C4]" or ""), x + 6, y, c, 0.5)
-        local money = (my and my.team == p.team) and ("$" .. p.money) or ""
-        gfx.text(tostring(p.kills), x + w - 70, y, c, 0.5, true)
-        gfx.text(tostring(p.deaths), x + w - 52, y, c, 0.5, true)
-        right(money, x + w - 6, y, "#FF8CF08C", 0.5)
-        y = y + 9
+        if p.id == G.me.id then gfx.rect(x + 2, y - 1, w - 4, rowH, "#40FFFFFF") end
+        local name = (p.alive and "" or "✝ ") .. p.name .. (p.afk and "  [AFK]" or "")
+          .. (p.bomb and my and my.team == D.T and "  [C4]" or "")
+        text(name, x + 6, y, c, ts)
+        right(tostring(p.kills), colK, y, c, ts)
+        right(tostring(p.deaths), colD, y, c, ts)
+        if my and my.team == p.team then right("$" .. p.money, colMoney, y, "#FF8CF08C", ts) end
+        y = y + rowH
       end
     end
-    y = y + 4
+    y = y + 3
   end
 end
 

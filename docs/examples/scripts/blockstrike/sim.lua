@@ -439,6 +439,7 @@ function Sim.applyInput(S, p, inp)
       p.wpn = w
     end
     p.using = inp.u == 1
+    p.afk = inp.afk == 1
     if inp.sh and inp.sh > p.shots then p.shots = inp.sh end
   end
   if inp.h then
@@ -765,6 +766,7 @@ local function flags(p)
   if p.bomb then f = f + 32 end
   if p.using then f = f + 64 end
   if p.spot then f = f + 128 end
+  if p.afk then f = f + 256 end
   return f
 end
 

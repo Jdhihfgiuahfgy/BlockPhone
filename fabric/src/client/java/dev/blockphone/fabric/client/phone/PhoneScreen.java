@@ -327,7 +327,8 @@ public class PhoneScreen extends Screen {
         if (!PhoneLayout.immersive) {
             renderStatusBar(g);
             renderNavBar(g, sx, sy);
-        } else if (sy >= screenH() - NAV_H - 4 && sy < screenH()) {
+        } else if (!app.capturesMouse() && sy >= screenH() - NAV_H - 4 && sy < screenH()) {
+            // Пока мышь захвачена приложением (камера в игре), «назад/домой» не всплывают — курсора нет.
             renderFloatingNav(g, sx, sy);
         }
         if (dialog != null) {
@@ -615,7 +616,7 @@ public class PhoneScreen extends Screen {
         if (app.keyPressed(event)) {
             return true;
         }
-        if (!app.capturesKeyboard() && BlockPhoneClient.openPhoneKey.matches(event)) {
+        if (!app.typingText() && BlockPhoneClient.openPhoneKey.matches(event)) {
             closePhone();
             return true;
         }

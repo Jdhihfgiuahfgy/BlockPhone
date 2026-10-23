@@ -233,7 +233,7 @@ local function buildInput()
   for i = 1, min(#me.hits, 24) do hits[i] = me.hits[i] end
   return {t = "i", m = G.matchId, tp = me.tp, x = floor(me.x * 100), y = floor(me.y * 100), z = floor(me.z * 100),
     vx = floor(me.vx * 100), vz = floor(me.vz * 100), yaw = floor(me.yaw), pitch = floor(me.pitch),
-    c = me.crouch and 1 or 0, w = me.wpn, u = me.using and 1 or 0, sh = me.shots, h = hits, a = acts}
+    c = me.crouch and 1 or 0, w = me.wpn, u = me.using and 1 or 0, sh = me.shots, h = hits, a = acts, afk = G.afk and 1 or 0}
 end
 
 -- --- Движение ---
@@ -636,6 +636,9 @@ local function startGame(role, o)
     G.lastSnap, G.gotSnap, G.lastInputSent = now, false, now
   end
   G.lastMoney, G.lastHp = D.MONEY_START, 100
+  G.afk = false
+  -- По сети игра идёт и со свёрнутым телефоном: хост считает матч, гость шлёт «отошёл» и получает снимки.
+  if screen.background then screen.background(role ~= "offline") end
   R.buildMap(G.V.map)
   R.fx = {}
   G.state = "game"
@@ -647,6 +650,7 @@ local function leaveGame(reason)
   if G.role == "host" and G.clients and next(G.clients) then N.send(now, nil, {t = "end", m = G.matchId}) end
   if G.role == "client" then N.send(now, G.hostName, {t = "bye", m = G.matchId}) end
   input.lockMouse(false)
+  if screen.background then screen.background(false) end
   G.state, G.role, G.S, G.V, G.menu, G.joining = "title", nil, nil, nil, nil, nil
   if reason then toast(reason) end
 end
@@ -887,7 +891,7 @@ local function panel(sw, sh, w, h, title)
 end
 
 local function pauseMenu(sw, sh)
-  local x, y = panel(sw, sh, 160, 118, "Пауза")
+  local x, y = panel(sw, sh, 160, G.role == "host" and 164 or 146, "Пауза")
   local bw = 140
   local bx = x + 10
   y = y + 18
@@ -902,10 +906,16 @@ local function pauseMenu(sw, sh)
     end
     y = y + 19
   end
-  if button(bx, y, bw, 16, "Выйти в меню", "danger") then leaveGame() end
-  local info = G.role == "offline" and "Игра с ботами (на паузе)" or (G.role == "host" and "Вы — хост: не закрывайте телефон"
+  if button(bx, y, bw, 16, "Выйти в главное меню", "danger") then leaveGame() end
+  y = y + 19
+  if button(bx, y, bw, 16, "Выйти из игры", "danger") then
+    leaveGame()
+    screen.close()
+  end
+  local info = G.role == "offline" and "Игра с ботами на паузе" or (G.role == "host" and "Вы — хост: игра идёт, пока вы в меню"
     or "Сервер: " .. (G.hostName or ""))
   H.center(info, sw / 2, y + 22, "#FF8A96A6", 0.45)
+  H.center("Esc — меню · клавиша телефона — свернуть игру", sw / 2, y + 30, "#FF6E7886", 0.4)
 end
 
 local function teamMenu(sw, sh)
@@ -1216,6 +1226,8 @@ end
 
 function onStart()
   screen.captureKeys(true)
+  -- Клавиша телефона сворачивает игру (переключить песню и т. п.): с ботами — пауза, по сети — персонаж «отошёл».
+  if screen.minimizeKey then screen.minimizeKey(true) end
   math.randomseed(time.now() % 1000000)
   loadSettings()
   R.init()
@@ -1361,5 +1373,18 @@ function onBack()
 end
 
 function onHide()
-  if G.state == "game" and G.role == "offline" then G.menu = "pause" end
+  if G.state ~= "game" then return end
+  if G.role == "offline" then
+    G.menu = "pause"
+  else
+    G.afk = true
+    G.me.crouch, G.me.using = false, false
+  end
+end
+
+function onShow()
+  if G.state == "game" and G.afk then
+    G.afk = false
+    G.small = {text = "С возвращением!", t = time.clock()}
+  end
 end

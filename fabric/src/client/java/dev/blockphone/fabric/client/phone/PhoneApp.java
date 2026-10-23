@@ -80,6 +80,20 @@ public abstract class PhoneApp {
         return false;
     }
 
+    /** Идёт ввод текста (поле в фокусе): тогда клавиша телефона — просто буква, телефон не закрывается. */
+    public boolean typingText() {
+        return capturesKeyboard();
+    }
+
+    /** Приложение работает и с закрытым телефоном (сетевая игра: хост считает матч) — {@link #backgroundTick()}. */
+    public boolean runsInBackground() {
+        return false;
+    }
+
+    /** Такт, пока телефон закрыт (только если {@link #runsInBackground()}). */
+    public void backgroundTick() {
+    }
+
     /** true, пока приложение ждёт ввода текста: тогда клавиша телефона не закрывает его. */
     public boolean capturesKeyboard() {
         return false;
