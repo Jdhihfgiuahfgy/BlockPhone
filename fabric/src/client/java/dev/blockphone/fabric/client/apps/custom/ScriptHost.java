@@ -14,6 +14,7 @@ import dev.blockphone.common.apps.AppPermission;
 import dev.blockphone.common.apps.AppScript;
 import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.fabric.BlockPhoneFabric;
+import dev.blockphone.fabric.client.apps.custom.g3d.Lua3D;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
@@ -133,25 +134,16 @@ final class ScriptHost {
     private final Map<String, Identifier> textures = new HashMap<>();
     private final Map<String, int[]> textureSizes = new HashMap<>();
 
-    // 3D (g3d): растеризатор, модели, текстуры, кадр-текстура.
-    private final Raster3D raster = new Raster3D();
-    private final List<Raster3D.Mesh> meshes = new ArrayList<>();
-    private final List<Raster3D.Tex> textures3d = new ArrayList<>();
-    private final Map<String, Integer> textureIds3d = new HashMap<>();
-    private int meshVertices;
+    // 3D (g3d): движок, модели, текстуры, сцена — в Lua3D; здесь — кадр-текстура для показа.
+    private final Lua3D g3d = new Lua3D(new G3dHost());
     private @Nullable DynamicTexture frame;
     private @Nullable Identifier frameId;
     private int frameW;
     private int frameH;
-    private float regionX, regionY, regionW, regionH;
-    private boolean in3d;
-    private int clear3d;
     // Захват мыши (игры с обзором мышью).
     private boolean mouseLocked;
     private double lastCursorX = Double.NaN, lastCursorY;
     private double mouseDX, mouseDY;
-    private static final int MAX_MESH_VERTICES = 400_000;
-    private static final int MAX_FRAME_PIXELS = 360_000;
 
     // Таймеры, ответы сервера/сети.
     private record Timer(int id, LuaValue fn, long period) {
@@ -430,10 +422,16 @@ final class ScriptHost {
         depth = 0;
         graphics.enableScissor(0, 0, w, h);
         callback("onDraw", LuaValue.valueOf(dt));
-        if (in3d && g != null) {
-            finish3d(); // скрипт забыл g3d.finish — показываем то, что нарисовал
+        if (g != null) {
+            try {
+                g3d.endFrame(); // скрипт забыл g3d.finish — показываем то, что нарисовал
+            } catch (RuntimeException e) {
+                BlockPhoneFabric.LOGGER.warn("[apps] {}: 3D frame failed", app.id(), e);
+                g3d.abortFrame();
+            }
+        } else {
+            g3d.abortFrame();
         }
-        in3d = false;
         // Скрипт мог забыть gfx.pop/unclip — возвращаем как было.
         if (g != null) {
             while (depth > 0) {
@@ -576,6 +574,7 @@ final class ScriptHost {
     void release() {
         unlockMouse();
         Minecraft mc = Minecraft.getInstance();
+        g3d.release();
         if (frameId != null) {
             mc.getTextureManager().release(frameId);
             frameId = null;
@@ -1182,7 +1181,7 @@ final class ScriptHost {
             return LuaValue.NONE;
         }));
         G.set("server", server);
-        installG3d(G);
+        G.set("g3d", g3d.install());
     }
 
     private LuaValue addTimer(double seconds, LuaValue fn, boolean repeat) {
@@ -1280,245 +1279,64 @@ final class ScriptHost {
 
     // --- 3D ---
 
-    private void installG3d(Globals G) {
-        LuaTable g3d = new LuaTable();
-        g3d.set("texture", fn(a -> LuaValue.valueOf(texture3d(a.checkjstring(1)))));
-        g3d.set("mesh", fn(a -> {
-            LuaTable t = a.checktable(1);
-            LuaTable v = t.get("vertices").checktable();
-            LuaTable ix = t.get("indices").istable() ? (LuaTable) t.get("indices") : null;
-            int n = v.length() / 5;
-            float[] pos = new float[n * 3];
-            float[] uv = new float[n * 2];
-            for (int k = 0; k < n; k++) {
-                pos[k * 3] = (float) v.get(k * 5 + 1).checkdouble();
-                pos[k * 3 + 1] = (float) v.get(k * 5 + 2).checkdouble();
-                pos[k * 3 + 2] = (float) v.get(k * 5 + 3).checkdouble();
-                uv[k * 2] = (float) v.get(k * 5 + 4).checkdouble();
-                uv[k * 2 + 1] = (float) v.get(k * 5 + 5).checkdouble();
+    /** Что движку g3d нужно от игры: файлы приложения, PNG, масштаб экрана, показ кадра. */
+    private final class G3dHost implements Lua3D.Host {
+        @Override
+        public byte[] asset(String path) {
+            return script.assets().get(path);
+        }
+
+        @Override
+        public int[] decodePng(byte[] png) throws Exception {
+            try (NativeImage image = NativeImage.read(png)) {
+                int w = image.getWidth(), h = image.getHeight();
+                int[] out = new int[w * h + 2];
+                out[0] = w;
+                out[1] = h;
+                System.arraycopy(image.getPixels(), 0, out, 2, w * h);
+                return out;
             }
-            int[] idx;
-            if (ix != null) {
-                idx = new int[ix.length()];
-                for (int k = 0; k < idx.length; k++) {
-                    idx[k] = ix.get(k + 1).checkint() - 1;
-                    if (idx[k] < 0 || idx[k] >= n) {
-                        throw new LuaError("g3d.mesh: index " + (idx[k] + 1) + " is out of 1.." + n);
-                    }
+        }
+
+        @Override
+        public double pixelScale() {
+            org.joml.Matrix3x2f pose = new org.joml.Matrix3x2f(gfx().pose());
+            return Math.hypot(pose.m00(), pose.m01()) * Minecraft.getInstance().getWindow().getGuiScale();
+        }
+
+        @Override
+        public void present(int[] argb, int w, int h, float x, float y, float rw, float rh) {
+            GuiGraphics gg = gfx();
+            Minecraft mc = Minecraft.getInstance();
+            if (frame == null || frameW != w || frameH != h) {
+                if (frameId != null) {
+                    mc.getTextureManager().release(frameId);
                 }
-            } else {
-                idx = new int[n - n % 3];
-                for (int k = 0; k < idx.length; k++) {
-                    idx[k] = k;
+                frameW = w;
+                frameH = h;
+                frame = new DynamicTexture(() -> "BlockPhone app 3D", frameW, frameH, false);
+                frameId = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "dynamic/app3d/" + app.id() + "_" + System.nanoTime());
+                mc.getTextureManager().register(frameId, frame);
+            }
+            NativeImage pixels = frame.getPixels();
+            for (int yy = 0; yy < h; yy++) {
+                int row = yy * w;
+                for (int xx = 0; xx < w; xx++) {
+                    pixels.setPixel(xx, yy, argb[row + xx]);
                 }
             }
-            return LuaValue.valueOf(addMesh(new Raster3D.Mesh(pos, uv, idx)));
-        }));
-        g3d.set("box", fn(a -> LuaValue.valueOf(addMesh(Raster3D.box((float) a.checkdouble(1), (float) a.checkdouble(2),
-                (float) a.checkdouble(3), (float) a.optdouble(4, 0))))));
-        g3d.set("plane", fn(a -> LuaValue.valueOf(addMesh(Raster3D.plane((float) a.checkdouble(1), (float) a.checkdouble(2),
-                (float) a.optdouble(3, 0))))));
-        g3d.set("obj", fn(a -> {
-            String path = a.checkjstring(1);
-            byte[] data = script.assets().get(path);
-            if (data == null) {
-                throw new LuaError("model \"" + path + "\" not found in the app folder");
-            }
-            try {
-                return LuaValue.valueOf(addMesh(Raster3D.obj(new String(data, StandardCharsets.UTF_8), MAX_MESH_VERTICES - meshVertices)));
-            } catch (RuntimeException e) {
-                throw new LuaError("model \"" + path + "\": " + e.getMessage());
-            }
-        }));
-        // Освободить модель (новый уровень — старые модели больше не нужны; лимит вершин возвращается).
-        g3d.set("free", fn(a -> {
-            int id = a.checkint(1);
-            if (id >= 1 && id <= meshes.size() && meshes.get(id - 1) != null) {
-                meshVertices -= meshes.get(id - 1).vertices();
-                meshes.set(id - 1, null);
-            }
-            return LuaValue.NONE;
-        }));
-        g3d.set("camera", fn(a -> {
-            raster.camX = (float) a.checkdouble(1);
-            raster.camY = (float) a.checkdouble(2);
-            raster.camZ = (float) a.checkdouble(3);
-            raster.yaw = (float) a.optdouble(4, 0);
-            raster.pitch = (float) Math.max(-89, Math.min(89, a.optdouble(5, 0)));
-            raster.fov = (float) a.optdouble(6, raster.fov);
-            return LuaValue.NONE;
-        }));
-        g3d.set("fog", fn(a -> {
-            if (a.isnil(1)) {
-                raster.fogFar = raster.fogNear = 0;
-            } else {
-                raster.fogColor = color(a.arg(1), 0xFF000000);
-                raster.fogNear = (float) a.optdouble(2, 5);
-                raster.fogFar = (float) a.optdouble(3, 30);
-            }
-            return LuaValue.NONE;
-        }));
-        g3d.set("light", fn(a -> {
-            raster.lightX = (float) a.checkdouble(1);
-            raster.lightY = (float) a.checkdouble(2);
-            raster.lightZ = (float) a.checkdouble(3);
-            raster.ambient = (float) Math.max(0, Math.min(1, a.optdouble(4, 0.45)));
-            return LuaValue.NONE;
-        }));
-        g3d.set("begin", fn(a -> {
-            gfx();
-            regionX = (float) a.checkdouble(1);
-            regionY = (float) a.checkdouble(2);
-            regionW = (float) Math.max(1, a.checkdouble(3));
-            regionH = (float) Math.max(1, a.checkdouble(4));
-            clear3d = color(a.arg(5), 0xFF000000);
-            double quality = Math.max(0.2, Math.min(1, a.optdouble(6, 1)));
-            // Разрешение кадра — по настоящим пикселям экрана (чётко), но не больше MAX_FRAME_PIXELS.
-            org.joml.Matrix3x2f pose = new org.joml.Matrix3x2f(g.pose());
-            double pixel = Math.hypot(pose.m00(), pose.m01()) * Minecraft.getInstance().getWindow().getGuiScale() * quality;
-            double fw = regionW * pixel;
-            double fh = regionH * pixel;
-            double k = Math.min(1, Math.sqrt(MAX_FRAME_PIXELS / Math.max(1, fw * fh)));
-            raster.begin(Math.max(8, (int) (fw * k)), Math.max(8, (int) (fh * k)), clear3d);
-            in3d = true;
-            return LuaValue.NONE;
-        }));
-        g3d.set("draw", fn(a -> {
-            need3d();
-            Raster3D.Mesh mesh = mesh(a.checkint(1));
-            float x = (float) a.optdouble(2, 0), y = (float) a.optdouble(3, 0), z = (float) a.optdouble(4, 0);
-            LuaTable o = a.opttable(5, new LuaTable());
-            float scale = (float) o.get("scale").optdouble(1);
-            float[] m = Raster3D.matrix((float) o.get("yaw").optdouble(0), (float) o.get("pitch").optdouble(0),
-                    (float) o.get("roll").optdouble(0), (float) o.get("sx").optdouble(scale), (float) o.get("sy").optdouble(scale),
-                    (float) o.get("sz").optdouble(scale));
-            Raster3D.Tex tex = o.get("texture").isnil() ? null : tex3d(o.get("texture").checkint());
-            raster.draw(mesh, tex, m, x, y, z, color(o.get("tint"), 0xFFFFFFFF), o.get("lit").optboolean(true),
-                    o.get("cull").optboolean(false), o.get("pick").optboolean(true) ? o.get("id").optint(0) : Raster3D.NO_PICK);
-            return LuaValue.NONE;
-        }));
-        g3d.set("sprite", fn(a -> {
-            need3d();
-            LuaTable o = a.opttable(7, new LuaTable());
-            raster.sprite(tex3d(a.checkint(1)), (float) a.checkdouble(2), (float) a.checkdouble(3), (float) a.checkdouble(4),
-                    (float) a.checkdouble(5), (float) a.checkdouble(6), color(o.get("tint"), 0xFFFFFFFF),
-                    o.get("pick").optboolean(true) ? o.get("id").optint(0) : Raster3D.NO_PICK);
-            return LuaValue.NONE;
-        }));
-        g3d.set("finish", fn(a -> {
-            need3d();
-            finish3d();
-            in3d = false;
-            return LuaValue.NONE;
-        }));
-        g3d.set("pick", fn(a -> {
-            // Что видно в точке экрана (координаты как у gfx): id объекта и расстояние до него.
-            int px = (int) ((a.checkdouble(1) - regionX) / regionW * raster.w);
-            int py = (int) ((a.checkdouble(2) - regionY) / regionH * raster.h);
-            if (px < 0 || py < 0 || px >= raster.w || py >= raster.h) {
-                return LuaValue.varargsOf(LuaValue.valueOf(0), LuaValue.valueOf(-1));
-            }
-            int i = py * raster.w + px;
-            float d = raster.pickDepth[i] > 0 ? 1 / raster.pickDepth[i] : -1;
-            return LuaValue.varargsOf(LuaValue.valueOf(raster.ids[i]), LuaValue.valueOf(d));
-        }));
-        g3d.set("project", fn(a -> {
-            float[] p = raster.project((float) a.checkdouble(1), (float) a.checkdouble(2), (float) a.checkdouble(3));
-            if (p == null || raster.w == 0) {
-                return LuaValue.NIL;
-            }
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(regionX + p[0] / raster.w * regionW),
-                    LuaValue.valueOf(regionY + p[1] / raster.h * regionH), LuaValue.valueOf(p[2])});
-        }));
-        g3d.set("forward", fn(a -> {
-            double y = Math.toRadians(a.checkdouble(1)), p = Math.toRadians(a.optdouble(2, 0));
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(Math.sin(y) * Math.cos(p)), LuaValue.valueOf(Math.sin(p)),
-                    LuaValue.valueOf(Math.cos(y) * Math.cos(p))});
-        }));
-        g3d.set("right", fn(a -> {
-            double y = Math.toRadians(a.checkdouble(1));
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(Math.cos(y)), LuaValue.valueOf(0), LuaValue.valueOf(-Math.sin(y))});
-        }));
-        g3d.set("stats", fn(a -> LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(raster.triangles), LuaValue.valueOf(raster.w),
-                LuaValue.valueOf(raster.h)})));
-        G.set("g3d", g3d);
-    }
+            frame.upload();
+            gg.pose().pushMatrix();
+            gg.pose().translate(x, y);
+            gg.pose().scale(rw / w, rh / h);
+            gg.blit(RenderPipelines.GUI_TEXTURED, frameId, 0, 0, 0, 0, w, h, w, h, w, h);
+            gg.pose().popMatrix();
+        }
 
-    private void need3d() {
-        if (!in3d || g == null) {
-            throw new LuaError("call g3d.begin(...) in onDraw first");
+        @Override
+        public int color(LuaValue v, int fallback) {
+            return ScriptHost.color(v, fallback);
         }
-    }
-
-    private int addMesh(Raster3D.Mesh mesh) {
-        if (meshes.stream().filter(java.util.Objects::nonNull).count() >= 2000 || meshVertices + mesh.vertices() > MAX_MESH_VERTICES) {
-            throw new LuaError("too many 3D models (max 2000, " + MAX_MESH_VERTICES + " vertices; free unused with g3d.free)");
-        }
-        meshVertices += mesh.vertices();
-        meshes.add(mesh);
-        return meshes.size();
-    }
-
-    private Raster3D.Mesh mesh(int id) {
-        if (id < 1 || id > meshes.size() || meshes.get(id - 1) == null) {
-            throw new LuaError("unknown 3D model " + id);
-        }
-        return meshes.get(id - 1);
-    }
-
-    private Raster3D.Tex tex3d(int id) {
-        if (id < 1 || id > textures3d.size()) {
-            throw new LuaError("unknown 3D texture " + id);
-        }
-        return textures3d.get(id - 1);
-    }
-
-    private int texture3d(String path) {
-        Integer known = textureIds3d.get(path);
-        if (known != null) {
-            return known;
-        }
-        byte[] png = script.assets().get(path);
-        if (png == null) {
-            throw new LuaError("image \"" + path + "\" not found in the app folder");
-        }
-        try (NativeImage image = NativeImage.read(png)) {
-            int[] argb = image.getPixels();
-            textures3d.add(new Raster3D.Tex(image.getWidth(), image.getHeight(), argb));
-        } catch (Exception e) {
-            throw new LuaError("image \"" + path + "\" is not a PNG");
-        }
-        textureIds3d.put(path, textures3d.size());
-        return textures3d.size();
-    }
-
-    /** Кадр 3D → текстура → в прямоугольник g3d.begin. */
-    private void finish3d() {
-        Minecraft mc = Minecraft.getInstance();
-        if (frame == null || frameW != raster.w || frameH != raster.h) {
-            if (frameId != null) {
-                mc.getTextureManager().release(frameId);
-            }
-            frameW = raster.w;
-            frameH = raster.h;
-            frame = new DynamicTexture(() -> "BlockPhone app 3D", frameW, frameH, false);
-            frameId = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "dynamic/app3d/" + app.id() + "_" + System.nanoTime());
-            mc.getTextureManager().register(frameId, frame);
-        }
-        NativeImage pixels = frame.getPixels();
-        int[] c = raster.color;
-        for (int y = 0; y < frameH; y++) {
-            int row = y * frameW;
-            for (int x = 0; x < frameW; x++) {
-                pixels.setPixel(x, y, c[row + x]);
-            }
-        }
-        frame.upload();
-        g.pose().pushMatrix();
-        g.pose().translate(regionX, regionY);
-        g.pose().scale(regionW / frameW, regionH / frameH);
-        g.blit(RenderPipelines.GUI_TEXTURED, frameId, 0, 0, 0, 0, frameW, frameH, frameW, frameH, frameW, frameH);
-        g.pose().popMatrix();
     }
 
     /** Картинка «девяткой»: углы border×border как есть, края и середина растягиваются (кнопки любого размера). */

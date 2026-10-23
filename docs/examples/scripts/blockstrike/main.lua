@@ -21,7 +21,7 @@ local hasDev, DEV = pcall(require, "dev")
 local floor, min, max, abs, sqrt, random = math.floor, math.min, math.max, math.abs, math.sqrt, math.random
 local sin, cos, rad, tan = math.sin, math.cos, math.rad, math.tan
 
-local DEFAULTS = {sens = 1.0, quality = 2, fov = 64, volume = 1.0, cross = 1, map = 1, bots = 5, level = 2, firstTo = 8, team = 0,
+local DEFAULTS = {sens = 1.0, quality = 3, fov = 64, volume = 1.0, cross = 1, map = 1, bots = 5, level = 2, firstTo = 8, team = 0,
   wingman = false}
 local QUALITY = {0.45, 0.65, 0.85, 1.0}
 local QUALITY_NAME = {"Низкое", "Среднее", "Высокое", "Максимум"}
@@ -1085,6 +1085,7 @@ local function gameFrame(dt, sw, sh)
   G.cam = cam
   G.smoke = R.smokeCover(V, cam.x, cam.y, cam.z)
   -- Кадр: мир → выстрелы (g3d.pick по миру, пока оружие ещё не нарисовано) → оружие в руках → вывод кадра.
+  R.ownFlash = alive and w.clip and now - me.flashT < 0.06 and cam or nil -- своя вспышка освещает всё вокруг
   R.drawWorld(V, cam, 0, 0, sw, sh, QUALITY[G.set.quality], now, hide)
   local enemyName
   if alive then

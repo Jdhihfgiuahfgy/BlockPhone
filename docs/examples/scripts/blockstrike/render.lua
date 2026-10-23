@@ -5,6 +5,11 @@ local M = require("maps")
 local Sim = require("sim")
 
 local R = {tex = {}, fx = {}, mapMeshes = nil, mapIndex = nil}
+-- Движок 3D 2.0 (BlockPhone 0.10.2+): карта — статическая сцена с запечённым светом (тени, тёмные тоннели), небо,
+-- вспышки выстрелов и взрывов освещают всё вокруг. На старой версии телефона — прежний простой вид.
+local ADV = g3d.static ~= nil
+-- Светящиеся спрайты (вспышки, взрывы) — складываются с фоном.
+local GLOW = ADV and {blend = "add", pick = false} or nil
 local floor, sin, cos, rad, min, max, sqrt = math.floor, math.sin, math.cos, math.rad, math.min, math.max, math.sqrt
 
 function R.T(name)
@@ -156,6 +161,7 @@ function R.buildMap(map)
     mm.letter = finishMesh(letter)
     R.mapMeshes = mm
     R.mapIndex = map.index
+    if ADV then R.buildStatic(map) end
     return
   end
   local walls, walls2, crates, boxes, floor2, sites = newMesh(), newMesh(), newMesh(), newMesh(), newMesh(), newMesh()
@@ -183,6 +189,64 @@ function R.buildMap(map)
   mm.letter = finishMesh(letter)
   R.mapMeshes = mm
   R.mapIndex = map.index
+  if ADV then R.buildStatic(map) end
+end
+
+-- Цвет "#AARRGGBB" × k.
+local function shade(c, k)
+  local r, g, b = tonumber(c:sub(4, 5), 16), tonumber(c:sub(6, 7), 16), tonumber(c:sub(8, 9), 16)
+  return string.format("#FF%02X%02X%02X", min(255, floor(r * k)), min(255, floor(g * k)), min(255, floor(b * k)))
+end
+
+-- Карта → статическая сцена движка (рисуется кусками, только видимое) и запекание света в фоне: солнце с тенями,
+-- окружающий свет только с открытого неба (тоннели и «тёмки» темнее), лампы на закрытых картах.
+function R.buildStatic(map)
+  local def, tx, mm = map.def, map.def.tex, R.mapMeshes
+  g3d.clearStatic()
+  local function add(mesh, tex, o)
+    if not mesh then return end
+    o = o or {}
+    o.texture = R.T(tex)
+    g3d.static(mesh, o.x or 0, o.y or 0, o.z or 0, o)
+  end
+  if map.multi then
+    add(mm.floor, tx.floor)
+    add(mm.ledges, tx.ledge or tx.wall2)
+    add(mm.roofs, tx.roof or "ceiling")
+    add(mm.roofTops, tx.roofTop or tx.wall)
+  else
+    add(mm.floor, tx.floor, {x = map.W / 2, z = map.H / 2})
+    if def.ceiling then add(mm.floor, def.ceiling, {x = map.W / 2, y = M.WALL_H, z = map.H / 2}) end
+  end
+  add(mm.floor2, tx.floor2)
+  add(mm.sites, tx.site)
+  for _, s in ipairs(map.sites) do
+    local c = map.siteCenter[s]
+    local y = M.floorH(map, floor(c[1]), floor(c[2])) + 0.006
+    add(mm.letter, s == "A" and "letter_a" or "letter_b", {x = c[1], y = y, z = c[2], solid = false})
+  end
+  add(mm.walls, tx.wall)
+  add(mm.walls2, tx.wall2)
+  add(mm.crates, tx.crate)
+  add(mm.boxes, tx.box)
+  local l = def.light or {-0.45, -1, -0.3, 0.55}
+  if def.ceiling then
+    -- Закрытая карта: свет только от ламп под потолком.
+    local lamps, top = {}, map.wallH or M.WALL_H
+    for z = 3, map.H - 3, 7 do
+      for x = 3, map.W - 3, 7 do
+        if M.cell(map, x, z) ~= "#" and M.cell(map, x, z) ~= "%" and #lamps < 60 then
+          lamps[#lamps + 1] = {x + 0.5, top - 0.35, z + 0.5, color = "#FFFFE2B8", radius = 9, power = 1.1}
+        end
+      end
+    end
+    g3d.sky(nil)
+    g3d.bake({sunPower = 0, skyPower = 0.5, ao = 12, bounce = 0.5, minLight = 0.22, lamps = lamps})
+  else
+    g3d.sky({top = shade(def.sky, 0.78), horizon = def.fog, bottom = def.fog})
+    g3d.bake({sun = {l[1], l[2], l[3]}, sunColor = "#FFFFF0D8", sunPower = (1 - l[4]) * 1.4, skyColor = "#FFFFFFFF",
+      skyPower = l[4], ao = 3, bounce = 0.4, minLight = 0.2})
+  end
 end
 
 -- --- Фигура игрока: части с развёрткой как у скина Minecraft (64×64) ---
@@ -273,7 +337,7 @@ function R.drawPlayer(p, now)
     g3d.draw(R.box, gx, gy, gz, {yaw = yaw, pitch = look, sx = 0.05, sy = w.slot == 1 and 0.08 or 0.06, sz = len,
       texture = gunTex, id = id + 1})
     if p.flashT and now - p.flashT < 0.06 and w.clip then
-      g3d.sprite(R.T("muzzle"), gx + fx * len * 0.6, gy + fy * len * 0.6, gz + fz * len * 0.6, 0.22, 0.22)
+      g3d.sprite(R.T("muzzle"), gx + fx * len * 0.6, gy + fy * len * 0.6, gz + fz * len * 0.6, 0.22, 0.22, GLOW)
     end
     if p.bomb then
       local bx, by, bz = place(x, y, z, yaw, 0, 0, 0.55 + dy, -0.11)
@@ -328,7 +392,35 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
   local l = def.light or {-0.45, -1, -0.3, 0.55}
   g3d.light(l[1], l[2], l[3], l[4])
   g3d.begin(sx, sy, sw, sh, def.sky, quality)
-  if map.multi then
+  if ADV then
+    -- Источники света кадра — до рисования того, что они освещают.
+    for _, p in pairs(V.players) do
+      local w = D.WEAPONS[p.wpn or 1]
+      if p.alive and p.rx and p.flashT and now - p.flashT < 0.06 and w and w.clip then
+        local fx, fy, fz = Sim.forward(p.ryaw or 0, p.rpitch or 0)
+        g3d.pointLight(p.rx + fx * 0.7, p.ry + 1.35 + fy * 0.7, p.rz + fz * 0.7, "#FFFFC878", 4.5, 1.5)
+      end
+    end
+    local own = R.ownFlash
+    if own then
+      local fx, fy, fz = Sim.forward(own.yaw, own.pitch)
+      g3d.pointLight(own.x + fx * 0.8, own.y + fy * 0.8, own.z + fz * 0.8, "#FFFFC878", 4.5, 1.3)
+    end
+    local b = V.bomb
+    if b.state == "planted" then
+      local rate = b.timer > 10 and 1 or (b.timer > 3 and 0.5 or 0.2)
+      if (now % rate) < rate * 0.4 then g3d.pointLight(b.x, b.y + 0.3, b.z, "#FFFF2828", 2.2, 1.2) end
+    end
+    for _, f in ipairs(R.fx) do
+      local k = f.t / f.life
+      if f.kind == "boom" then
+        g3d.pointLight(f.x, f.y + 0.8, f.z, "#FFFF9A48", 9 * f.size, 2.5 * (1 - k))
+      elseif f.kind == "flash" and k < 0.3 then
+        g3d.pointLight(f.x, f.y + 0.3, f.z, "#FFFFFFFF", 10, 3 * (1 - k / 0.3))
+      end
+    end
+    g3d.drawStatic()
+  elseif map.multi then
     if mm.floor then g3d.draw(mm.floor, 0, 0, 0, {texture = R.T(tx.floor), lit = false}) end
     if mm.ledges then g3d.draw(mm.ledges, 0, 0, 0, {texture = R.T(tx.ledge or tx.wall2)}) end
     if mm.roofs then g3d.draw(mm.roofs, 0, 0, 0, {texture = R.T(tx.roof or "ceiling"), lit = false}) end
@@ -337,17 +429,19 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
     g3d.draw(mm.floor, map.W / 2, 0, map.H / 2, {texture = R.T(tx.floor), lit = false})
     if def.ceiling then g3d.draw(mm.floor, map.W / 2, M.WALL_H, map.H / 2, {texture = R.T(def.ceiling), lit = false}) end
   end
-  if mm.floor2 then g3d.draw(mm.floor2, 0, 0, 0, {texture = R.T(tx.floor2), lit = false}) end
-  if mm.sites then g3d.draw(mm.sites, 0, 0, 0, {texture = R.T(tx.site), lit = false}) end
-  for _, s in ipairs(map.sites) do
-    local c = map.siteCenter[s]
-    local y = M.floorH(map, floor(c[1]), floor(c[2])) + 0.006
-    g3d.draw(mm.letter, c[1], y, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), lit = false})
+  if not ADV then
+    if mm.floor2 then g3d.draw(mm.floor2, 0, 0, 0, {texture = R.T(tx.floor2), lit = false}) end
+    if mm.sites then g3d.draw(mm.sites, 0, 0, 0, {texture = R.T(tx.site), lit = false}) end
+    for _, s in ipairs(map.sites) do
+      local c = map.siteCenter[s]
+      local y = M.floorH(map, floor(c[1]), floor(c[2])) + 0.006
+      g3d.draw(mm.letter, c[1], y, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), lit = false})
+    end
+    if mm.walls then g3d.draw(mm.walls, 0, 0, 0, {texture = R.T(tx.wall)}) end
+    if mm.walls2 then g3d.draw(mm.walls2, 0, 0, 0, {texture = R.T(tx.wall2)}) end
+    if mm.crates then g3d.draw(mm.crates, 0, 0, 0, {texture = R.T(tx.crate)}) end
+    if mm.boxes then g3d.draw(mm.boxes, 0, 0, 0, {texture = R.T(tx.box)}) end
   end
-  if mm.walls then g3d.draw(mm.walls, 0, 0, 0, {texture = R.T(tx.wall)}) end
-  if mm.walls2 then g3d.draw(mm.walls2, 0, 0, 0, {texture = R.T(tx.wall2)}) end
-  if mm.crates then g3d.draw(mm.crates, 0, 0, 0, {texture = R.T(tx.crate)}) end
-  if mm.boxes then g3d.draw(mm.boxes, 0, 0, 0, {texture = R.T(tx.box)}) end
   -- игроки
   for _, p in pairs(V.players) do
     if p.id ~= hide and p.rx then R.drawPlayer(p, now) end
@@ -363,7 +457,7 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
     g3d.draw(R.box, b.x, b.y + 0.06, b.z, {sx = 0.32, sy = 0.12, sz = 0.22, texture = R.T("c4")})
     if b.state == "planted" then
       local rate = b.timer > 10 and 1 or (b.timer > 3 and 0.5 or 0.2)
-      if (now % rate) < rate * 0.4 then g3d.sprite(R.T("bomb_light"), b.x, b.y + 0.16, b.z, 0.14, 0.14) end
+      if (now % rate) < rate * 0.4 then g3d.sprite(R.T("bomb_light"), b.x, b.y + 0.16, b.z, 0.14, 0.14, GLOW) end
     end
   end
   for _, n in ipairs(V.nades) do
@@ -376,14 +470,14 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
     if f.kind == "impact" then
       g3d.sprite(R.T("impact"), f.x, f.y, f.z, 0.09, 0.09)
     elseif f.kind == "spark" then
-      if k < 0.5 then g3d.sprite(R.T("spark"), f.x, f.y, f.z, 0.16, 0.16) end
+      if k < 0.5 then g3d.sprite(R.T("spark"), f.x, f.y, f.z, 0.16, 0.16, GLOW) end
     elseif f.kind == "blood" then
       g3d.sprite(R.T("blood"), f.x, f.y + k * 0.1, f.z, 0.25 + k * 0.2, 0.25 + k * 0.2)
     elseif f.kind == "boom" then
       local s = f.size * (0.6 + k * 0.8)
-      g3d.sprite(R.T("explosion"), f.x, f.y + s * 0.4, f.z, s, s)
+      g3d.sprite(R.T("explosion"), f.x, f.y + s * 0.4, f.z, s, s, GLOW)
     elseif f.kind == "flash" then
-      if k < 0.3 then g3d.sprite(R.T("spark"), f.x, f.y, f.z, 1.2, 1.2) end
+      if k < 0.3 then g3d.sprite(R.T("spark"), f.x, f.y, f.z, 1.2, 1.2, GLOW) end
     end
   end
   -- g3d.finish() — в main.lua: после мира ещё рисуется оружие в руках

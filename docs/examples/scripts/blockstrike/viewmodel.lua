@@ -367,7 +367,7 @@ function VM.draw(cam, me, team, now, st)
     end
     local fx, fy, fz = toWorld({x = 0, y = 0, z = 0}, gyaw, gpitch, roll, mz[1], mz[2], mz[3])
     local size = (mdl.pistol and 0.09 or 0.13) * S * (0.8 + math.random() * 0.4)
-    g3d.sprite(VM.flashTex, wx + fx, wy + fy, wz + fz, size, size)
+    g3d.sprite(VM.flashTex, wx + fx, wy + fy, wz + fz, size, size, g3d.static and {blend = "add", pick = false} or nil)
   end
 end
 

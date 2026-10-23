@@ -2,7 +2,7 @@
   "id": "blockstrike",
   "category": "games",
   "name": "Block Strike",
-  "version": "1.5",
+  "version": "1.6",
   "author": "BlockPhone",
   "color": "#FFA726",
   "permissions": [
@@ -13,7 +13,7 @@
   "orientation": "landscape",
   "fullscreen": true,
   "description": {
-    "ru_ru": "Командный 3D-шутер по мотивам CS: закладка бомбы, 13 видов оружия, гранаты, 13 карт (большие многоуровневые Каньон, Оазис, Вилла и «Рынок» для «Напарников»), объёмный звук, боты и игра по сети.",
-    "en_us": "Team 3D shooter inspired by CS: bomb defusal, 13 weapons, grenades, 13 maps (large multi-level Canyon, Oasis, Villa and Market for Wingman), 3D sound, bots and online play."
+    "ru_ru": "Командный 3D-шутер по мотивам CS: закладка бомбы, 13 видов оружия, гранаты, 13 карт (большие многоуровневые Каньон, Оазис, Вилла и «Рынок» для «Напарников»), объёмный звук, запечённый свет с тенями и тёмными тоннелями, вспышки выстрелов, боты и игра по сети.",
+    "en_us": "Team 3D shooter inspired by CS: bomb defusal, 13 weapons, grenades, 13 maps (large multi-level Canyon, Oasis, Villa and Market for Wingman), 3D sound, baked lighting with shadows and dark tunnels, muzzle flash lighting, bots and online play."
   }
 }

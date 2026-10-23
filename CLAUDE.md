@@ -565,9 +565,18 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   input.down (GLFW, только когда телефон в фокусе), time, timer, json, storage, toast, sound (белый список), clipboard,
   openUrl/runCommand (подтверждение), http (java.net.http, только hosts, без редиректов, 60/мин, 1 МБ), net
   (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление), server (Call/RequestVariables
-  со страницей "script"), g3d — `Raster3D` (программная растеризация на Java: текстура с перспективной
-  коррекцией, буфер глубины 1/z, свет граней, туман, отсечение по ближней плоскости, спрайты, буфер id для `pick`; кадр —
-  DynamicTexture по реальным пикселям, до 360 тыс.; модели — box/plane/mesh/obj, 2000 шт., 400 тыс. вершин; `g3d.free`), захват мыши
+  со страницей "script"), g3d — пакет `apps/custom/g3d` **без Minecraft** (собирается и проверяется javac + LuaJ):
+  `Lua3D` (таблица g3d; от игры — `Lua3D.Host`: файлы, PNG, масштаб, показ кадра — `ScriptHost.G3dHost`),
+  `Engine3D` (программная растеризация на всех ядрах: очередь треугольников → полосы по 16 строк, свой поток на полосу,
+  порядок в полосе сохраняется; `flush` перед `pick` и в конце; перспективная коррекция, мипмапы (уровень раз в 8
+  пикселей), билинейная фильтрация по желанию, цветной свет по граням/нормалям, до 16 точечных источников попиксельно,
+  смешивание alpha/add, туман, небо-градиент с солнцем, буфер id для `pick`; кадр до 640 тыс. пикселей), `Texture`,
+  `Mesh` (box/plane/obj с vn/matrix), `Scene` (статическая сцена: куски 8×8 м с отсечением; запекание света в фоне —
+  плоские куски по плоскостям, атлас с двумя сторонами каждой грани, лучи: солнце, окружающий свет с неба + bounce,
+  лампы; «внутри стены» → заполняется соседями; `probe` — множитель света для подвижных моделей), `Bvh` (лучи,
+  поиск треугольников), `Collide` (скользящий эллипсоид Fauerby + ступеньки). Пределы: 2000 моделей, 400 тыс. вершин,
+  300 тыс. треугольников в сцене. Стенд без игры: Block Strike/DOOM на LuaJ + Lua3D → PNG и замер кадра (скрипты
+  в scratchpad, не в репозитории; LuaJ — с Maven Central)), захват мыши
   (`input.lockMouse`: GLFW CURSOR_DISABLED, дельты по glfwGetCursorPos, `PhoneApp.capturesMouse` — клики в центр;
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
