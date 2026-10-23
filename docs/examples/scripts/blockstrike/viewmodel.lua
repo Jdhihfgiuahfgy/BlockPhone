@@ -370,4 +370,7 @@ function VM.draw(cam, me, team, now, st)
   end
 end
 
+-- Для tools/gen_strike.py (иконки оружия в магазине рисуются из этих же моделей).
+VM.MODELS, VM.COLORS = MODELS, C
+
 return VM

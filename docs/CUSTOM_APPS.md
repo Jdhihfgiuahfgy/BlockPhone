@@ -355,7 +355,8 @@ end
 * `json.encode(value)`, `json.decode(text)`.
 * `toast(text)` — всплывающее сообщение внизу экрана.
 * `sound.play(name[, volume[, pitch]])` — звуки интерфейса: `ui.*`, `block.note_block.*`, `entity.experience_orb.pickup`,
-  `entity.player.levelup` и некоторые другие (не звуки мира).
+  `entity.player.levelup` и некоторые другие, а также шаги и падение на блоки: `block.<блок>.step`, `block.<блок>.fall`
+  (`block.stone.step`, `block.sand.step`, `block.grass.step`, `block.wood.step`, `block.metal.step`, `block.snow.step`…).
 * **Свои звуки:** положите `*.ogg`, `*.wav` или `*.mp3` в папку приложения (можно в подпапку, до 4 МБ на файл, вместе с
   картинками — до 16 МБ). `sound.play("sounds/jump.ogg"[, volume])` — сыграть один раз, `sound.loop("music.ogg"[, volume])` —
   по кругу; обе возвращают номер звука, `sound.stop(номер)` — остановить, `sound.stop()` — все. Одновременно — до 8 звуков;

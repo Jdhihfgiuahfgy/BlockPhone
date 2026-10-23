@@ -40,6 +40,7 @@ function N.decode(V, s)
   V.phase = Sim.PHASES[s.ph] or "warmup"
   V.timer = s.tm / 10
   V.round, V.firstTo, V.winner, V.buyLeft = s.rd, s.ft, s.w, s.bt / 10
+  V.wingman = s.wm == 1
   V.score = {s.sc[1], s.sc[2]}
   local b = s.b
   V.bomb = {state = Sim.BOMB_STATES[b[1]] or "none", x = b[2] / 100, y = b[3] / 100, z = b[4] / 100, timer = b[5] / 10,

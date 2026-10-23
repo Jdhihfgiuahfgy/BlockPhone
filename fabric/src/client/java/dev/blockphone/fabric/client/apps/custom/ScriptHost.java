@@ -1017,7 +1017,9 @@ final class ScriptHost {
             if (dev.blockphone.common.apps.AppScript.isSound(name)) {
                 return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false));
             }
-            if (SOUND_PREFIXES.stream().noneMatch(name::startsWith)) {
+            // Шаги и падение на блоки (block.stone.step, block.grass.fall…) — для игр с ходьбой.
+            boolean footstep = name.matches("block\\.[a-z_]+\\.(step|fall)");
+            if (!footstep && SOUND_PREFIXES.stream().noneMatch(name::startsWith)) {
                 throw new LuaError("sound \"" + name + "\" is not allowed (ui.*, block.note_block.*, ...)");
             }
             SoundEvent event = BuiltInRegistries.SOUND_EVENT.getValue(Identifier.withDefaultNamespace(name));

@@ -21,12 +21,13 @@ local hasDev, DEV = pcall(require, "dev")
 local floor, min, max, abs, sqrt, random = math.floor, math.min, math.max, math.abs, math.sqrt, math.random
 local sin, cos, rad, tan = math.sin, math.cos, math.rad, math.tan
 
-local DEFAULTS = {sens = 1.0, quality = 2, fov = 64, volume = 1.0, cross = 1, map = 1, bots = 5, level = 2, firstTo = 8, team = 0}
+local DEFAULTS = {sens = 1.0, quality = 2, fov = 64, volume = 1.0, cross = 1, map = 1, bots = 5, level = 2, firstTo = 8, team = 0,
+  wingman = false}
 local QUALITY = {0.45, 0.65, 0.85, 1.0}
 local QUALITY_NAME = {"Низкое", "Среднее", "Высокое", "Максимум"}
 local CROSS = {"#FF4CFF6A", "#FFFFFFFF", "#FF00E5FF", "#FFFFE040", "#FFFF4FD8"}
 local CROSS_NAME = {"Зелёный", "Белый", "Голубой", "Жёлтый", "Розовый"}
-local ROUNDS = {3, 5, 8, 10, 13}
+local ROUNDS = {3, 5, 8, 9, 10, 13}
 
 local G = {state = "title", set = {}, lobbies = {}, feed = {}, flash = 0, hurtT = 0, smoke = 0, hitT = 0, hitHead = false,
   moneyDelta = 0, moneyT = 0, now = 0, lastHp = 100, lastMoney = 0, beepT = 0, invitePlayers = nil}
@@ -48,7 +49,7 @@ local function saveSettings() storage.set("settings", G.set) end
 
 -- Свои звуки (sounds/*.wav). Телефон играет не больше 8 одновременно: следим сами — тихие и частые (шаги,
 -- попадания в стену) пропускаем, если звучит много, а важный звук вытесняет самый старый.
-local LOW = {step1 = true, step2 = true, step3 = true, impact = true, ricochet = true, nade_bounce = true, land = true}
+local LOW = {impact = true, ricochet = true, nade_bounce = true}
 local playing = {}
 
 local function sfx(name, vol)
@@ -83,6 +84,24 @@ local function sfx3d(name, x, z, vol, range)
   local d = sqrt((x - cx) ^ 2 + (z - cz) ^ 2)
   local k = 1 - d / (range or 40)
   if k > 0 then sfx(name, vol * (0.25 + 0.75 * k * k)) end
+end
+
+-- Шаги — ванильные звуки блоков (block.<материал>.step) по тому, на чём стоит игрок; материалы — steps в maps.lua.
+local function material(x, z)
+  local m = G.V.map
+  local ch = M.cell(m, floor(x), floor(z))
+  local st = m.def.steps or {}
+  if ch == "," then return st.floor2 or st.floor or "stone" end
+  if ch == "x" or ch == "X" then return st.box or "wood" end
+  return st.floor or "stone"
+end
+
+local function footstep(x, z, vol, kind, range)
+  local cx, cz = camPos()
+  local d = sqrt((x - cx) ^ 2 + (z - cz) ^ 2)
+  local k = range and (1 - d / range) or 1
+  vol = vol * k * (G.set.volume or 1)
+  if vol > 0.03 then sound.play("block." .. material(x, z) .. "." .. (kind or "step"), min(1, vol), 0.9 + random() * 0.2) end
 end
 
 local function shotSound(w) return w.slot == 3 and "knife_swing" or "shot_" .. w.key end
@@ -233,7 +252,7 @@ local function updateMove(dt, P)
     me.vy = me.vy - Sim.GRAVITY * dt
     me.y = me.y + me.vy * dt
     if me.y <= g then
-      if me.vy < -4 then sfx("land", 0.6) end
+      if me.vy < -4 then footstep(me.x, me.z, 0.7, "fall") end
       me.y, me.vy = g, 0
     end
   else
@@ -249,7 +268,7 @@ local function updateMove(dt, P)
     me.stepT = me.stepT + dt
     if me.stepT > 0.36 then
       me.stepT = 0
-      sfx("step" .. random(1, 3), 0.35)
+      footstep(me.x, me.z, 0.45)
     end
   end
   -- Подсказка про оружие на земле.
@@ -452,7 +471,7 @@ local function updateOthers(dt, now)
         p.stepT = (p.stepT or 0) + dt
         if p.stepT > 0.38 then
           p.stepT = 0
-          sfx3d("step" .. random(1, 3), p.rx, p.rz, 0.45, 18)
+          footstep(p.rx, p.rz, 0.6, "step", 20)
         end
       end
     end
@@ -489,7 +508,9 @@ local function onEvent(e, now)
     G.center = {text = "Раунд " .. e[3], sub = "Покупка — B · " .. D.TEAM_NAME[myTeam ~= 0 and myTeam or 1], t = now, life = 2.5}
     G.buyCat = nil
   elseif kind == "go" then
-    G.small = {text = myTeam == D.T and "Вперёд! Заложите бомбу на A или B" or "Вперёд! Защитите точки A и B", t = now}
+    local two = #V.map.sites > 1
+    G.small = {text = myTeam == D.T and (two and "Вперёд! Заложите бомбу на A или B" or "Вперёд! Заложите бомбу на A")
+      or (two and "Вперёд! Защитите точки A и B" or "Вперёд! Защитите точку A"), t = now}
     sfx("round_start", 0.6)
   elseif kind == "end" then
     local win = e[3]
@@ -557,7 +578,8 @@ local function startGame(role, o)
   G.lastEvent, G.flash, G.hurtT = 0, 0, 0
   if role ~= "client" then
     G.matchId = random(1, 999999999)
-    local S = Sim.new({map = o.map, firstTo = o.firstTo, botLevel = o.level, teamSize = o.bots, matchId = G.matchId})
+    local S = Sim.new({map = o.map, firstTo = o.firstTo, botLevel = o.level, teamSize = o.bots, matchId = G.matchId,
+      wingman = o.wingman})
     Sim.fillBots(S)
     local p = Sim.addHuman(S, app.player or "Игрок", o.team > 0 and o.team or nil)
     S.events = {}
@@ -566,7 +588,8 @@ local function startGame(role, o)
     G.clients = {}
     G.lastSnapSent, G.lastTick = now, now
     if role == "host" then
-      N.send(now, nil, {t = "lobby", m = G.matchId, map = o.map, host = app.player, n = 1, ft = o.firstTo})
+      N.send(now, nil, {t = "lobby", m = G.matchId, map = o.map, host = app.player, n = 1, ft = o.firstTo,
+        wm = o.wingman and 1 or 0})
     end
   else
     G.matchId, G.hostName = o.m, o.host
@@ -615,7 +638,7 @@ local function online() return net.online() end
 local function titleScreen(sw, sh)
   background(sw, sh)
   logo(sw, 14)
-  H.center("закладка бомбы · 4 карты · 13 видов оружия · боты · игра по сети", sw / 2, 36, "#FFAAB4C0", 0.5)
+  H.center("закладка бомбы · напарники 2×2 · 9 карт · 13 видов оружия · боты · игра по сети", sw / 2, 36, "#FFAAB4C0", 0.5)
   local bw, bh = 150, 17
   local x, y = (sw - bw) / 2, 50
   if button(x, y, bw, bh, "Игра с ботами", "primary") then G.state, G.createOnline = "create", false end
@@ -648,21 +671,42 @@ end
 
 local function cycle(v, n, d) return (v - 1 + d) % n + 1 end
 
+-- Карты выбранного режима; номер карты в настройках — из M.LIST, его поправляем, если не подходит режиму.
+local function modeMaps(s)
+  local list = M.forMode(s.wingman)
+  local pos = 1
+  for i, idx in ipairs(list) do if idx == s.map then pos = i end end
+  s.map = list[pos]
+  return list, pos
+end
+
 local function createScreen(sw, sh)
   background(sw, sh)
   local s = G.set
   H.center(G.createOnline and "Создать сервер" or "Игра с ботами", sw / 2, 5, "#FFFFFFFF", 0.8)
   local size = sh - 46
+  local maps, pos = modeMaps(s)
   local def = M.LIST[s.map]
   gfx.rect(8, 20, size + 4, size + 4, "#FF0B0E12")
   gfx.image("radar/" .. def.key .. ".png", 10, 22, size, size)
   H.center(def.name, 10 + size / 2, 24 + size + 3, "#FFFFFFFF", 0.6)
   local x, w = size + 20, sw - size - 28
   local y = 20
-  optionRow(x, y, w, "Карта", def.name, function() s.map = cycle(s.map, #M.LIST, -1) end, function() s.map = cycle(s.map, #M.LIST, 1) end)
+  local function toggleMode()
+    s.wingman = not s.wingman
+    s.firstTo = s.wingman and 9 or 8
+    modeMaps(s)
+  end
+  optionRow(x, y, w, "Режим", s.wingman and "Напарники 2×2" or "Классика", toggleMode, toggleMode)
   y = y + 18
-  optionRow(x, y, w, "Команды", s.bots .. " на " .. s.bots, function() s.bots = cycle(s.bots, 5, -1) end, function() s.bots = cycle(s.bots, 5, 1) end)
+  optionRow(x, y, w, "Карта", def.name, function() s.map = maps[cycle(pos, #maps, -1)] end,
+    function() s.map = maps[cycle(pos, #maps, 1)] end)
   y = y + 18
+  if not s.wingman then
+    optionRow(x, y, w, "Команды", s.bots .. " на " .. s.bots, function() s.bots = cycle(s.bots, 5, -1) end,
+      function() s.bots = cycle(s.bots, 5, 1) end)
+    y = y + 18
+  end
   optionRow(x, y, w, "Боты", D.BOT_LEVELS[s.level], function() s.level = cycle(s.level, 3, -1) end, function() s.level = cycle(s.level, 3, 1) end)
   y = y + 18
   local ri = 3
@@ -672,15 +716,21 @@ local function createScreen(sw, sh)
   y = y + 18
   local teams = {"Авто", "Террористы", "Спецназ"}
   optionRow(x, y, w, "Моя команда", teams[s.team + 1], function() s.team = (s.team + 2) % 3 end, function() s.team = (s.team + 1) % 3 end)
-  y = y + 22
+  y = y + 20
+  if s.wingman then
+    H.text("Напарники: 2 на 2, одна точка закладки, раунд 1:30. Вдвоём с другом — против ботов или друг против друга.", x, y,
+      "#FF8A96A6", 0.42)
+    y = y + 8
+  end
   if G.createOnline then
-    H.text("Друзья входят через «Найти игру». Не закрывайте телефон — игра идёт на нём.", x, y, "#FF8A96A6", 0.45)
+    H.text("Друзья входят через «Найти игру». Не закрывайте телефон — игра идёт на нём.", x, y, "#FF8A96A6", 0.42)
     y = y + 8
   end
   if button(x, sh - 22, w / 2 - 2, 17, "Назад") then G.state = "title" end
   if button(x + w / 2 + 2, sh - 22, w / 2 - 2, 17, "Начать", "primary") then
     saveSettings()
-    startGame(G.createOnline and "host" or "offline", {map = s.map, firstTo = s.firstTo, level = s.level, bots = s.bots, team = s.team})
+    startGame(G.createOnline and "host" or "offline", {map = s.map, firstTo = s.firstTo, level = s.level, bots = s.bots, team = s.team,
+      wingman = s.wingman})
   end
 end
 
@@ -714,7 +764,8 @@ local function findScreen(sw, sh)
     local def = M.LIST[l.map] or M.LIST[1]
     gfx.rect(10, y, sw - 20, 20, "#A0202833")
     H.text(l.host, 16, y + 3, "#FFFFFFFF", 0.65)
-    H.text(def.name .. " · игроков: " .. (l.n or 1) .. " · до " .. (l.ft or 8) .. " побед" .. (l.invite and " · вас пригласили" or ""),
+    H.text((l.wm == 1 and "Напарники · " or "") .. def.name .. " · игроков: " .. (l.n or 1) .. " · до " .. (l.ft or 8)
+      .. " побед" .. (l.invite and " · вас пригласили" or ""),
       16, y + 12, "#FFAAB4C0", 0.45)
     if button(sw - 70, y + 2, 56, 16, "Войти", "primary") then
       G.joining = {host = l.host, m = l.m, map = l.map, t = now, sent = now}
@@ -762,6 +813,8 @@ local HELP = {
     .. "G — выбросить оружие, B — покупка (на базе в начале раунда), Tab — счёт, M — сменить команду, Esc — пауза.",
   "Деньги: за победу $3250, за поражение $1400 и больше при серии, за убийство — по оружию (нож $1500, AWP $100). "
     .. "Бронежилет со шлемом спасает от выстрела в голову. Стрельба на бегу и длинной очередью — неточная.",
+  "Режим «Напарники»: 2 на 2 на маленьких картах с одной точкой A, раунд 1:30, до 9 побед. Вдвоём с другом можно "
+    .. "играть против двух ботов или друг против друга (выберите разные команды).",
   "По сети: игрок, создавший сервер, — хост; на свободных местах играют боты. Хосту нельзя закрывать телефон.",
 }
 
@@ -844,7 +897,8 @@ local function inviteMenu(sw, sh)
     for _, name in ipairs(list) do
       if yy > y + sh - 60 then break end
       if button(x + 10, yy, 180, 15, name) then
-        N.send(now, name, {t = "inv", m = G.matchId, map = G.S.mapIndex, host = app.player, n = Sim.count(G.S, 1, false, true)
+        N.send(now, name, {t = "inv", m = G.matchId, map = G.S.mapIndex, wm = G.S.wingman and 1 or 0, host = app.player,
+          n = Sim.count(G.S, 1, false, true)
           + Sim.count(G.S, 2, false, true), ft = G.S.firstTo})
         toast("Приглашение отправлено: " .. name)
       end
@@ -1054,12 +1108,13 @@ function onMessage(from, data)
   local now = time.clock()
   if t == "find" then
     if G.role == "host" then
-      N.send(now, from, {t = "lobby", m = G.matchId, map = G.S.mapIndex, host = app.player,
+      N.send(now, from, {t = "lobby", m = G.matchId, map = G.S.mapIndex, wm = G.S.wingman and 1 or 0, host = app.player,
         n = Sim.count(G.S, 1, false, true) + Sim.count(G.S, 2, false, true), ft = G.S.firstTo})
     end
   elseif t == "lobby" or t == "inv" then
     if G.role == nil and data.host then
-      G.lobbies[data.host] = {host = data.host, m = data.m, map = data.map, n = data.n, ft = data.ft, t = now, invite = t == "inv"}
+      G.lobbies[data.host] = {host = data.host, m = data.m, map = data.map, n = data.n, ft = data.ft, wm = data.wm, t = now,
+        invite = t == "inv"}
       if t == "inv" then
         toast(data.host .. " зовёт в Block Strike — «Найти игру»")
         sfx("round_start", 0.8)
@@ -1161,7 +1216,7 @@ end
 
 function onKey(key)
   if G.state ~= "game" then return false end
-  if hasDev and type(DEV) == "table" and DEV.key and DEV.key(G, key, Sim) then return true end
+  if hasDev and type(DEV) == "table" and DEV.key and DEV.key(G, key, Sim, {start = startGame}) then return true end
   local me, V = G.me, G.V
   local P = V and V.players[me.id]
   if not P then return true end

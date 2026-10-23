@@ -1,13 +1,16 @@
-"""Графика примера-игры «Block Strike» (docs/examples/scripts/blockstrike): текстуры карт, скины игроков (развёртка
+"""Графика примера-игры «Block Strike» (docs/examples/scripts/blockstrike): текстуры карт (9 карт), скины игроков (развёртка
 как у скина Minecraft 64×64), оружие от первого лица, иконки оружия, эффекты, радары карт (из maps.lua) и иконка.
 Запуск из корня репозитория: python tools/gen_strike.py
 """
+import glob
+import json
 import math
 import os
 import random
 import re
+import subprocess
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "docs", "examples", "scripts", "blockstrike")
@@ -274,6 +277,229 @@ def letter(ch):
     return img
 
 
+# --- Текстуры новых карт: Ледник, Офис, Храм, Озеро ---
+
+def snowstone():
+    img = bricks((168, 176, 186), (120, 126, 136), 16, 8, 8)
+    d = ImageDraw.Draw(img)
+    for x in range(32):  # снег на верху каждого ряда кладки
+        for y0 in (0, 8, 16, 24):
+            h = 1 + (x * 7 + y0) % 3 // 2
+            d.line([x, y0 + 1, x, y0 + h], fill=(236, 242, 248, 255))
+    return img
+
+
+def wood_dark():
+    c = (92, 66, 46)
+    img = Image.new("RGBA", (32, 32))
+    d = ImageDraw.Draw(img)
+    for col in range(4):
+        k = 0.85 + random.random() * 0.25
+        d.rectangle([col * 8, 0, col * 8 + 7, 31], fill=tone(c, k))
+        d.line([col * 8 + 7, 0, col * 8 + 7, 31], fill=tone(c, 0.55))
+    return noise(img, 7)
+
+
+def snow():
+    img = base((232, 238, 244), 6)
+    px = img.load()
+    for _ in range(50):
+        x, y = random.randrange(32), random.randrange(32)
+        px[x, y] = (206, 216, 228, 255)
+    return img
+
+
+def ice():
+    img = base((168, 206, 232), 5)
+    d = ImageDraw.Draw(img)
+    for _ in range(5):
+        x, y = random.randrange(32), random.randrange(32)
+        d.line([x, y, x + random.randint(-8, 8), y + random.randint(-8, 8)], fill=(214, 236, 250, 255))
+    return img
+
+
+def plaster():
+    img = base((214, 208, 196), 5)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 26, 31, 31], fill=(96, 78, 62, 255))       # плинтус
+    d.line([0, 26, 31, 26], fill=(130, 108, 88, 255))
+    d.line([0, 4, 31, 4], fill=(196, 190, 178, 255))
+    return noise(img, 3)
+
+
+def wood_panel():
+    c = (134, 94, 60)
+    img = Image.new("RGBA", (32, 32), tone(c, 0.6))
+    d = ImageDraw.Draw(img)
+    for x0 in (1, 17):
+        d.rectangle([x0, 1, x0 + 13, 30], fill=tone(c, 1.0))
+        d.rectangle([x0 + 3, 4, x0 + 10, 27], fill=tone(c, 0.88))
+        d.line([x0 + 3, 4, x0 + 10, 4], fill=tone(c, 0.7))
+    return noise(img, 5)
+
+
+def carpet():
+    img = base((86, 66, 92), 9)
+    d = ImageDraw.Draw(img)
+    for i in range(0, 32, 8):
+        d.point([i + 2, i % 16 + 3], fill=(120, 96, 128, 255))
+        d.point([(i + 13) % 32, (i * 3) % 32], fill=(66, 50, 72, 255))
+    return img
+
+
+def office_tiles():
+    return tiles((196, 198, 194), (178, 182, 180), 16)
+
+
+def ceiling_office():
+    c = (196, 196, 190)
+    img = base(c, 4)
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, 31, 31], outline=tone(c, 0.75))
+    d.rectangle([4, 12, 27, 19], fill=(250, 250, 236, 255))
+    return img
+
+
+def temple_stone():
+    img = Image.new("RGBA", (32, 32), (88, 92, 74, 255))
+    d = ImageDraw.Draw(img)
+    for row in range(4):
+        off = 8 if row % 2 else 0
+        for col in range(-1, 3):
+            x = col * 16 + off
+            k = 0.85 + random.random() * 0.3
+            d.rectangle([x + 1, row * 8 + 1, x + 15, row * 8 + 7], fill=tone((150, 146, 116), k))
+    px = img.load()
+    for _ in range(90):  # мох
+        x, y = random.randrange(32), random.randrange(32)
+        px[x, y] = (86, 120, 60, 255) if random.random() < 0.7 else (110, 140, 70, 255)
+    return noise(img, 6)
+
+
+def temple_glyph():
+    img = temple_stone()
+    d = ImageDraw.Draw(img)
+    d.rectangle([6, 6, 25, 25], fill=(130, 124, 96, 255), outline=(80, 76, 58, 255))
+    d.rectangle([11, 11, 20, 20], outline=(80, 76, 58, 255))
+    d.line([6, 15, 11, 15], fill=(80, 76, 58, 255))
+    d.line([20, 15, 25, 15], fill=(80, 76, 58, 255))
+    d.point([15, 15], fill=(160, 60, 40, 255))
+    return img
+
+
+def temple_floor():
+    return tiles((150, 144, 118), (136, 130, 104), 16)
+
+
+def moss():
+    img = base((84, 118, 62), 14)
+    px = img.load()
+    for _ in range(60):
+        x, y = random.randrange(32), random.randrange(32)
+        px[x, y] = (120, 112, 92, 255)
+    return img
+
+
+def logs():
+    c = (116, 84, 52)
+    img = Image.new("RGBA", (32, 32))
+    d = ImageDraw.Draw(img)
+    for row in range(4):
+        k = 0.85 + random.random() * 0.25
+        d.rectangle([0, row * 8, 31, row * 8 + 7], fill=tone(c, k))
+        d.line([0, row * 8, 31, row * 8], fill=tone(c, 1.25))
+        d.line([0, row * 8 + 7, 31, row * 8 + 7], fill=tone(c, 0.5))
+    return noise(img, 8)
+
+
+def dock():
+    c = (150, 116, 74)
+    img = Image.new("RGBA", (32, 32))
+    d = ImageDraw.Draw(img)
+    for col in range(4):
+        k = 0.85 + random.random() * 0.25
+        d.rectangle([col * 8, 0, col * 8 + 7, 31], fill=tone(c, k))
+        d.line([col * 8 + 7, 0, col * 8 + 7, 31], fill=(40, 34, 28, 255))
+        d.point([col * 8 + 3, 4], fill=(70, 70, 70, 255))
+        d.point([col * 8 + 3, 27], fill=(70, 70, 70, 255))
+    return noise(img, 6)
+
+
+# --- Иконки оружия для магазина и оружия на земле: рисуются из 3D-моделей viewmodel.lua ---
+
+def load_models():
+    """Модели из viewmodel.lua через LuaJ (jar из кэша Gradle; tools/strike_models.lua печатает JSON)."""
+    jars = glob.glob(os.path.join(os.path.expanduser("~"), ".gradle", "caches", "modules-2", "files-2.1", "org.luaj",
+                                  "luaj-jse", "*", "*", "luaj-jse-*.jar"))
+    if not jars:
+        raise SystemExit("LuaJ не найден в кэше Gradle — сначала соберите мод (./gradlew build)")
+    out = subprocess.run(["java", "-cp", jars[0], "lua", os.path.join(ROOT, "tools", "strike_models.lua")], cwd=APP,
+                         capture_output=True, text=True, encoding="utf-8", check=True).stdout
+    return json.loads(out)
+
+
+def part_corners(b):
+    x1, y1, z1, x2, y2, z2, col, tilt = b
+    cy, cz = (y1 + y2) / 2, (z1 + z2) / 2
+    c, s_ = math.cos(math.radians(tilt)), math.sin(math.radians(tilt))
+
+    def P(x, y, z):
+        dy, dz = y - cy, z - cz
+        return (x, cy + dy * c + dz * s_, cz + dz * c - dy * s_)
+    # порядок как в viewmodel.lua hexa: перед (z+) лв, пв, пн, лн; зад — так же
+    return [P(x1, y2, z2), P(x2, y2, z2), P(x2, y1, z2), P(x1, y1, z2), P(x1, y2, z1), P(x2, y2, z1), P(x2, y1, z1), P(x1, y1, z1)]
+
+
+FACES = [(0, 1, 2, 3), (5, 4, 7, 6), (4, 0, 3, 7), (1, 5, 6, 2), (4, 5, 1, 0), (3, 2, 6, 7)]
+
+
+def render_icon(parts, w=120, h=48, ss=4):
+    """Вид сбоку справа (дуло влево), камера чуть сверху: многоугольники граней по глубине, свет, обводка."""
+    yaw, pitch = math.radians(-14), math.radians(-24)
+
+    def view(p):
+        x, y, z = p
+        x, z = x * math.cos(yaw) - z * math.sin(yaw), x * math.sin(yaw) + z * math.cos(yaw)
+        x, y = x * math.cos(pitch) - y * math.sin(pitch), x * math.sin(pitch) + y * math.cos(pitch)
+        return x, y, z  # смотрим из +X: экран x = -z, экран y = -y, глубина = x
+    light = (0.55, 0.75, -0.35)
+    ln = math.sqrt(sum(v * v for v in light))
+    light = tuple(v / ln for v in light)
+    polys = []
+    for b in parts:
+        corners = [view(p) for p in part_corners(b)]
+        col = PALETTE[int(b[6])]
+        for f in FACES:
+            q = [corners[i] for i in f]
+            ax, ay, az = (q[1][k] - q[0][k] for k in range(3))
+            bx, by, bz = (q[2][k] - q[0][k] for k in range(3))
+            nx, ny, nz = ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+            nl = math.sqrt(nx * nx + ny * ny + nz * nz) or 1
+            nx, ny, nz = nx / nl, ny / nl, nz / nl
+            if nx <= 0.001:
+                continue
+            k = 0.5 + 0.6 * max(0.0, nx * light[0] + ny * light[1] + nz * light[2])
+            depth = sum(p[0] for p in q) / 4
+            polys.append((depth, [(-p[2], -p[1]) for p in q], tone(col, k)))
+    xs = [pt[0] for _, pts, _ in polys for pt in pts]
+    ys = [pt[1] for _, pts, _ in polys for pt in pts]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    pad = 0.08
+    scale = min(w * (1 - pad * 2) / (maxx - minx), h * (1 - pad * 2) / (maxy - miny)) * ss
+    ox = (w * ss - (maxx - minx) * scale) / 2 - minx * scale
+    oy = (h * ss - (maxy - miny) * scale) / 2 - miny * scale
+    img = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    for _, pts, col in sorted(polys, key=lambda t: t[0]):
+        d.polygon([(ox + x * scale, oy + y * scale) for x, y in pts], fill=col, outline=tone(col, 0.8))
+    # обводка: тёмная подложка по расширенному силуэту
+    alpha = img.getchannel("A").filter(ImageFilter.MaxFilter(ss * 2 + 1))
+    back = Image.new("RGBA", img.size, (12, 12, 14, 0))
+    back.putalpha(alpha.point(lambda a: 210 if a > 0 else 0))
+    back.alpha_composite(img)
+    return back.resize((w, h), Image.LANCZOS)
+
+
 # --- Скины игроков: развёртка 64×64 как у Minecraft ---
 
 def face_rect(d, u, v, w, h, color, k=1.0):
@@ -329,89 +555,6 @@ def skin(team):
         paint_part(d, 0, 16, 4, 12, 4, pants)
         d.rectangle([0, 29, 15, 31], fill=boots + (255,))
     return noise(img, 6)
-
-
-# --- Оружие: профиль (вид сбоку) в единицах 0..100 по длине (0 — дуло), y вниз ---
-
-DARK, GRAY, WOOD, BLACK, GREEN, TAN, STEEL = (52, 54, 58), (92, 96, 102), (140, 86, 44), (30, 31, 34), (70, 88, 60), (170, 150, 110), (176, 180, 186)
-
-GUNS = {
-    "glock": {"len": 0.42, "parts": [("r", 0, -6, 100, 6, BLACK), ("r", 0, 0, 100, 4, DARK), ("p", [(62, 4), (92, 4), (98, 34), (74, 34)], BLACK),
-                                     ("r", 50, 4, 62, 12, DARK)]},
-    "usp": {"len": 0.55, "parts": [("r", 0, -3, 40, 3, BLACK), ("r", 30, -6, 100, 6, DARK), ("r", 30, 0, 100, 4, BLACK),
-                                   ("p", [(66, 4), (92, 4), (98, 34), (76, 34)], DARK)]},
-    "p250": {"len": 0.44, "parts": [("r", 0, -6, 100, 6, GRAY), ("r", 0, 0, 100, 4, DARK), ("p", [(64, 4), (92, 4), (98, 34), (74, 34)], BLACK)]},
-    "deagle": {"len": 0.55, "parts": [("r", 0, -8, 100, 8, STEEL), ("r", 0, 0, 100, 5, GRAY), ("r", 8, -10, 14, -8, STEEL),
-                                      ("p", [(66, 5), (92, 5), (98, 36), (74, 36)], BLACK)]},
-    "nova": {"len": 1.0, "parts": [("r", 0, -4, 60, 2, DARK), ("r", 10, 2, 45, 7, BLACK), ("r", 45, -6, 72, 6, DARK),
-                                   ("p", [(72, -4), (100, -2), (100, 12), (80, 8), (72, 6)], BLACK)]},
-    "mp9": {"len": 0.7, "parts": [("r", 0, -3, 30, 1, BLACK), ("r", 20, -7, 80, 5, DARK), ("r", 48, 5, 58, 30, BLACK),
-                                  ("p", [(66, 5), (80, 5), (84, 24), (72, 24)], DARK), ("r", 80, -5, 100, -1, BLACK)]},
-    "p90": {"len": 0.75, "parts": [("p", [(0, -2), (20, -8), (95, -8), (100, 10), (70, 14), (60, 4), (20, 4)], (60, 66, 60)),
-                                   ("r", 30, -12, 80, -8, BLACK), ("r", 62, 4, 70, 14, (40, 44, 40))]},
-    "galil": {"len": 0.95, "parts": [("r", 0, -2, 35, 1, BLACK), ("r", 28, -5, 55, 5, WOOD), ("r", 55, -6, 80, 6, DARK),
-                                     ("p", [(58, 6), (68, 6), (72, 26), (62, 28)], BLACK), ("p", [(80, -4), (100, -2), (100, 9), (80, 5)], GRAY)]},
-    "famas": {"len": 0.9, "parts": [("r", 0, -2, 25, 1, BLACK), ("p", [(18, -6), (90, -6), (100, 8), (40, 8), (18, 4)], (54, 60, 54)),
-                                    ("r", 30, -14, 80, -8, BLACK), ("r", 70, 8, 80, 26, BLACK), ("r", 45, 8, 52, 18, DARK)]},
-    "ak47": {"len": 1.0, "parts": [("r", 0, -2, 36, 1, BLACK), ("r", 2, -6, 5, -2, BLACK), ("r", 28, -5, 54, 5, WOOD),
-                                   ("r", 54, -6, 80, 6, DARK), ("p", [(56, 6), (66, 6), (74, 30), (62, 32)], DARK),
-                                   ("p", [(74, 6), (79, 6), (82, 20), (77, 20)], WOOD), ("p", [(80, -4), (100, -2), (100, 10), (80, 5)], WOOD)]},
-    "m4a4": {"len": 1.0, "parts": [("r", 0, -2, 34, 1, BLACK), ("r", 22, -5, 50, 5, DARK), ("r", 50, -6, 78, 6, BLACK),
-                                   ("r", 50, -10, 76, -6, DARK), ("r", 56, 6, 64, 26, BLACK), ("p", [(70, 6), (76, 6), (79, 20), (74, 20)], BLACK),
-                                   ("p", [(78, -3), (100, -4), (100, 9), (78, 4)], DARK)]},
-    "awp": {"len": 1.15, "parts": [("r", 0, -2, 50, 1, BLACK), ("r", 42, -6, 82, 6, GREEN), ("r", 50, -14, 76, -8, BLACK),
-                                   ("r", 48, -12, 52, -6, BLACK), ("r", 74, -12, 78, -6, BLACK), ("r", 60, 6, 66, 18, BLACK),
-                                   ("p", [(80, -5), (100, -3), (100, 12), (84, 8)], GREEN)]},
-    "knife": {"len": 0.6, "parts": [("p", [(0, 0), (12, -5), (58, -5), (58, 4), (20, 4)], STEEL), ("r", 58, -6, 62, 6, DARK),
-                                    ("r", 62, -4, 100, 4, BLACK)]},
-}
-
-
-def draw_profile(d, parts, tx):
-    for part in parts:
-        kind, color = part[0], part[-1]
-        if kind == "r":
-            x1, y1, x2, y2 = part[1:5]
-            pts = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
-        else:
-            pts = part[1]
-        mapped = [tx(x, y) for x, y in pts]
-        d.polygon(mapped, fill=tuple(color[:3]) + (255,))
-        # блик сверху
-        top = [tx(x, y) for x, y in pts[:2]]
-        d.line(top, fill=tone(color, 1.45), width=1)
-
-
-def icon(key):
-    img = Image.new("RGBA", (60, 24), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    if key in GUNS:
-        g = GUNS[key]
-        scale = 0.56 * (0.6 + 0.4 * min(1.0, g["len"]))
-        w = 100 * scale
-        ox = (60 - w) / 2
-        draw_profile(d, g["parts"], lambda x, y: (ox + x * scale, 9 + y * scale * 0.9))
-    elif key in ("he", "flash", "smoke"):
-        col = {"he": (70, 96, 60), "flash": (150, 156, 164), "smoke": (90, 100, 110)}[key]
-        d.ellipse([22, 6, 36, 22], fill=col + (255,))
-        d.rectangle([26, 3, 32, 7], fill=(60, 60, 60, 255))
-        d.line([32, 4, 37, 9], fill=(200, 200, 200, 255), width=1)
-    elif key == "c4":
-        d.rectangle([14, 6, 46, 20], fill=(90, 80, 60, 255))
-        d.rectangle([22, 8, 38, 13], fill=(40, 200, 80, 255))
-        d.rectangle([14, 15, 46, 17], fill=(170, 40, 30, 255))
-    # тёмная обводка
-    out = img.copy()
-    px, po = img.load(), out.load()
-    for y in range(24):
-        for x in range(60):
-            if px[x, y][3] == 0:
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < 60 and 0 <= ny < 24 and px[nx, ny][3] > 0:
-                        po[x, y] = (10, 10, 12, 200)
-                        break
-    return out
 
 
 # Палитра 3D-оружия от первого лица (viewmodel.lua, таблица C — тот же порядок): клетки 8×8 на картинке 64×64.
@@ -550,12 +693,16 @@ def radars():
         k = 4
         img = Image.new("RGBA", (w * k, h * k))
         d = ImageDraw.Draw(img)
+        # Отражено по X: в мире +X слева, если смотреть сверху с Z вниз (как в hud.lua H.radarX).
         for z, row in enumerate(rows):
             for x, ch in enumerate(row):
                 c = RADAR_COLORS.get(ch, (128, 132, 128))
-                d.rectangle([x * k, z * k, x * k + k - 1, z * k + k - 1], fill=c + (255,))
+                rx = w - 1 - x
+                d.rectangle([rx * k, z * k, rx * k + k - 1, z * k + k - 1], fill=c + (255,))
         for s in "AB":
-            cells = [(x, z) for z, row in enumerate(rows) for x, ch in enumerate(row) if ch == s]
+            cells = [(w - 1 - x, z) for z, row in enumerate(rows) for x, ch in enumerate(row) if ch == s]
+            if not cells:
+                continue
             cx = sum(c[0] for c in cells) / len(cells)
             cz = sum(c[1] for c in cells) / len(cells)
             lt = letter(s).resize((20, 20), Image.NEAREST)
@@ -610,6 +757,24 @@ def main():
     save(path(), "path")
     save(site((96, 140, 64), (190, 80, 60)), "site_village")
     save(hay(), "hay")
+    save(snowstone(), "snowstone")
+    save(wood_dark(), "wood_dark")
+    save(snow(), "snow")
+    save(ice(), "ice")
+    save(site((228, 234, 240), (60, 120, 200)), "site_snow")
+    save(plaster(), "plaster")
+    save(wood_panel(), "wood_panel")
+    save(carpet(), "carpet")
+    save(office_tiles(), "office_tiles")
+    save(site((170, 172, 170), (200, 60, 50)), "site_office")
+    save(ceiling_office(), "ceiling_office")
+    save(temple_stone(), "temple_stone")
+    save(temple_glyph(), "temple_glyph")
+    save(temple_floor(), "temple_floor")
+    save(moss(), "moss")
+    save(site((150, 144, 118), (170, 70, 40)), "site_temple")
+    save(logs(), "logs")
+    save(dock(), "dock")
     save(letter("A"), "letter_a")
     save(letter("B"), "letter_b")
     save(skin("t"), "skin_t")
@@ -627,8 +792,10 @@ def main():
     save(muzzle_flash(16), "spark")
     save(puff(24, (150, 20, 20)), "blood")
     save(small_sprite(8, (255, 40, 30)), "bomb_light")
-    for key in list(GUNS.keys()) + ["he", "flash", "smoke", "c4"]:
-        save(icon(key), "i_" + key)
+    models = load_models()
+    for key in ["glock", "usp", "p250", "deagle", "nova", "mp9", "p90", "galil", "famas", "ak47", "m4a4", "awp", "knife",
+                "he", "flash", "smoke", "c4"]:
+        save(render_icon(models[key]), "i_" + key)
     save(palette(), "vm_palette")
     hud_icons()
     save(scope(), "scope")

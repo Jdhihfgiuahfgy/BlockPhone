@@ -29,12 +29,17 @@ end
 
 -- --- Радар (вид сверху, север вверху) ---
 
+-- Мир: если смотреть вдоль +Z, то +X — справа (так рисует g3d). На виде сверху с Z вниз это значит, что X идёт
+-- справа налево — иначе карта зеркальна миру. Картинки radar/*.png уже отражены (gen_strike.py).
+function H.radarX(map, x) return map.W - x end
+
 function H.radar(G, x, y, size)
   local V, me = G.V, G.me
   local map = V.map
   local scale = size / max(map.W, map.H)
   local w, h = map.W * scale, map.H * scale
   local ox, oy = x + (size - w) / 2, y + (size - h) / 2
+  local function px(wx) return ox + H.radarX(map, wx) * scale end
   gfx.rect(x - 1, y - 1, size + 2, size + 2, "#90000000")
   gfx.image("radar/" .. map.def.key .. ".png", ox, oy, w, h)
   local my = V.players[me.id]
@@ -42,19 +47,18 @@ function H.radar(G, x, y, size)
   local b = V.bomb
   if b.state == "dropped" or b.state == "planted" or (b.state == "carried" and myTeam == D.T) then
     local blink = b.state ~= "planted" or (G.now % 0.6) < 0.35
-    if blink then gfx.rect(ox + b.x * scale - 1.5, oy + b.z * scale - 1.5, 3, 3, "#FFFF4040") end
+    if blink then gfx.rect(px(b.x) - 1.5, oy + b.z * scale - 1.5, 3, 3, "#FFFF4040") end
   end
   for _, p in pairs(V.players) do
     if p.alive and p.id ~= me.id and (p.team == myTeam or p.spot) then
-      local c = p.team == myTeam and "#FFFFFFFF" or "#FFFF3B30"
-      if p.team == myTeam then c = D.TEAM_COLOR[p.team] end
-      gfx.rect(ox + (p.rx or p.x) * scale - 1, oy + (p.rz or p.z) * scale - 1, 2, 2, c)
+      local c = p.team == myTeam and D.TEAM_COLOR[p.team] or "#FFFF3B30"
+      gfx.rect(px(p.rx or p.x) - 1, oy + (p.rz or p.z) * scale - 1, 2, 2, c)
     end
   end
   -- я: точка и направление взгляда
-  local mx, mz = ox + me.x * scale, oy + me.z * scale
+  local mx, mz = px(me.x), oy + me.z * scale
   local fx, _, fz = Sim.forward(me.yaw, 0)
-  gfx.line(mx, mz, mx + fx * 4, mz + fz * 4, "#FFFFFFFF", 1)
+  gfx.line(mx, mz, mx - fx * 4, mz + fz * 4, "#FFFFFFFF", 1)
   gfx.rect(mx - 1, mz - 1, 3, 3, "#FFFFEA00")
 end
 
@@ -281,8 +285,8 @@ function H.buyMenu(G, sw, sh, buyFn)
       if ui.button(x + 94, by, w - 98, 16, "", "normal") and can then buyFn(item) end
       if not can then gfx.rect(x + 94, by, w - 98, 16, "#90101418") end
       local key = type(item) == "number" and D.WEAPONS[item].key or nil
-      if key then gfx.image("textures/i_" .. key .. ".png", x + 96, by + 2, 30, 12) end
-      text(label, x + 130, by + 4, can and "#FFFFFFFF" or "#FF808080", 0.55)
+      if key then gfx.image("textures/i_" .. key .. ".png", x + 96, by + 1, 35, 14) end
+      text(label, x + 134, by + 4, can and "#FFFFFFFF" or "#FF808080", 0.55)
       right("$" .. cost, x + w - 8, by + 4, can and "#FF8CF08C" or (why == "Не хватает денег" and "#FFFF6060" or "#FF808080"), 0.55)
     end
   else
@@ -300,7 +304,8 @@ function H.scoreboard(G, sw, sh, list)
   local x = floor((sw - w) / 2)
   local y = 22
   gfx.rect(x, y, w, sh - 40, "#E0101418")
-  center(V.map.def.name .. " · раунд " .. V.round .. " · до " .. V.firstTo .. " побед", sw / 2, y + 3, "#FFE0E0E0", 0.55)
+  center((V.wingman and "Напарники · " or "") .. V.map.def.name .. " · раунд " .. V.round .. " · до " .. V.firstTo .. " побед",
+    sw / 2, y + 3, "#FFE0E0E0", 0.55)
   y = y + 13
   for _, team in ipairs({2, 1}) do
     gfx.rect(x + 2, y, w - 4, 10, a(D.TEAM_COLOR[team], 0.35))

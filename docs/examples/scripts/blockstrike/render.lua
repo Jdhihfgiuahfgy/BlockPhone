@@ -77,7 +77,7 @@ function R.buildMap(map)
   }
   -- Большие буквы A и B на полу точек.
   local letter = newMesh()
-  quad(letter, -1.5, 0, -1.5, 1.5, 0, -1.5, 1.5, 0, 1.5, -1.5, 0, 1.5, 0, 0, 1, 1)
+  quad(letter, -1.5, 0, -1.5, 1.5, 0, -1.5, 1.5, 0, 1.5, -1.5, 0, 1.5, 1, 0, 0, 1) -- u по −X: иначе буква зеркальна
   mm.letter = finishMesh(letter)
   R.mapMeshes = mm
   R.mapIndex = map.index
@@ -229,7 +229,7 @@ function R.drawWorld(V, cam, sx, sy, sw, sh, quality, now, hide)
   if def.ceiling then g3d.draw(mm.floor, map.W / 2, M.WALL_H, map.H / 2, {texture = R.T(def.ceiling), lit = false}) end
   if mm.floor2 then g3d.draw(mm.floor2, 0, 0, 0, {texture = R.T(tx.floor2), lit = false}) end
   if mm.sites then g3d.draw(mm.sites, 0, 0, 0, {texture = R.T(tx.site), lit = false}) end
-  for _, s in ipairs({"A", "B"}) do
+  for _, s in ipairs(map.sites) do
     local c = map.siteCenter[s]
     g3d.draw(mm.letter, c[1], 0.006, c[2], {texture = R.T(s == "A" and "letter_a" or "letter_b"), lit = false})
   end

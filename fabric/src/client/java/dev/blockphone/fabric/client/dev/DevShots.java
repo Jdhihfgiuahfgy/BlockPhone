@@ -125,7 +125,16 @@ public final class DevShots {
                 Files.writeString(target.resolve("dev.lua"), """
                         local list = {11, 12, 13, 6, 8, 10, 9, 7, 5, 3, 1, 14, 17}
                         local i = 0
-                        return {key = function(G, key, Sim)
+                        local maps, m = {5, 6, 7, 8, 9}, 0
+                        return {key = function(G, key, Sim, api)
+                          if key == "9" then
+                            m = m % #maps + 1
+                            local def = require("maps").LIST[maps[m]]
+                            api.start("offline", {map = maps[m], firstTo = 8, level = 2, bots = 5, team = 0,
+                              wingman = def.wingman == true})
+                            print("dev map " .. def.key)
+                            return true
+                          end
                           if key ~= "0" or not G.S then return false end
                           i = i % #list + 1
                           local wid = list[i]
@@ -150,6 +159,14 @@ public final class DevShots {
         shot(60, "strike_title");
         step(1, mc -> customApp("blockstrike", a -> a.debugClick(a.contentWidth() / 2.0, 58)));
         shot(20, "strike_create");
+        // «Режим» → Напарники (кнопка «>» в первой строке), снимок, обратно.
+        Runnable modeClick = () -> customApp("blockstrike", a -> {
+            double sw = a.contentWidth(), sh = a.contentHeight(), size = sh - 46, x = size + 20, w = sw - size - 28;
+            a.debugClick(x + w - 7, 28);
+        });
+        step(1, mc -> modeClick.run());
+        shot(10, "strike_create_wingman");
+        step(1, mc -> modeClick.run());
         step(1, mc -> customApp("blockstrike", a -> {
             double sw = a.contentWidth(), sh = a.contentHeight(), size = sh - 46, x = size + 20, w = sw - size - 28;
             a.debugClick(x + w * 0.75, sh - 13);
@@ -177,6 +194,11 @@ public final class DevShots {
         shot(300, "strike_later");
         step(1, mc -> phone(mc, PhoneScreen::back));
         shot(20, "strike_pause");
+        // Новые карты (Ледник, Офис, Храм, Озеро и Переулок — «Напарники»): игра с ботами, снимок в начале раунда.
+        for (String map : new String[]{"snow", "office", "temple", "lake", "alley"}) {
+            step(1, mc -> customApp("blockstrike", a -> a.debugKey("9")));
+            shot(160, "strike_map_" + map);
+        }
     }
 
     /**

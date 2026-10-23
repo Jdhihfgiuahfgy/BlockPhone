@@ -86,15 +86,21 @@ end
 
 function Bots.roundStart(S, Sim)
   local m = S.map
-  S.plan = {site = random() < 0.5 and "A" or "B"}
-  local ctSite = random() < 0.5 and "A" or "B"
+  local sites = m.sites
+  local function pick() return sites[random(1, #sites)] end
+  local function other(s)
+    for _, o in ipairs(sites) do if o ~= s then return o end end
+    return s
+  end
+  S.plan = {site = pick()}
+  local ctSite = pick()
   for _, p in ipairs(S.players) do
     if p.bot then
       Bots.buy(S, p, Sim)
       local ai = p.ai
       if p.team == D.T then
         local site = S.plan.site
-        if not p.bomb and random() < 0.25 then site = site == "A" and "B" or "A" end
+        if not p.bomb and random() < 0.25 then site = other(site) end
         ai.site = site
         local lanes = m.def.lanes[site]
         if lanes and random() < 0.8 then
@@ -105,7 +111,7 @@ function Bots.roundStart(S, Sim)
         ai.waitT = random() * 4 -- не все выходят сразу
       else
         ai.site = ctSite
-        ctSite = ctSite == "A" and "B" or "A"
+        ctSite = other(ctSite)
         ai.hold = M.randomCell(m, m.site[ai.site], random)
         ai.waitT = random() * 2
       end
@@ -426,7 +432,7 @@ function Bots.objective(S, p, dt, Sim, lvl)
     if b.state == "planted" then
       if not ai.guard then
         local near = {}
-        for _, i in ipairs(m.site[b.site or "A"]) do
+        for _, i in ipairs(m.site[b.site or m.sites[1]]) do
           local x, z = M.xz(m, i)
           if M.walkable(m.c[i]) and (x - b.x) ^ 2 + (z - b.z) ^ 2 < 40 then near[#near + 1] = i end
         end

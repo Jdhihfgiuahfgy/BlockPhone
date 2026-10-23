@@ -1,5 +1,5 @@
 """Звуки примера-игры «Block Strike» (docs/examples/scripts/blockstrike/sounds/*.wav) — синтез на numpy, без записей:
-выстрелы (свой у каждого вида оружия), перезарядка, шаги, попадания, гранаты, бомба, сигналы раунда.
+выстрелы (свой у каждого вида оружия), перезарядка, попадания (шаги — ванильные звуки блоков), гранаты, бомба, сигналы раунда.
 Пишет ещё sounds.lua — длительность каждого звука (игра по ней следит, сколько звуков звучит одновременно).
 Запуск из корня репозитория: python tools/gen_strike_sounds.py
 """
@@ -193,18 +193,6 @@ def death():
     return mix(v * 0.7, fall)
 
 
-def step(seed):
-    r = np.random.default_rng(seed)
-    sec = 0.12
-    n = r.uniform(-1, 1, int(sec * RATE))
-    return mix(band(n, 70, 500) * env(sec, 0.002, 0.025), band(n, 1500, 5000) * env(sec, 0.001, 0.008) * 0.25)
-
-
-def land():
-    sec = 0.2
-    return mix(band(noise(sec), 50, 400) * env(sec, 0.001, 0.05), band(noise(sec), 1200, 4000) * env(sec, 0.001, 0.01) * 0.3)
-
-
 def reload_out():
     sec = 0.3
     return mix(click(1500, 6000, 0.05, 0.01), at(band(noise(0.15), 400, 3000) * env(0.15, 0.01, 0.04) * 0.6, 0.07, sec))
@@ -355,10 +343,6 @@ def main():
     save("hit_head", hit_head(), 0.75)
     save("hurt", hurt(), 0.8)
     save("death", death(), 0.8)
-    save("step1", step(1), 0.6)
-    save("step2", step(2), 0.6)
-    save("step3", step(3), 0.6)
-    save("land", land(), 0.7)
     save("reload_out", reload_out(), 0.7)
     save("reload_in", reload_in(), 0.75)
     save("dry", dry(), 0.6)

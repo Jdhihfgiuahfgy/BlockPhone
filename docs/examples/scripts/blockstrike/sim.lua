@@ -25,9 +25,11 @@ end
 
 function Sim.eye(p) return p.y + (p.crouch and Sim.EYE_CROUCH or Sim.EYE) end
 
+-- o.wingman — режим «Напарники»: 2 на 2, одна точка, раунд 1:30, на сервере не больше 4 игроков.
 function Sim.new(o)
   local S = {map = M.load(o.map), mapIndex = o.map, firstTo = o.firstTo or 8, botLevel = o.botLevel or 2,
-    teamSize = o.teamSize or 5, players = {}, phase = "warmup", timer = 3, round = 0, score = {0, 0},
+    wingman = o.wingman == true, roundTime = o.wingman and 90 or D.ROUND_TIME, maxPlayers = o.wingman and 4 or 10,
+    teamSize = o.wingman and 2 or (o.teamSize or 5), players = {}, phase = "warmup", timer = 3, round = 0, score = {0, 0},
     lossStreak = {0, 0}, bomb = {state = "none", x = 0, y = 0, z = 0, timer = 0, progress = 0, carrier = 0, defuser = 0},
     nades = {}, smokes = {}, drops = {}, events = {}, eventSeq = 0, time = 0, nextDrop = 1, swapped = false,
     matchId = o.matchId or 1, winner = 0, buyUntil = 0, visT = 0, vis = {}, botNames = {}, plan = {}}
@@ -76,7 +78,7 @@ end
 -- Добрать ботов до нужного размера команд.
 function Sim.fillBots(S)
   for team = 1, 2 do
-    while Sim.count(S, team) < S.teamSize and #S.players < 10 do
+    while Sim.count(S, team) < S.teamSize and #S.players < S.maxPlayers do
       newPlayer(S, Sim.botName(S), true, team)
     end
   end
@@ -103,7 +105,7 @@ function Sim.addHuman(S, name, wantTeam)
       end
     end
   end
-  if #S.players < 10 then
+  if #S.players < S.maxPlayers then
     local p = newPlayer(S, name, false, team)
     if S.phase == "freeze" or S.phase == "warmup" then Sim.spawn(S, p, true) end
     Sim.event(S, "join", p.id)
@@ -669,7 +671,7 @@ function Sim.tick(S, dt)
     return
   elseif S.phase == "freeze" then
     if S.timer <= 0 then
-      S.phase, S.timer = "live", D.ROUND_TIME
+      S.phase, S.timer = "live", S.roundTime
       Sim.event(S, "go")
     end
   elseif S.phase == "live" then
@@ -749,7 +751,7 @@ function Sim.snapshot(S)
       p.nextTeam}
   end
   local b = S.bomb
-  local snap = {t = "s", m = S.matchId, ph = Sim.PHASE_CODE[S.phase], tm = floor(max(0, S.timer) * 10), rd = S.round,
+  local snap = {t = "s", m = S.matchId, wm = S.wingman and 1 or 0, ph = Sim.PHASE_CODE[S.phase], tm = floor(max(0, S.timer) * 10), rd = S.round,
     sc = {S.score[1], S.score[2]}, ft = S.firstTo, mp = S.mapIndex, w = S.winner, bt = floor(max(0, S.buyUntil - S.time) * 10),
     b = {Sim.BOMB_CODE[b.state], floor(b.x * 100), floor(b.y * 100), floor(b.z * 100), floor(max(0, b.timer) * 10), b.carrier,
       floor(b.progress * 100), b.defuser},
