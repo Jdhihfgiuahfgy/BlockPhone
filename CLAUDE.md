@@ -422,12 +422,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (комментарии), `ComposeView` (от себя/от паблика, текст, фото), `ProfileView` («о себе», подписчики, подписка, «Написать»,
   заглушение), `UserListView`, `UserPickView`, `PublicsView` (поиск, мои/подписки/популярные), `PublicView`, `CreatePublicView`,
   `PublicManageView` (название, админы, удаление), `ModerationView` (жалобы), `Rows`. `debug*`-методы — для DevShots.
-- `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, карточка музыки
+- `apps/` — приложения: `home/HomeApp` (рабочий стол: экраны со свайпом, папки, режим правки с перетаскиванием;
+  порядок и папки — `home/HomeLayout` по `PhoneSettings.homeOrder/homeFolders`, размер — `homeIconScale`), `lock/LockApp` (экран блокировки: часы, дата, карточка музыки
   (обложка, название, перемотка перетаскиванием, назад/пауза/вперёд), уведомления;
   нажатие на уведомление — открыть, в другом месте — разблокировать),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
   `settings/SettingsApp` (MAIN — меню разделов-плиток (`categories()`: значок, название, кратко — что выбрано);
-  разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
+  числовые настройки — ползунки `slider(key, value, min, max, step, get, set)`; разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
   цвета + HEX / WALLPAPER — градиенты + свои картинки (родитель LOOK) / HUD — виджет музыки: предпросмотр «экрана игры» 16:9
   (родитель MUSIC); «назад» — `parent(page)`; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
   `clock/ClockApp` («Часы»: вкладки Будильник/Секундомер/Таймер; работа в фоне — `clock/ClockService.tick()` из

@@ -886,5 +886,16 @@
   "sound.tone.marimba": "Маримба",
   "sound.tone.soft": "Мягкий",
   "sound.tone.pop": "Щелчок",
-  "sound.tone.bells": "Колокола"
+  "sound.tone.bells": "Колокола",
+  "settings.icon_size": "Размер иконок",
+  "settings.icon_labels": "Подписи иконок",
+  "home.edit": "Изменить рабочий стол",
+  "home.done": "Готово",
+  "home.new_folder": "В новую папку",
+  "home.folder": "Папка",
+  "home.remove_from_folder": "Вынуть из папки",
+  "home.rename": "Переименовать",
+  "home.disband": "Расформировать папку",
+  "home.edit_hint": "Перетащите иконку: на другую — папка, к краю — на соседний экран",
+  "home.reset": "Сбросить расположение"
 }

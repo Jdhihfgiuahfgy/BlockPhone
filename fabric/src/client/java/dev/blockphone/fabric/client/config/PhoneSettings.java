@@ -63,6 +63,20 @@ public final class PhoneSettings {
     public boolean hudShowPaused = true;
     /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */
     public boolean lockScreen = true;
+    /** Размер иконок рабочего стола, % (70..140; от него зависит число столбцов). */
+    public int homeIconScale = 100;
+    /** Подписи под иконками рабочего стола. */
+    public boolean homeLabels = true;
+    /** Порядок рабочего стола: id приложений и "folder:<id>" папок. Новые приложения добавляются в конец. */
+    public java.util.List<String> homeOrder = new java.util.ArrayList<>();
+    /** Папки рабочего стола: id → название и приложения. */
+    public java.util.Map<String, HomeFolder> homeFolders = new java.util.LinkedHashMap<>();
+
+    public static final class HomeFolder {
+        public String name = "";
+        public java.util.List<String> apps = new java.util.ArrayList<>();
+    }
+
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
     public boolean compactPhone = false;
     /** Уведомления: все вкл/выкл, всплывающие окошки, центр уведомлений и экран блокировки, звук звонка. */

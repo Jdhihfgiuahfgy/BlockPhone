@@ -886,5 +886,16 @@
   "sound.tone.marimba": "Marimba",
   "sound.tone.soft": "Soft",
   "sound.tone.pop": "Pop",
-  "sound.tone.bells": "Bells"
+  "sound.tone.bells": "Bells",
+  "settings.icon_size": "Icon size",
+  "settings.icon_labels": "Icon labels",
+  "home.edit": "Edit home screen",
+  "home.done": "Done",
+  "home.new_folder": "Move to new folder",
+  "home.folder": "Folder",
+  "home.remove_from_folder": "Remove from folder",
+  "home.rename": "Rename",
+  "home.disband": "Ungroup folder",
+  "home.edit_hint": "Drag an icon: onto another to make a folder, to an edge to change screen",
+  "home.reset": "Reset layout"
 }
