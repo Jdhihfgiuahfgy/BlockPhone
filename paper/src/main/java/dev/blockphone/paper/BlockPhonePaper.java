@@ -60,6 +60,35 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         }
     }
 
+    /** /blockphone reload — перечитать config.yml и перезапустить серверную часть без перезапуска сервера. */
+    @Override
+    public boolean onCommand(org.bukkit.command.CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
+        if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+            sender.sendMessage("§7BlockPhone " + getPluginMeta().getVersion() + " — §f/" + label + " reload");
+            return true;
+        }
+        if (!sender.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+            sender.sendMessage("§cNo permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")");
+            return true;
+        }
+        try {
+            reloadConfig();
+            getConfig().options().copyDefaults(true);
+            saveConfig();
+            core = BlockPhoneServer.restart(core, this, readSettings(getConfig()));
+            sender.sendMessage("§aBlockPhone: config reloaded");
+        } catch (RuntimeException e) {
+            getLogger().log(Level.WARNING, "BlockPhone reload failed", e);
+            sender.sendMessage("§cBlockPhone: reload failed — " + e.getMessage());
+        }
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(org.bukkit.command.CommandSender sender, org.bukkit.command.Command command, String alias, String[] args) {
+        return args.length == 1 && "reload".startsWith(args[0].toLowerCase(java.util.Locale.ROOT)) ? List.of("reload") : List.of();
+    }
+
     private ServerSettings readSettings(FileConfiguration c) {
         ServerSettings.Storage storage = new ServerSettings.Storage(
                 c.getString("storage.type", "h2"),
@@ -154,6 +183,10 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
             if (getServer().getPluginManager().getPermission(permission.node()) == null) {
                 getServer().getPluginManager().addPermission(bukkit);
             }
+        }
+        if (getServer().getPluginManager().getPermission(BlockPhoneServer.RELOAD_PERMISSION) == null) {
+            getServer().getPluginManager().addPermission(new org.bukkit.permissions.Permission(BlockPhoneServer.RELOAD_PERMISSION,
+                    "Reload the BlockPhone config (/blockphone reload)", PermissionDefault.OP));
         }
     }
 

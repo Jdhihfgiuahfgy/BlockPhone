@@ -13,6 +13,12 @@
 - Исправлено: кнопка «Установить/Обновить» в списке «Магазина» открывала страницу приложения вместо установки — клик
   по строке перекрывал кнопку (клики проверяются с конца списка). Файл: `apps/store/StoreApp.java`.
 - `gradlew` снова исполняемый (сборка в Linux/облаке).
+- Команда перезагрузки настроек без перезапуска сервера: Paper и Fabric — `/blockphone reload` (Paper: и `/bphone`),
+  Velocity — `/bpv reload`, BungeeCord — `/bpb reload`. Право `blockphone.admin.reload` (по умолчанию — операторы и
+  консоль). Старое ядро останавливается (база закрывается), новое запускается с новыми настройками, игрокам с модом
+  заново отправляется приветствие — телефон сам сбрасывает серверное состояние. `BlockPhoneServer.restart`,
+  тест `MessengerServiceTest.reloadRegreetsPlayersWithMod`. Файлы: `BlockPhoneServer.java`, `BlockPhonePaper.java`,
+  `plugin.yml`, `FabricServerHandler.java`, `BlockPhoneVelocity.java`, `BlockPhoneBungee.java`.
 
 ## [0.9.16] — 2026-10-22 — Block Strike 1.1: 3D-оружие, свои звуки, прицел, покупка
 

@@ -48,7 +48,7 @@ public final class BlockPhoneVelocity implements ServerPlatform {
     private final ProxyServer proxy;
     private final Logger logger;
     private final Path dataDir;
-    private BlockPhoneServer core;
+    private volatile BlockPhoneServer core;
 
     @Inject
     public BlockPhoneVelocity(ProxyServer proxy, Logger logger, @DataDirectory Path dataDir) {
@@ -100,6 +100,42 @@ public final class BlockPhoneVelocity implements ServerPlatform {
 
     @Subscribe
     public void onInit(ProxyInitializeEvent event) {
+        core = new BlockPhoneServer(this, readSettings());
+        core.setAppsDirectory(dataDir.resolve("apps"));
+        core.start();
+        proxy.getChannelRegistrar().register(CHANNEL);
+        // /bpv reload (своё имя: /blockphone может быть занято плагином BlockPhone на сервере сети).
+        proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("bpv").aliases("blockphonevelocity").plugin(this).build(),
+                new com.velocitypowered.api.command.SimpleCommand() {
+                    @Override
+                    public void execute(Invocation invocation) {
+                        var source = invocation.source();
+                        String[] args = invocation.arguments();
+                        if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+                            source.sendMessage(net.kyori.adventure.text.Component.text("/bpv reload"));
+                            return;
+                        }
+                        if (!source.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+                            source.sendMessage(net.kyori.adventure.text.Component.text("No permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")"));
+                            return;
+                        }
+                        try {
+                            core = BlockPhoneServer.restart(core, BlockPhoneVelocity.this, readSettings());
+                            source.sendMessage(net.kyori.adventure.text.Component.text("BlockPhone: config reloaded"));
+                        } catch (RuntimeException e) {
+                            logger.warn("BlockPhone reload failed", e);
+                            source.sendMessage(net.kyori.adventure.text.Component.text("BlockPhone: reload failed — " + e.getMessage()));
+                        }
+                    }
+
+                    @Override
+                    public List<String> suggest(Invocation invocation) {
+                        return List.of("reload");
+                    }
+                });
+    }
+
+    private ServerSettings readSettings() {
         Config config = loadConfig();
         ServerSettings.Storage storage = new ServerSettings.Storage(config.storage.type, dataDir.resolve("messenger"),
                 config.storage.host, config.storage.port, config.storage.database, config.storage.user,
@@ -108,11 +144,8 @@ public final class BlockPhoneVelocity implements ServerPlatform {
                 ImageRef.PhotoPolicy.parse(config.social.photos), config.social.maxPhotoKb * 1024, config.social.maxPhotoSide,
                 config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
-        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
-        core.setAppsDirectory(dataDir.resolve("apps"));
-        core.start();
-        proxy.getChannelRegistrar().register(CHANNEL);
+        return new ServerSettings(config.messengerEnabled, true, storage, social,
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads);
     }
 
     @Subscribe

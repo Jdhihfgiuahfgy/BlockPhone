@@ -239,6 +239,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   главный поток сервера, слушатель выхода из группы — без типов SVC), `SvcBridge` (реализация на `VoicechatServerApi`: скрытые
   непостоянные группы с паролем, тип normal/isolated), `SvcPlugin` (плагин SVC: события старта/остановки сервера SVC и выхода из группы).
 
+**Перезагрузка настроек:** `BlockPhoneServer.restart(old, platform, settings)` (останавливает старое ядро, запускает новое,
+заново здоровается с игроками с модом); команды — Paper/Fabric `/blockphone reload`, Velocity `/bpv reload`, Bungee
+`/bpb reload`, право `BlockPhoneServer.RELOAD_PERMISSION` (`blockphone.admin.reload`, операторы/консоль).
+
 **Как добавить пакет:** record в `protocol/packet` → `register(<следующий id>, …)` в `Packets` →
 обработка на клиенте (`ClientNetwork.handle` → `MessengerClient`/`SocialClient`/…) и на сервере (`Backend.handle` → сервис;
 пакет попадает в сервис по классу-группе, в котором он объявлен). Платформы пакеты не разбирают.

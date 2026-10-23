@@ -9,3 +9,8 @@ description: Server side of the BlockPhone mod (messenger, posts, moderation)
 libraries:
   - com.h2database:h2:${h2_version}
   - org.mariadb.jdbc:mariadb-java-client:${mariadb_version}
+commands:
+  blockphone:
+    description: BlockPhone admin commands (reload)
+    usage: /<command> reload
+    aliases: [bphone]

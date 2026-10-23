@@ -73,6 +73,30 @@ public final class BlockPhoneServer {
         modded.clear();
     }
 
+    /** Право на команду {@code /blockphone reload} (по умолчанию — операторы и консоль). */
+    public static final String RELOAD_PERMISSION = "blockphone.admin.reload";
+
+    /**
+     * Перезагрузка настроек: старое ядро останавливается (база закрывается), новое запускается с новыми настройками,
+     * а игрокам с модом заново отправляется приветствие — телефон сбрасывает серверное состояние и здоровается снова.
+     * Вызывать в главном потоке платформы.
+     */
+    public static BlockPhoneServer restart(BlockPhoneServer old, ServerPlatform platform, ServerSettings settings) {
+        java.util.Set<UUID> players = old != null ? java.util.Set.copyOf(old.modded.keySet()) : java.util.Set.of();
+        java.nio.file.Path apps = old != null ? old.appsDir : null;
+        if (old != null) {
+            old.stop();
+        }
+        BlockPhoneServer next = new BlockPhoneServer(platform, settings);
+        next.setAppsDirectory(apps);
+        next.start();
+        for (UUID player : players) {
+            next.onChannelReady(player);
+        }
+        platform.info("BlockPhone config reloaded (" + players.size() + " players with the mod re-greeted)");
+        return next;
+    }
+
     /** Бэкенд с базой данных (null — мессенджер и лента выключены). */
     public Backend backend() {
         return backend;

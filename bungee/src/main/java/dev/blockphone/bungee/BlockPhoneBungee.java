@@ -35,7 +35,7 @@ import java.util.logging.Level;
 public final class BlockPhoneBungee extends Plugin implements Listener, ServerPlatform {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private BlockPhoneServer core;
+    private volatile BlockPhoneServer core;
 
     /** Настройки: plugins/BlockPhone/config.json (как у Velocity). */
     static final class Config {
@@ -79,6 +79,35 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
 
     @Override
     public void onEnable() {
+        core = new BlockPhoneServer(this, readSettings());
+        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
+        core.start();
+        getProxy().registerChannel(BlockPhone.CHANNEL);
+        getProxy().getPluginManager().registerListener(this, this);
+        // /bpb reload (своё имя: /blockphone может быть занято плагином BlockPhone на сервере сети).
+        getProxy().getPluginManager().registerCommand(this, new net.md_5.bungee.api.plugin.Command("bpb", null, "blockphonebungee") {
+            @Override
+            public void execute(net.md_5.bungee.api.CommandSender sender, String[] args) {
+                if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("/bpb reload"));
+                    return;
+                }
+                if (!sender.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("No permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")"));
+                    return;
+                }
+                try {
+                    core = BlockPhoneServer.restart(core, BlockPhoneBungee.this, readSettings());
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("BlockPhone: config reloaded"));
+                } catch (RuntimeException e) {
+                    getLogger().log(Level.WARNING, "BlockPhone reload failed", e);
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("BlockPhone: reload failed — " + e.getMessage()));
+                }
+            }
+        });
+    }
+
+    private ServerSettings readSettings() {
         Config config = loadConfig();
         Path dir = getDataFolder().toPath();
         ServerSettings.Storage storage = new ServerSettings.Storage(config.storage.type, dir.resolve("messenger"), config.storage.host,
@@ -86,12 +115,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled, ImageRef.PhotoPolicy.parse(config.social.photos),
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
         ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
-        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
-        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
-        core.start();
-        getProxy().registerChannel(BlockPhone.CHANNEL);
-        getProxy().getPluginManager().registerListener(this, this);
+        return new ServerSettings(config.messengerEnabled, true, storage, social,
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads);
     }
 
     @Override
