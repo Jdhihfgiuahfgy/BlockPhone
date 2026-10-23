@@ -32,6 +32,9 @@ public final class PhoneInHandLayer extends RenderLayer<AvatarRenderState, Playe
     private static final RenderStateDataKey<Boolean> HOLDING = RenderStateDataKey.create(() -> "blockphone:phone_in_hand");
     private static final Identifier TEXTURE = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "textures/entity/phone_in_hand.png");
     private static ModelPart phone;
+    /** Где телефон в кулаке (полупиксели от плеча вдоль руки) и насколько он уходит за кулак (по Z). */
+    private static final float PHONE_GRIP_Y = 18;
+    private static final float PHONE_GRIP_Z = 1;
 
     private PhoneInHandLayer(RenderLayerParent<AvatarRenderState, PlayerModel> parent) {
         super(parent);
@@ -85,8 +88,11 @@ public final class PhoneInHandLayer extends RenderLayer<AvatarRenderState, Playe
         }
         if (phone == null) {
             MeshDefinition mesh = new MeshDefinition();
-            // Размеры в полупикселях (поза уменьшена вдвое): 3×6×0.5 пикселя, лежит на ладони и выступает из кулака.
-            mesh.getRoot().addOrReplaceChild("phone", CubeListBuilder.create().texOffs(0, 0).addBox(-3, 14, -5, 6, 12, 1), PartPose.ZERO);
+            // Размеры в полупикселях (поза уменьшена вдвое): 3×6×0.5 пикселя. Коробка повёрнута на 90° вокруг X:
+            // телефон стоит в кулаке поперёк руки (длинная сторона — вверх, когда рука поднята), экран (+Z развёртки)
+            // смотрит к плечу, то есть на лицо игрока. Раньше телефон лежал плашмя вдоль руки.
+            mesh.getRoot().addOrReplaceChild("phone", CubeListBuilder.create().texOffs(0, 0).addBox(-3, -12, 0, 6, 12, 1),
+                    PartPose.offsetAndRotation(0, PHONE_GRIP_Y, PHONE_GRIP_Z, (float) (Math.PI / 2), 0, 0));
             phone = LayerDefinition.create(mesh, 32, 32).bakeRoot().getChild("phone");
         }
         pose.pushPose();
