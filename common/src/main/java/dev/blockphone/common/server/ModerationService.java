@@ -157,10 +157,6 @@ public final class ModerationService {
             fail(player, "no_permission", "");
             return;
         }
-        if (p.user().equals(player)) {
-            fail(player, "self", "");
-            return;
-        }
         if (!backend.users().userExists(p.user())) {
             fail(player, "user_not_found", "");
             return;

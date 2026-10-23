@@ -191,9 +191,17 @@ public final class SocialService {
 
     /** Можно ли игроку писать (посты, комментарии): право и не заглушён. Сам отправляет ошибку. */
     private boolean canWrite(UUID player) throws SQLException {
+        return canWrite(player, true);
+    }
+
+    /** checkMute = false — оформление своей страницы, «о себе», паблики: мут на них не действует. */
+    private boolean canWrite(UUID player, boolean checkMute) throws SQLException {
         if (!backend.has(player, Permission.POST)) {
             fail(player, "no_permission");
             return false;
+        }
+        if (!checkMute) {
+            return true;
         }
         long muted = mutedUntil(player);
         if (muted > 0) {
@@ -387,7 +395,7 @@ public final class SocialService {
             return;
         }
         bio = verdict.text();
-        if (!canWrite(player)) {
+        if (!canWrite(player, false)) {
             return;
         }
         repo.setBio(player, bio, System.currentTimeMillis());
@@ -468,7 +476,7 @@ public final class SocialService {
             fail(player, "no_permission");
             return;
         }
-        if (!canWrite(player)) {
+        if (!canWrite(player, false)) {
             return;
         }
         String error = checkPublicText(title, description, 0);
@@ -751,7 +759,8 @@ public final class SocialService {
             fail(player, "no_permission");
             return;
         }
-        if (p.user().equals(player) || !backend.users().userExists(p.user())) {
+        // Модератор может снять мут и с себя (и наказать себя — например, для проверки).
+        if (!backend.users().userExists(p.user())) {
             fail(player, "user_not_found");
             return;
         }
