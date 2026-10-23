@@ -506,6 +506,16 @@ public class PhoneScreen extends Screen {
         if (CallOverlay.mouseClicked(sx, sy)) {
             return true;
         }
+        // ПКМ мимо корпуса телефона — «назад» (если включено в настройках; закрывает и диалог).
+        if (event.button() == 1 && dev.blockphone.fabric.client.config.PhoneSettings.get().rightClickBack
+                && (sx < -PhoneLayout.BEZEL || sy < -PhoneLayout.BEZEL || sx >= screenW() + PhoneLayout.BEZEL || sy >= screenH() + PhoneLayout.BEZEL)) {
+            if (dialog != null) {
+                dialog = null;
+            } else {
+                back();
+            }
+            return true;
+        }
         if (dialog != null) {
             if (dialog.mouseClicked(sx, sy)) {
                 dialog = null;

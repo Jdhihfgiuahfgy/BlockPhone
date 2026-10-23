@@ -95,6 +95,108 @@ public final class Mp4Audio {
         Files.move(tmp, mp4, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
     }
 
+    /** Дорожка Opus из MP4: пакеты по порядку, число каналов и pre-skip (отсчёты 48 кГц). */
+    public record OpusTrack(List<byte[]> packets, int channels, int preSkip) {
+    }
+
+    /**
+     * Найти в MP4 звуковую дорожку Opus (так пишут «кружочки» BlockPhone и некоторые клиенты) и достать её пакеты
+     * (stsz + stsc + stco/co64). Нет такой дорожки — null.
+     */
+    public static @org.jetbrains.annotations.Nullable OpusTrack readOpus(Path mp4) throws IOException {
+        byte[] f = Files.readAllBytes(mp4);
+        int[] moov = child(f, 0, f.length, "moov");
+        if (moov == null) {
+            return null;
+        }
+        for (int pos = moov[0]; pos + 8 <= moov[1]; ) {
+            int size = (int) u32(f, pos);
+            if (size < 8 || pos + size > moov[1]) {
+                break;
+            }
+            if (new String(f, pos + 4, 4, StandardCharsets.US_ASCII).equals("trak")) {
+                OpusTrack t = opusTrack(f, pos + 8, pos + size);
+                if (t != null) {
+                    return t;
+                }
+            }
+            pos += size;
+        }
+        return null;
+    }
+
+    private static @org.jetbrains.annotations.Nullable OpusTrack opusTrack(byte[] f, int from, int to) {
+        int[] mdia = child(f, from, to, "mdia");
+        int[] minf = mdia != null ? child(f, mdia[0], mdia[1], "minf") : null;
+        int[] stbl = minf != null ? child(f, minf[0], minf[1], "stbl") : null;
+        int[] stsd = stbl != null ? child(f, stbl[0], stbl[1], "stsd") : null;
+        if (stsd == null || stsd[1] - stsd[0] < 16 || !new String(f, stsd[0] + 12, 4, StandardCharsets.US_ASCII).equals("Opus")) {
+            return null;
+        }
+        int entryStart = stsd[0] + 8;
+        int entryEnd = entryStart + (int) u32(f, entryStart);
+        int[] dops = child(f, entryStart + 8 + 28, entryEnd, "dOps");
+        int channels = dops != null ? Math.max(1, f[dops[0] + 1] & 0xFF) : 1;
+        int preSkip = dops != null ? ((f[dops[0] + 2] & 0xFF) << 8 | (f[dops[0] + 3] & 0xFF)) : 0;
+        int[] stsz = child(f, stbl[0], stbl[1], "stsz");
+        int[] stsc = child(f, stbl[0], stbl[1], "stsc");
+        int[] stco = child(f, stbl[0], stbl[1], "stco");
+        int[] co64 = stco == null ? child(f, stbl[0], stbl[1], "co64") : null;
+        if (stsz == null || stsc == null || (stco == null && co64 == null)) {
+            return null;
+        }
+        int fixed = (int) u32(f, stsz[0] + 4);
+        int count = (int) u32(f, stsz[0] + 8);
+        int[] chunkTable = stco != null ? stco : co64;
+        int chunks = (int) u32(f, chunkTable[0] + 4);
+        long[] offsets = new long[chunks];
+        for (int i = 0; i < chunks; i++) {
+            offsets[i] = stco != null ? u32(f, stco[0] + 8 + i * 4) : ByteBuffer.wrap(f, co64[0] + 8 + i * 8, 8).getLong();
+        }
+        int entries = (int) u32(f, stsc[0] + 4);
+        List<byte[]> packets = new java.util.ArrayList<>(count);
+        int sample = 0;
+        for (int e = 0; e < entries && sample < count; e++) {
+            int firstChunk = (int) u32(f, stsc[0] + 8 + e * 12) - 1;
+            int perChunk = (int) u32(f, stsc[0] + 8 + e * 12 + 4);
+            int lastChunk = e + 1 < entries ? (int) u32(f, stsc[0] + 8 + (e + 1) * 12) - 1 : chunks;
+            for (int c = firstChunk; c < lastChunk && c < chunks && sample < count; c++) {
+                long at = offsets[c];
+                for (int k = 0; k < perChunk && sample < count; k++, sample++) {
+                    int len = fixed != 0 ? fixed : (int) u32(f, stsz[0] + 12 + sample * 4);
+                    if (at < 0 || at + len > f.length) {
+                        return null;
+                    }
+                    packets.add(java.util.Arrays.copyOfRange(f, (int) at, (int) at + len));
+                    at += len;
+                }
+            }
+        }
+        return packets.isEmpty() ? null : new OpusTrack(packets, Math.min(2, channels), preSkip);
+    }
+
+    /** Содержимое (без заголовка) первого дочернего бокса type в [from, to) или null. */
+    private static int @org.jetbrains.annotations.Nullable [] child(byte[] f, int from, int to, String type) {
+        for (int pos = from; pos + 8 <= to; ) {
+            long size = u32(f, pos);
+            int header = 8;
+            if (size == 1 && pos + 16 <= to) {
+                size = ByteBuffer.wrap(f, pos + 8, 8).getLong();
+                header = 16;
+            } else if (size == 0) {
+                size = to - pos;
+            }
+            if (size < header || pos + size > to) {
+                return null;
+            }
+            if (new String(f, pos + 4, 4, StandardCharsets.US_ASCII).equals(type)) {
+                return new int[]{pos + header, (int) (pos + size)};
+            }
+            pos += (int) size;
+        }
+        return null;
+    }
+
     /** track_ID из tkhd внутри trak. */
     private static int trackId(byte[] trak) {
         for (int pos = 8; pos + 8 <= trak.length; ) {

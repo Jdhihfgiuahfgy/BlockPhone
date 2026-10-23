@@ -186,6 +186,27 @@ def phone_in_hand():
     return img
 
 
+
+def aa_shapes():
+    """Сглаженные формы для PhoneDraw: белый круг и «обратный» угол (белое снаружи круга), 256 px, с размытием (.mcmeta)."""
+    import numpy as np
+    size, ss = 256, 4
+    n = size * ss
+    c = (np.arange(n) + 0.5) / ss
+    xx, yy = np.meshgrid(c, c)
+    r = size / 2
+    inside = ((xx - r) ** 2 + (yy - r) ** 2 <= r * r).astype(np.float32)
+    cover = inside.reshape(size, ss, size, ss).mean(axis=(1, 3))
+    folder = os.path.join(ASSETS, "textures", "gui", "shape")
+    os.makedirs(folder, exist_ok=True)
+    for name, alpha in (("circle", cover), ("circle_inv", 1 - cover)):
+        rgba = np.zeros((size, size, 4), dtype=np.uint8)
+        rgba[..., :3] = 255
+        rgba[..., 3] = np.round(alpha * 255).astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(os.path.join(folder, name + ".png"))
+        with open(os.path.join(folder, name + ".png.mcmeta"), "w", encoding="utf-8") as f:
+            f.write('{"texture": {"blur": true, "clamp": true}}\n')
+
 def glyph_canvas():
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     return img, ImageDraw.Draw(img)
@@ -660,6 +681,7 @@ if __name__ == "__main__":
     for name, fn in reactions.items():
         save(fn(), os.path.join(ASSETS, "textures", "gui", "reaction"), name, 32)
     save(mod_icon(), ASSETS, "icon", 128)
+    aa_shapes()
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))
     os.makedirs(os.path.join(ASSETS, "textures", "entity"), exist_ok=True)

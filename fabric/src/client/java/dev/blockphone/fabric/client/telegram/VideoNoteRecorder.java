@@ -32,12 +32,12 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * «Кружочек» для Telegram из кадров игры: телефон закрывается, в центре экрана — красное кольцо и таймер.
- * Кадры берутся до отрисовки интерфейса (только мир), квадрат из середины, 400×400, 15 кадров/с, до 15 секунд;
+ * Кадры берутся до отрисовки интерфейса (только мир), квадрат из середины, 384×384, 15 кадров/с, до 15 секунд;
  * кодирование в MP4 — в отдельном потоке ({@link VideoNoteEncoder}). Клавиша телефона — отправить, меню (Esc) — отмена.
  */
 public final class VideoNoteRecorder {
-    /** Сторона кадра: 400 — как у «кружочков» официальных клиентов (было 320). */
-    public static final int SIZE = 400;
+    /** Сторона кадра: 384 — стандарт «кружочков» официальных клиентов (было 320; 400 — нестандартно). */
+    public static final int SIZE = 384;
     private static final int FPS = 30;
     private static final long MAX_MS = 60_000;
 
@@ -201,11 +201,14 @@ public final class VideoNoteRecorder {
             }
             short[] music = musicPcm != null ? musicPcm : new short[0];
             short[] track = soundtrack(voice, music, (int) ((long) frames * AudioTap.RATE / FPS));
+            BlockPhoneFabric.LOGGER.info("Video note sound: mic {} ({} samples, error {}), music {} samples, track {}",
+                    m != null, voice.length, m != null ? m.error() : null, music.length, track != null ? track.length : 0);
             if (track == null) {
                 return;
             }
             OggOpus.Encoded encoded = OggOpus.encodePackets(track, AudioTap.RATE, 64_000, false);
             Mp4Audio.addOpusTrack(out, encoded.packets(), encoded.preSkip());
+            BlockPhoneFabric.LOGGER.info("Video note sound: {} Opus packets added", encoded.packets().size());
         } catch (Exception e) {
             BlockPhoneFabric.LOGGER.warn("Video note sound failed (sending without sound)", e);
         }

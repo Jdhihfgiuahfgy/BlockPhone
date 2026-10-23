@@ -279,7 +279,8 @@ public final class SettingsApp extends PhoneApp {
                                 }, null, false),
                         new Row(() -> PhoneLang.tr("settings.lock_screen"),
                                 () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
-                                dir -> s.lockScreen = !s.lockScreen, null, false))));
+                                dir -> s.lockScreen = !s.lockScreen, null, false),
+                        toggle("settings.right_click_back", () -> s.rightClickBack, v -> s.rightClickBack = v))));
             }
             case LOOK -> result.add(new Section("settings.section.appearance", List.of(
                     new Row(() -> PhoneLang.tr("settings.theme"),

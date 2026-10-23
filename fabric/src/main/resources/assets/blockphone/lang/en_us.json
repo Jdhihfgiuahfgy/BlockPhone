@@ -1049,5 +1049,6 @@
   "telegram.read_only": "You can't send messages here",
   "telegram.volume": "Volume",
   "settings.telegram.media_volume": "Voice & video volume",
-  "telegram.calls_unavailable": "Telegram calls aren't available in game: TDLib doesn't carry call audio. Call from your phone or PC."
+  "telegram.calls_unavailable": "Telegram calls aren't available in game: TDLib doesn't carry call audio. Call from your phone or PC.",
+  "settings.right_click_back": "Right-click outside phone = Back"
 }

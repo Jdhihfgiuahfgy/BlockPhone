@@ -36,6 +36,8 @@ public final class PhoneSettings {
     public boolean gameTimeClock = false;
     /** Анимация выезда телефона. */
     public boolean animations = true;
+    /** ПКМ вне корпуса телефона — «назад» (как кнопка «назад»). */
+    public boolean rightClickBack = false;
     /** Громкость музыкального плеера 0..1 (умножается на общую громкость игры). */
     public float musicVolume = 0.7f;
     /** Показывать виджет «сейчас играет» на экране игры. */

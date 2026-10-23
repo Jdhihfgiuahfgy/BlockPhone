@@ -1049,5 +1049,6 @@
   "telegram.read_only": "Отправка сообщений запрещена",
   "telegram.volume": "Громкость",
   "settings.telegram.media_volume": "Громкость голосовых и видео",
-  "telegram.calls_unavailable": "Звонки Telegram в игре недоступны: библиотека TDLib не передаёт звук звонков. Позвоните с телефона или компьютера."
+  "telegram.calls_unavailable": "Звонки Telegram в игре недоступны: библиотека TDLib не передаёт звук звонков. Позвоните с телефона или компьютера.",
+  "settings.right_click_back": "ПКМ вне телефона — «назад»"
 }

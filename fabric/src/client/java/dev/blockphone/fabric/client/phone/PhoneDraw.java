@@ -55,11 +55,34 @@ public final class PhoneDraw {
         rawRoundedRect(g, x1, y1, x2, y2, Math.min(r, half), color);
     }
 
+    /** Сглаженные углы: белый круг и «обратный» круг 256×256 с линейной фильтрацией (gen_icons.py, aa_shapes). */
+    private static final net.minecraft.resources.Identifier CIRCLE = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+            dev.blockphone.common.BlockPhone.MOD_ID, "textures/gui/shape/circle.png");
+    private static final net.minecraft.resources.Identifier CIRCLE_INV = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+            dev.blockphone.common.BlockPhone.MOD_ID, "textures/gui/shape/circle_inv.png");
+    /** Углы и круги — гладкой текстурой (true) или «лесенкой» по единицам телефона (false). */
+    public static boolean smoothShapes = true;
+
+    /** Четыре четверти круга-текстуры в углах прямоугольника (радиус r) цветом color. */
+    private static void corners(GuiGraphics g, net.minecraft.resources.Identifier tex, int x1, int y1, int x2, int y2, int r, int color) {
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x1, y1, 0, 0, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x2 - r, y1, 128, 0, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x1, y2 - r, 0, 128, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x2 - r, y2 - r, 128, 128, r, r, 128, 128, 256, 256, color);
+    }
+
     /** Скругление ровно с радиусом r (без приведения к стилю) — для корпуса телефона. */
     public static void rawRoundedRect(GuiGraphics g, int x1, int y1, int x2, int y2, int r, int color) {
         r = Math.min(r, Math.min((x2 - x1) / 2, (y2 - y1) / 2));
         if (r <= 0) {
             g.fill(x1, y1, x2, y2, color);
+            return;
+        }
+        if (smoothShapes && r >= 2) {
+            g.fill(x1, y1 + r, x2, y2 - r, color);
+            g.fill(x1 + r, y1, x2 - r, y1 + r, color);
+            g.fill(x1 + r, y2 - r, x2 - r, y2, color);
+            corners(g, CIRCLE, x1, y1, x2, y2, r, color);
             return;
         }
         g.fill(x1, y1 + r, x2, y2 - r, color);
@@ -119,6 +142,10 @@ public final class PhoneDraw {
      * Так экран телефона получает скруглённые углы поверх любого содержимого.
      */
     public static void roundCornersMask(GuiGraphics g, int x1, int y1, int x2, int y2, int r, int color) {
+        if (smoothShapes && r >= 2) {
+            corners(g, CIRCLE_INV, x1, y1, x2, y2, Math.min(r, Math.min((x2 - x1) / 2, (y2 - y1) / 2)), color);
+            return;
+        }
         for (int i = 0; i < r; i++) {
             int inset = cornerInset(r, i);
             if (inset <= 0) {
