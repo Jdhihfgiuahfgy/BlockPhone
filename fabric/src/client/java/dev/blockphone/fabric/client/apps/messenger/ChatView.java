@@ -160,6 +160,23 @@ final class ChatView extends MessengerView {
         return "i";
     }
 
+    /** Как в Telegram: нажатие на название личного чата — профиль собеседника, группы — сведения о группе. */
+    @Override
+    boolean onTitleClick() {
+        ChatInfo chat = chat();
+        if (chat == null) {
+            return false;
+        }
+        if (chat.type() == ChatType.DIRECT) {
+            UserInfo partner = MessengerClient.partner(chat);
+            if (partner != null && app.openProfile(partner.uuid())) {
+                return true;
+            }
+        }
+        app.push(new ChatInfoView(app, chatId));
+        return true;
+    }
+
     @Override
     void onHeaderAction() {
         if (chat() != null) {
@@ -418,10 +435,63 @@ final class ChatView extends MessengerView {
         if (voice != null) {
             contentW = Math.max(contentW, VOICE_W);
         }
+        String forwarded = forwardLabel(m);
+        if (forwarded != null) {
+            contentW = Math.max(contentW, Math.min(maxTextWidth(), PhoneDraw.width(forwarded, SMALL)));
+        }
+        int postH = 0;
+        if (m != null && m.post() != null) {
+            contentW = Math.max(contentW, IMAGE_W);
+            postH = postHeight(m.post(), (int) Math.ceil(contentW)) + 3;
+        }
         int width = (int) Math.ceil(contentW) + PAD_X * 2;
         int height = PAD_Y * 2 + lines.size() * LINE_H + 6 + (name != null ? 7 : 0) + (image != null ? imageH + 3 : 0)
-                + (voice != null ? VOICE_H + 6 : 0);
+                + (voice != null ? VOICE_H + 6 : 0) + (forwarded != null ? 7 : 0) + postH;
         return new Item(m, p, null, lines, name, time, image, imageH, voice, width, height, own, null);
+    }
+
+    /** «Переслано от …» или null. */
+    private static String forwardLabel(MessageInfo m) {
+        return m != null && !m.deleted() && m.forwardedFrom() != null && !m.forwardedFrom().isEmpty()
+                ? MessengerApp.tr("messenger.forwarded_from", m.forwardedFrom()) : null;
+    }
+
+    private static final int POST_IMAGE_H = 54;
+
+    /** Карточка поста в сообщении: автор, до 4 строк текста, фото. */
+    private static int postHeight(dev.blockphone.common.protocol.data.MessengerData.PostShare post, int w) {
+        if (post.deleted()) {
+            return 14;
+        }
+        int textH = post.text().isEmpty() ? 0 : Math.min(4 * 7, PhoneDraw.wrappedHeight(post.text(), w - 8, SMALL)) + 2;
+        return 4 + 8 + textH + (post.image() != null ? POST_IMAGE_H + 2 : 0) + 3;
+    }
+
+    private void renderPost(GuiGraphics g, dev.blockphone.common.protocol.data.MessengerData.PostShare post, int x, int y, int w, boolean own) {
+        int h = postHeight(post, w);
+        int bg = own ? 0x30FFFFFF : PhoneTheme.accentTint(0x24);
+        int bar = own ? PhoneTheme.onAccent() : PhoneTheme.accent();
+        int fg = own ? PhoneTheme.onAccent() : PhoneTheme.text();
+        PhoneDraw.roundedRect(g, x, y, x + w, y + h, 4, bg);
+        g.fill(x, y + 2, x + 2, y + h - 2, bar);
+        if (post.deleted()) {
+            PhoneDraw.text(g, MessengerApp.tr("messenger.post_deleted"), x + 6, y + 4, fg, SMALL, false);
+            return;
+        }
+        PhoneDraw.text(g, PhoneDraw.ellipsize(post.author(), w - 10, SMALL), x + 6, y + 4, bar, SMALL, false);
+        int ty = y + 12;
+        if (!post.text().isEmpty()) {
+            int th = Math.min(4 * 7, PhoneDraw.wrappedHeight(post.text(), w - 8, SMALL));
+            g.enableScissor(x, ty, x + w, ty + th);
+            PhoneDraw.wrapped(g, post.text(), x + 6, ty, w - 8, fg, SMALL, false);
+            g.disableScissor();
+            ty += th + 2;
+        }
+        if (post.image() != null) {
+            Images.draw(g, post.image(), x + 6, ty, w - 10, POST_IMAGE_H, Images.THUMB);
+        }
+        long postId = post.postId();
+        stickerHits.add(new ButtonHit(x, y, w, h, () -> app.openPost(postId)));
     }
 
     private static int totalHeight(List<Item> items) {
@@ -491,7 +561,7 @@ final class ChatView extends MessengerView {
             int bx = width() - 16;
             boolean hover = PhoneDraw.inside(mouseX, mouseY, bx - 2, 0, 14, STATUS_H);
             PhoneDraw.tinted(g, CALL, bx, 1, 10, 10, 32, 32, hover ? PhoneTheme.online() : PhoneTheme.secondaryText());
-            buttons.add(new ButtonHit(bx - 2, 0, 14, STATUS_H, () -> CallClient.start(chatId)));
+            buttons.add(new ButtonHit(bx - 2, 0, 14, STATUS_H, this::startCall));
         }
         List<String> typing = MessengerClient.typing(chatId);
         String status;
@@ -542,15 +612,25 @@ final class ChatView extends MessengerView {
         int right = w - 4;
         if (mine) {
             right = callButton(g, right, top, MessengerApp.tr("call.leave"), PhoneTheme.danger(), mouseX, mouseY, () -> CallClient.leave(chatId));
+            right = callButton(g, right, top, MessengerApp.tr("call.menu"), PhoneTheme.accent(), mouseX, mouseY,
+                    () -> app.push(new CallView(app, chatId))) - 2;
         } else if (ringingMe) {
             right = callButton(g, right, top, MessengerApp.tr("call.decline"), PhoneTheme.danger(), mouseX, mouseY,
                     () -> CallClient.answer(chatId, false));
-            right = callButton(g, right, top, MessengerApp.tr("call.answer"), PhoneTheme.online(), mouseX, mouseY,
-                    () -> CallClient.answer(chatId, true));
+            right = callButton(g, right, top, MessengerApp.tr("call.answer"), PhoneTheme.online(), mouseX, mouseY, () -> {
+                CallClient.answer(chatId, true);
+                app.push(new CallView(app, chatId));
+            });
         } else if (ClientSession.callsAvailable()) {
-            right = callButton(g, right, top, MessengerApp.tr("call.join"), PhoneTheme.online(), mouseX, mouseY, () -> CallClient.start(chatId));
+            right = callButton(g, right, top, MessengerApp.tr("call.join"), PhoneTheme.online(), mouseX, mouseY, this::startCall);
         }
         PhoneDraw.text(g, PhoneDraw.ellipsize(text, right - 22, 0.6f), 20, top + 5, PhoneTheme.text(), 0.6f, false);
+    }
+
+    /** Позвонить (или войти в идущий звонок) и открыть меню звонка. */
+    private void startCall() {
+        CallClient.start(chatId);
+        app.push(new CallView(app, chatId));
     }
 
     /** Кнопка в полосе звонка (справа налево). Возвращает новую правую границу. */
@@ -636,6 +716,12 @@ final class ChatView extends MessengerView {
             PhoneDraw.text(g, item.name(), x + PAD_X, ty, color, SMALL, false);
             ty += 7;
         }
+        String forwarded = forwardLabel(item.message());
+        if (forwarded != null) {
+            int fwdColor = item.own() ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xD0000000 : PhoneTheme.accent();
+            PhoneDraw.text(g, PhoneDraw.ellipsize(forwarded, item.width() - PAD_X * 2, SMALL), x + PAD_X, ty, fwdColor, SMALL, false);
+            ty += 7;
+        }
         if (item.image() != null) {
             int iw = item.width() - PAD_X * 2;
             Images.draw(g, item.image(), x + PAD_X, ty + 1, iw, item.imageH(), Images.THUMB);
@@ -653,6 +739,10 @@ final class ChatView extends MessengerView {
             g.drawString(PhoneDraw.font(), line, 0, 0, textColor, false);
             g.pose().popMatrix();
             ty += LINE_H;
+        }
+        if (item.message() != null && item.message().post() != null && !deleted) {
+            renderPost(g, item.message().post(), x + PAD_X, ty + 1, item.width() - PAD_X * 2, item.own());
+            ty += postHeight(item.message().post(), item.width() - PAD_X * 2) + 3;
         }
         int timeColor = item.own() ? (PhoneTheme.onAccent() & 0x00FFFFFF) | 0xC0000000 : PhoneTheme.secondaryText();
         PhoneDraw.rightText(g, item.time(), x + item.width() - PAD_X, ty + 1, timeColor, SMALL);
@@ -787,7 +877,7 @@ final class ChatView extends MessengerView {
         int area = areaBottom() - areaTop();
         double max = Math.max(0, total - area);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(areaTop(), areaBottom(), scroll, max, true, v -> scroll = v);
+        Scrollbar.report(areaTop(), areaBottom(), scroll, max, true, v -> scroll = v, () -> scroll);
     }
 
     // --- Действия ---
@@ -827,6 +917,12 @@ final class ChatView extends MessengerView {
         }
         items.add(new MenuItem(MessengerApp.tr("messenger.copy"),
                 () -> Minecraft.getInstance().keyboardHandler.setClipboard(message.text()), false));
+        if (!message.deleted()) {
+            items.add(new MenuItem(MessengerApp.tr("messenger.forward"), () -> app.pickChat(MessengerApp.tr("messenger.forward_to"), to -> {
+                MessengerClient.forward(message.id(), to);
+                app.openChat(to);
+            }), false));
+        }
         if (own) {
             items.add(new MenuItem(MessengerApp.tr("dialog.delete"), () -> app.showDialog(PhoneDialog.confirmDelete(
                     MessengerApp.tr("messenger.delete_title"), MessengerApp.tr("messenger.delete_message"),
@@ -921,8 +1017,7 @@ final class ChatView extends MessengerView {
             return true;
         }
         if (y < STATUS_H && chat() != null) {
-            app.push(new ChatInfoView(app, chatId));
-            return true;
+            return onTitleClick();
         }
         if (button == 0) {
             for (VoiceHit hit : voiceHits) {

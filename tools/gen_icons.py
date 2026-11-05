@@ -186,6 +186,27 @@ def phone_in_hand():
     return img
 
 
+
+def aa_shapes():
+    """Сглаженные формы для PhoneDraw: белый круг и «обратный» угол (белое снаружи круга), 256 px, с размытием (.mcmeta)."""
+    import numpy as np
+    size, ss = 256, 4
+    n = size * ss
+    c = (np.arange(n) + 0.5) / ss
+    xx, yy = np.meshgrid(c, c)
+    r = size / 2
+    inside = ((xx - r) ** 2 + (yy - r) ** 2 <= r * r).astype(np.float32)
+    cover = inside.reshape(size, ss, size, ss).mean(axis=(1, 3))
+    folder = os.path.join(ASSETS, "textures", "gui", "shape")
+    os.makedirs(folder, exist_ok=True)
+    for name, alpha in (("circle", cover), ("circle_inv", 1 - cover)):
+        rgba = np.zeros((size, size, 4), dtype=np.uint8)
+        rgba[..., :3] = 255
+        rgba[..., 3] = np.round(alpha * 255).astype(np.uint8)
+        Image.fromarray(rgba, "RGBA").save(os.path.join(folder, name + ".png"))
+        with open(os.path.join(folder, name + ".png.mcmeta"), "w", encoding="utf-8") as f:
+            f.write('{"texture": {"blur": true, "clamp": true}}\n')
+
 def glyph_canvas():
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     return img, ImageDraw.Draw(img)
@@ -265,6 +286,29 @@ def glyph_clock():
     d.line([(128, 128), (128, 74)], fill=WHITE, width=14)
     d.line([(128, 128), (166, 150)], fill=WHITE, width=14)
     d.ellipse([116, 116, 140, 140], fill=WHITE)
+    return img
+
+
+def glyph_feedback():
+    img, d = glyph_canvas()
+    # Облачко сообщения с восклицательным знаком.
+    d.rounded_rectangle([36, 48, 220, 184], radius=36, outline=WHITE, width=16)
+    d.polygon([(78, 176), (62, 220), (122, 180)], fill=WHITE)
+    d.rounded_rectangle([118, 76, 138, 136], radius=10, fill=WHITE)
+    d.ellipse([116, 146, 140, 170], fill=WHITE)
+    return img
+
+
+def glyph_screens():
+    img, d = glyph_canvas()
+    # Экран на стене (рамка с «картинкой»-треугольником) и колонка справа снизу.
+    d.rounded_rectangle([28, 48, 186, 156], radius=14, outline=WHITE, width=16)
+    d.polygon([(90, 80), (90, 124), (128, 102)], fill=WHITE)
+    d.rectangle([92, 156, 122, 186], fill=WHITE)
+    d.rounded_rectangle([62, 182, 152, 198], radius=8, fill=WHITE)
+    d.rounded_rectangle([170, 112, 232, 224], radius=12, fill=WHITE)
+    d.ellipse([186, 160, 216, 190], fill=(0, 0, 0, 0))
+    d.ellipse([194, 126, 208, 140], fill=(0, 0, 0, 0))
     return img
 
 
@@ -520,23 +564,6 @@ def camera_noise():
     return img
 
 
-def mod_icon():
-    img = blank()
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([60, 8, 196, 248], radius=30, fill=hex_rgb(0x1B1B1F))
-    grad = gradient_square(0x1E3C72, 0x6A3093, radius=20).resize((120, 224))
-    mask = Image.new("L", (120, 224), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, 119, 223], radius=22, fill=255)
-    img.paste(grad, (68, 16), mask)
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([108, 22, 148, 32], radius=5, fill=hex_rgb(0x000000))
-    colors = [0x34C759, 0x5AC8FA, 0xFF9F0A, 0xFF2D55, 0xFFD60A, 0x8E8E93]
-    for i, c in enumerate(colors):
-        x, y = 80 + (i % 3) * 34, 60 + (i // 3) * 36
-        d.rounded_rectangle([x, y, x + 26, y + 26], radius=7, fill=hex_rgb(c))
-    return img
-
-
 # ---------------- Реакции Telegram (цветные 32x32, textures/gui/reaction/) ----------------
 
 YELLOW = hex_rgb(0xFFC93C)
@@ -630,7 +657,8 @@ if __name__ == "__main__":
         "messenger": glyph_messenger, "telegram": glyph_telegram, "camera": glyph_camera,
         "gallery": glyph_gallery, "music": glyph_music, "notes": glyph_notes,
         "calculator": glyph_calculator, "weather": glyph_weather, "settings": glyph_settings,
-        "feed": glyph_feed, "store": glyph_store, "clock": glyph_clock,
+        "feed": glyph_feed, "store": glyph_store, "clock": glyph_clock, "feedback": glyph_feedback,
+        "screens": glyph_screens,
     }
     for name, fn in glyphs.items():
         save(fn(), GLYPH_DIR, name)
@@ -659,7 +687,9 @@ if __name__ == "__main__":
                  "wow": reaction_wow, "sad": reaction_sad, "dislike": reaction_dislike, "party": reaction_party}
     for name, fn in reactions.items():
         save(fn(), os.path.join(ASSETS, "textures", "gui", "reaction"), name, 32)
-    save(mod_icon(), ASSETS, "icon", 128)
+    import gen_mod_icon  # иконка мода — tools/gen_mod_icon.py (вариант «Блок»)
+    gen_mod_icon.small(gen_mod_icon.variant_block()).save(gen_mod_icon.OUT)
+    aa_shapes()
     os.makedirs(os.path.join(ASSETS, "textures", "gui", "camera"), exist_ok=True)
     camera_noise().save(os.path.join(ASSETS, "textures", "gui", "camera", "noise.png"))
     os.makedirs(os.path.join(ASSETS, "textures", "entity"), exist_ok=True)

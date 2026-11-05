@@ -36,12 +36,18 @@ public final class PhoneSettings {
     public boolean gameTimeClock = false;
     /** Анимация выезда телефона. */
     public boolean animations = true;
+    /** ПКМ вне корпуса телефона — «назад» (как кнопка «назад»). */
+    public boolean rightClickBack = false;
     /** Громкость музыкального плеера 0..1 (умножается на общую громкость игры). */
     public float musicVolume = 0.7f;
     /** Показывать виджет «сейчас играет» на экране игры. */
     public boolean musicHud = true;
+    /** Останавливать музыку телефона при выходе с сервера или из мира. */
+    public boolean musicStopOnLeave = true;
     /** Оформление виджета музыки: card | compact | large | minimal | cover. */
     public String hudStyle = "card";
+    /** Совместное прослушивание: чем слушать гостю — auto | yandex | spotify. */
+    public String togetherVia = "auto";
     /** Угол/край экрана: top_left, top_center, top_right, middle_left, middle_right, bottom_left, bottom_center, bottom_right. */
     public String hudAnchor = "top_left";
     /** Отступ от края, пикселей интерфейса. */
@@ -59,16 +65,65 @@ public final class PhoneSettings {
     public boolean hudShowTime = false;
     /** Текущая строка текста песни под виджетом. */
     public boolean hudShowLyrics = false;
+    /** Если плеер телефона молчит — показывать в виджете, что играет на компьютере (Spotify, браузер…, только Windows). */
+    public boolean hudWindowsMedia = true;
     /** Показывать на паузе (иначе — только когда играет). */
     public boolean hudShowPaused = true;
     /** Экран блокировки с уведомлениями при открытии телефона (если он был закрыт дольше 15 секунд). */
     public boolean lockScreen = true;
+    /** Размер иконок рабочего стола, % (70..140; от него зависит число столбцов). */
+    public int homeIconScale = 100;
+    /** Подписи под иконками рабочего стола. */
+    public boolean homeLabels = true;
+    /** Порядок рабочего стола: id приложений и "folder:<id>" папок. Новые приложения добавляются в конец. */
+    public java.util.List<String> homeOrder = new java.util.ArrayList<>();
+    /** Папки рабочего стола: id → название и приложения. */
+    public java.util.Map<String, HomeFolder> homeFolders = new java.util.LinkedHashMap<>();
+    /** Встроенные приложения, убранные с рабочего стола (вернуть — меню рабочего стола). */
+    public java.util.List<String> homeHidden = new java.util.ArrayList<>();
+
+    public static final class HomeFolder {
+        public String name = "";
+        public java.util.List<String> apps = new java.util.ArrayList<>();
+    }
+
     /** Режим «на ходу»: телефон маленький в правом нижнем углу, можно ходить. */
     public boolean compactPhone = false;
+    /** Телефон «на ходу» повёрнут набок (удобно смотреть видео); клавиша `rotateKey`. */
+    public boolean compactLandscape = false;
+    /** Без рамки: рисуется только экран телефона, без корпуса (и обычный режим, и «на ходу»). */
+    public boolean frameless = false;
+    /** Показывать экраны других игроков (и слышать их колонки). */
+    public boolean screensOthers = true;
+    /** Громкость чужих экранов и колонок, %. */
+    public int screensOthersVolume = 80;
+    /** Настройки «Моей волны» Яндекса — seed настройки («settingDiversity:discover»; пусто — как решит Яндекс). */
+    public String yandexWaveDiversity = "";
+    public String yandexWaveMood = "";
+    public String yandexWaveLanguage = "";
+    /** Размер телефона «на ходу», % от обычного (60..160). */
+    public int compactSize = 100;
+    /** Место телефона «на ходу»: доля свободного места по горизонтали и вертикали (1, 1 — правый нижний угол). */
+    public float compactX = 1f;
+    public float compactY = 1f;
     /** Уведомления: все вкл/выкл, всплывающие окошки, центр уведомлений и экран блокировки, звук звонка. */
     /** Источники магазина приложений: ссылки на catalog.json (docs/APP_STORE.md). */
     public java.util.List<String> storeSources = new java.util.ArrayList<>();
     public boolean notifyAll = true;
+    /** Громкость звонков, % (0..200) и «звук выключен» (не слышать собеседников). */
+    public int callVolume = 200;
+    /** Громкость голосовых сообщений, видео и «кружочков», % (0..300). */
+    public int mediaVolume = 100;
+    public boolean callDeafened = false;
+    /** Усиление своего микрофона в звонке, % (0..400) и шумодав (приглушать фоновый шум). */
+    public int callMicGain = 150;
+    public boolean callNoiseSuppression = true;
+    /** Прокси Telegram: auto (если напрямую не подключается), custom (всегда свои), off (`telegram/TelegramProxy`). */
+    public String telegramProxy = "auto";
+    /** Игрок прочитал предупреждение «Telegram — тестовая функция» перед входом. */
+    public boolean telegramBetaAccepted;
+    /** Свои прокси Telegram: ссылки tg://proxy?…, https://t.me/proxy?…, socks5://…, http://…. */
+    public java.util.List<String> telegramProxies = new java.util.ArrayList<>();
     /** Звук в «кружочках» Telegram: микрофон и играющая музыка. */
     public boolean videoNoteMic = true;
     public boolean videoNoteMusic = true;

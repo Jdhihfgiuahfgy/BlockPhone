@@ -55,6 +55,22 @@ public final class PhoneDraw {
         rawRoundedRect(g, x1, y1, x2, y2, Math.min(r, half), color);
     }
 
+    /** Сглаженные углы: белый круг и «обратный» круг 256×256 с линейной фильтрацией (gen_icons.py, aa_shapes). */
+    private static final net.minecraft.resources.Identifier CIRCLE = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+            dev.blockphone.common.BlockPhone.MOD_ID, "textures/gui/shape/circle.png");
+    private static final net.minecraft.resources.Identifier CIRCLE_INV = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+            dev.blockphone.common.BlockPhone.MOD_ID, "textures/gui/shape/circle_inv.png");
+    /** Углы и круги — гладкой текстурой (true) или «лесенкой» по единицам телефона (false). */
+    public static boolean smoothShapes = true;
+
+    /** Четыре четверти круга-текстуры в углах прямоугольника (радиус r) цветом color. */
+    private static void corners(GuiGraphics g, net.minecraft.resources.Identifier tex, int x1, int y1, int x2, int y2, int r, int color) {
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x1, y1, 0, 0, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x2 - r, y1, 128, 0, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x1, y2 - r, 0, 128, r, r, 128, 128, 256, 256, color);
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x2 - r, y2 - r, 128, 128, r, r, 128, 128, 256, 256, color);
+    }
+
     /** Скругление ровно с радиусом r (без приведения к стилю) — для корпуса телефона. */
     public static void rawRoundedRect(GuiGraphics g, int x1, int y1, int x2, int y2, int r, int color) {
         r = Math.min(r, Math.min((x2 - x1) / 2, (y2 - y1) / 2));
@@ -62,11 +78,85 @@ public final class PhoneDraw {
             g.fill(x1, y1, x2, y2, color);
             return;
         }
+        if (smoothShapes && r >= 2) {
+            g.fill(x1, y1 + r, x2, y2 - r, color);
+            g.fill(x1 + r, y1, x2 - r, y1 + r, color);
+            g.fill(x1 + r, y2 - r, x2 - r, y2, color);
+            corners(g, CIRCLE, x1, y1, x2, y2, r, color);
+            return;
+        }
         g.fill(x1, y1 + r, x2, y2 - r, color);
         for (int i = 0; i < r; i++) {
             int inset = cornerInset(r, i);
             g.fill(x1 + inset, y1 + i, x2 - inset, y1 + i + 1, color);
             g.fill(x1 + inset, y2 - i - 1, x2 - inset, y2 - i, color);
+        }
+    }
+
+    /** Скруглённый прямоугольник с вертикальным градиентом (сверху top, снизу bottom) — без «рамки» на краях. */
+    public static void roundedGradient(GuiGraphics g, int x1, int y1, int x2, int y2, int r, int top, int bottom) {
+        int h = y2 - y1;
+        r = Math.min(r, Math.min((x2 - x1) / 2, h / 2));
+        if (r <= 0 || h <= 0) {
+            g.fillGradient(x1, y1, x2, y2, top, bottom);
+            return;
+        }
+        int midTop = PhoneTheme.mix(top, bottom, r / (float) h);
+        int midBottom = PhoneTheme.mix(top, bottom, (h - r) / (float) h);
+        g.fillGradient(x1, y1 + r, x2, y2 - r, midTop, midBottom);
+        if (smoothShapes && r >= 2) {
+            g.fillGradient(x1 + r, y1, x2 - r, y1 + r, top, midTop);
+            g.fillGradient(x1 + r, y2 - r, x2 - r, y2, midBottom, bottom);
+            int capTop = PhoneTheme.mix(top, bottom, r / 2f / h);
+            int capBottom = PhoneTheme.mix(top, bottom, (h - r / 2f) / h);
+            g.blit(RenderPipelines.GUI_TEXTURED, CIRCLE, x1, y1, 0, 0, r, r, 128, 128, 256, 256, capTop);
+            g.blit(RenderPipelines.GUI_TEXTURED, CIRCLE, x2 - r, y1, 128, 0, r, r, 128, 128, 256, 256, capTop);
+            g.blit(RenderPipelines.GUI_TEXTURED, CIRCLE, x1, y2 - r, 0, 128, r, r, 128, 128, 256, 256, capBottom);
+            g.blit(RenderPipelines.GUI_TEXTURED, CIRCLE, x2 - r, y2 - r, 128, 128, r, r, 128, 128, 256, 256, capBottom);
+            return;
+        }
+        for (int i = 0; i < r; i++) {
+            int inset = cornerInset(r, i);
+            g.fill(x1 + inset, y1 + i, x2 - inset, y1 + i + 1, PhoneTheme.mix(top, bottom, i / (float) h));
+            g.fill(x1 + inset, y2 - i - 1, x2 - inset, y2 - i, PhoneTheme.mix(top, bottom, (h - i - 1) / (float) h));
+        }
+    }
+
+    /**
+     * Картинка с обрезкой по центру (как {@link #textureCover}), вписанная в скруглённый прямоугольник радиуса r: углы
+     * срезаются построчно, под картинкой ничего не нужно закрашивать.
+     */
+    public static void textureCoverRounded(GuiGraphics g, Identifier texture, int x, int y, int w, int h, int texW, int texH, int r) {
+        r = Math.min(r, Math.min(w / 2, h / 2));
+        float target = w / (float) h;
+        float source = texW / (float) texH;
+        float u = 0;
+        float v = 0;
+        float rw = texW;
+        float rh = texH;
+        if (source > target) {
+            rw = texH * target;
+            u = (texW - rw) / 2f;
+        } else {
+            rh = texW / target;
+            v = (texH - rh) / 2f;
+        }
+        float kx = rw / w;
+        float ky = rh / h;
+        // Середина — одним куском, верх и низ — по строкам с отступом скругления.
+        g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y + r, u, v + r * ky, w, h - 2 * r,
+                Math.round(rw), Math.round((h - 2 * r) * ky), texW, texH);
+        for (int i = 0; i < r; i++) {
+            int inset = cornerInset(r, i);
+            int rowW = w - 2 * inset;
+            if (rowW <= 0) {
+                continue;
+            }
+            int regionW = Math.max(1, Math.round(rowW * kx));
+            int regionH = Math.max(1, Math.round(ky));
+            g.blit(RenderPipelines.GUI_TEXTURED, texture, x + inset, y + i, u + inset * kx, v + i * ky, rowW, 1, regionW, regionH, texW, texH);
+            g.blit(RenderPipelines.GUI_TEXTURED, texture, x + inset, y + h - 1 - i, u + inset * kx, v + (h - 1 - i) * ky, rowW, 1,
+                    regionW, regionH, texW, texH);
         }
     }
 
@@ -119,6 +209,10 @@ public final class PhoneDraw {
      * Так экран телефона получает скруглённые углы поверх любого содержимого.
      */
     public static void roundCornersMask(GuiGraphics g, int x1, int y1, int x2, int y2, int r, int color) {
+        if (smoothShapes && r >= 2) {
+            corners(g, CIRCLE_INV, x1, y1, x2, y2, Math.min(r, Math.min((x2 - x1) / 2, (y2 - y1) / 2)), color);
+            return;
+        }
         for (int i = 0; i < r; i++) {
             int inset = cornerInset(r, i);
             if (inset <= 0) {

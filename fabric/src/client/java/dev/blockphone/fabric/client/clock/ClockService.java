@@ -4,7 +4,6 @@ import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.phone.PhoneNotifications;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -160,8 +159,8 @@ public final class ClockService {
         ringing = text.isEmpty() ? title : title + " · " + text;
         ringStartedAt = System.currentTimeMillis();
         Minecraft mc = Minecraft.getInstance();
-        mc.getToastManager().addToast(SystemToast.multiline(mc, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                Component.literal(title), Component.literal(text.isEmpty() ? PhoneLang.tr("clock.open_to_stop") : text)));
+        dev.blockphone.fabric.client.compat.ClientCompat.systemToast(mc, Component.literal(title),
+                Component.literal(text.isEmpty() ? PhoneLang.tr("clock.open_to_stop") : text));
         PhoneNotifications.add("clock:" + ringStartedAt, "clock", title, text.isEmpty() ? PhoneLang.tr("clock.open_to_stop") : text, null,
                 phone -> phone.openApp("clock"));
     }

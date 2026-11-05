@@ -119,7 +119,7 @@ abstract class TgView {
 
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
-        Scrollbar.report((invertedScroll() ? viewport : height()) - viewport, invertedScroll() ? viewport : height(), scroll, Math.max(0, total - viewport), invertedScroll(), v -> scroll = v);
+        Scrollbar.report((invertedScroll() ? viewport : height()) - viewport, invertedScroll() ? viewport : height(), scroll, Math.max(0, total - viewport), invertedScroll(), v -> scroll = v, () -> scroll);
     }
 
     /** Прокрутка от низа (переписка). */

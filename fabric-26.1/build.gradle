@@ -1,0 +1,13 @@
+// Мод для Minecraft 26.1 – 26.1.2 (игра без обфускации, Java 25). Исходники — общие из модуля fabric (под 1.21.11),
+// с заменами имён, переименованных в 26.1 (portRenames), и «переходниками» из src/. Сборка — gradle/fabric-port.gradle.
+apply from: rootProject.file('gradle/port-renames.gradle')
+
+ext.portMinecraft = '26.1'
+ext.portMinecraftDep = '>=26.1 <26.2'
+ext.portFabricApi = '0.145.1+26.1'
+ext.portLoader = '0.19.5'
+ext.portUnobfuscated = true
+ext.portResourceLocation = false
+ext.portRenames = RENAMES_26_1
+ext.portRegex = REGEX_26_1
+apply from: rootProject.file('gradle/fabric-port.gradle')

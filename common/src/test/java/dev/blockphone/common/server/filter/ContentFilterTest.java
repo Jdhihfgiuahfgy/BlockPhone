@@ -97,4 +97,30 @@ class ContentFilterTest {
         assertTrue(f.mutedUntil(p, now + 3000) > now);
         assertEquals(0, f.mutedUntil(p, now + 2000 + 16 * 60_000L));
     }
+
+    /** Свои места у общего списка, ссылок и дополнительных правил. */
+    @org.junit.jupiter.api.Test
+    void placesAndRules() {
+        FilterSettings f = new FilterSettings();
+        f.words.blacklist = new java.util.ArrayList<>(java.util.List.of("плохо"));
+        f.words.where = new java.util.ArrayList<>(java.util.List.of("messages", "group_messages"));
+        FilterSettings.Rule ad = new FilterSettings.Rule();
+        ad.words = new java.util.ArrayList<>(java.util.List.of("*мойсервер*"));
+        ad.where = new java.util.ArrayList<>(java.util.List.of("posts"));
+        ad.action = "block";
+        f.rules.add(ad);
+        f.links.mode = "block";
+        f.links.where = new java.util.ArrayList<>(java.util.List.of("all"));
+        ContentFilter c = new ContentFilter(f);
+        // Мат: в личных и групповых — звёздочки, в постах — можно.
+        org.junit.jupiter.api.Assertions.assertEquals("это *****", c.check("это плохо", ContentFilter.Context.MESSAGE).text());
+        org.junit.jupiter.api.Assertions.assertEquals("это *****", c.check("это плохо", ContentFilter.Context.GROUP_MESSAGE).text());
+        org.junit.jupiter.api.Assertions.assertFalse(c.check("это плохо", ContentFilter.Context.POST).violation());
+        // Реклама: только в постах, и там — отказ.
+        org.junit.jupiter.api.Assertions.assertTrue(c.check("заходи на мойсервер", ContentFilter.Context.POST).blocked());
+        org.junit.jupiter.api.Assertions.assertFalse(c.check("заходи на мойсервер", ContentFilter.Context.MESSAGE).violation());
+        // Ссылки — везде.
+        org.junit.jupiter.api.Assertions.assertTrue(c.check("https://example.com", ContentFilter.Context.COMMENT).violation());
+        org.junit.jupiter.api.Assertions.assertTrue(c.check("https://example.com", ContentFilter.Context.MESSAGE).violation());
+    }
 }

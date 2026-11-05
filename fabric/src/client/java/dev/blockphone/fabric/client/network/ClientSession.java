@@ -82,6 +82,15 @@ public final class ClientSession {
         return session != null && session.callsAvailable();
     }
 
+    /** Игрок заблокирован в телефоне на этом сервере до этого времени (0 — нет). */
+    public static long bannedUntil() {
+        return session != null && session.bannedUntil() > System.currentTimeMillis() ? session.bannedUntil() : 0;
+    }
+
+    public static String banReason() {
+        return session != null ? session.banReason() : "";
+    }
+
     public static int openReports() {
         return session != null ? session.openReports() : 0;
     }
@@ -91,7 +100,8 @@ public final class ClientSession {
         SessionPacket s = session;
         if (s != null) {
             session = new SessionPacket(s.serverId(), s.socialEnabled(), s.photoPolicy(), s.maxPhotoBytes(), s.maxPhotoSide(),
-                    s.rights(), s.mutedUntil(), Math.max(0, count), s.maxVoiceSeconds(), s.callsAvailable());
+                    s.rights(), s.mutedUntil(), Math.max(0, count), s.maxVoiceSeconds(), s.callsAvailable(), s.bannedUntil(),
+                    s.banReason());
         }
     }
 

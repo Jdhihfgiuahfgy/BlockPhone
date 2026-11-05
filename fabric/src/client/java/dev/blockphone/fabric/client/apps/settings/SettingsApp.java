@@ -39,6 +39,7 @@ import java.util.function.Supplier;
 public final class SettingsApp extends PhoneApp {
     private static final List<String> LANGUAGES = List.of("auto", "ru_ru", "en_us");
     private static final int ROW_H = 20;
+    private static final int SLIDER_ROW_H = 30;
     private static final int MARGIN = 6;
 
     private enum Page { MAIN, GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT, ACCENT, WALLPAPER, HUD, APPS, NOTIFY, SOUND }
@@ -56,8 +57,31 @@ public final class SettingsApp extends PhoneApp {
         };
     }
 
-    /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. */
-    private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
+    /** Строка: подпись, значение, действие (+1 / -1). Без действия — только для чтения. С ползунком — выше, ползунок снизу. */
+    private record Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens, Slider slider) {
+        Row(Supplier<String> label, Supplier<String> value, IntConsumer action, Integer swatch, boolean opens) {
+            this(label, value, action, swatch, opens, null);
+        }
+
+        int height() {
+            return slider != null ? SLIDER_ROW_H : ROW_H;
+        }
+    }
+
+    /** Ползунок: целые значения min..max с шагом step (дробные настройки хранятся умноженными). */
+    private record Slider(int min, int max, int step, java.util.function.IntSupplier get, IntConsumer set) {
+        int snap(int value) {
+            int v = Math.max(min, Math.min(max, value));
+            return Math.max(min, Math.min(max, min + Math.round((v - min) / (float) step) * step));
+        }
+
+        float fraction() {
+            return max == min ? 0 : (get.getAsInt() - min) / (float) (max - min);
+        }
+    }
+
+    /** Область ползунка на экране (для перетаскивания). */
+    private record SliderHit(int x, int y, int w, int h, int trackX, int trackW, Slider slider) {
     }
 
     private record Section(String titleKey, List<Row> rows) {
@@ -68,7 +92,13 @@ public final class SettingsApp extends PhoneApp {
     }
 
     private final List<Hit> hits = new ArrayList<>();
+    private final List<SliderHit> sliderHits = new ArrayList<>();
+    /** Ползунок, который сейчас тянут мышью. */
+    private SliderHit dragging;
     private final TextArea hex = new TextArea(false, 0.85f);
+    /** Ссылка на прокси Telegram (страница TELEGRAM). */
+    private final TextArea proxyInput = new TextArea(false, 0.65f);
+    private String proxyError = "";
     private Page page = Page.MAIN;
     private double scroll;
     private boolean hexInvalid;
@@ -78,6 +108,8 @@ public final class SettingsApp extends PhoneApp {
     public SettingsApp() {
         super("settings");
         hex.setMaxLength(7);
+        proxyInput.setMaxLength(600);
+        proxyInput.setPlaceholder("tg://proxy?server=…&port=…&secret=…");
     }
 
     @Override
@@ -110,12 +142,13 @@ public final class SettingsApp extends PhoneApp {
 
     @Override
     public boolean capturesKeyboard() {
-        return hex.isFocused();
+        return hex.isFocused() || proxyInput.isFocused();
     }
 
     @Override
     public void onHidden() {
         hex.setFocused(false);
+        proxyInput.setFocused(false);
     }
 
     /** Открыть страницу настроек по имени: "main", "accent", "wallpaper" (для DevShots). */
@@ -133,6 +166,8 @@ public final class SettingsApp extends PhoneApp {
         page = next;
         scroll = 0;
         hex.setFocused(false);
+        proxyInput.setFocused(false);
+        proxyError = "";
         if (next == Page.ACCENT) {
             hex.setText(String.format(Locale.ROOT, "#%06X", PhoneTheme.accent() & 0xFFFFFF));
             hexInvalid = false;
@@ -242,9 +277,22 @@ public final class SettingsApp extends PhoneApp {
                                         dev.blockphone.fabric.client.phone.PhonePin.toggle(Minecraft.getInstance());
                                     }
                                 }, null, false),
+                        new Row(() -> PhoneLang.tr("settings.compact_rotate"),
+                                () -> PhoneLang.tr(PhoneSettings.get().compactLandscape ? "settings.compact_rotate.side" : "settings.compact_rotate.up")
+                                        + " · " + BlockPhoneClient.rotateKey.getTranslatedKeyMessage().getString(),
+                                dir -> dev.blockphone.fabric.client.phone.PhoneScreen.toggleCompactLandscape(), null, false),
+                        slider("settings.compact_size", () -> s.compactSize + "%", 60, 160, 5,
+                                () -> s.compactSize, v -> s.compactSize = v),
+                        new Row(() -> PhoneLang.tr("settings.compact_pos"),
+                                () -> PhoneLang.tr("settings.compact_pos.hint"),
+                                dir -> {
+                                    s.compactX = 1f;
+                                    s.compactY = 1f;
+                                }, null, false),
                         new Row(() -> PhoneLang.tr("settings.lock_screen"),
                                 () -> PhoneLang.tr(s.lockScreen ? "settings.on" : "settings.off"),
-                                dir -> s.lockScreen = !s.lockScreen, null, false))));
+                                dir -> s.lockScreen = !s.lockScreen, null, false),
+                        toggle("settings.right_click_back", () -> s.rightClickBack, v -> s.rightClickBack = v))));
             }
             case LOOK -> result.add(new Section("settings.section.appearance", List.of(
                     new Row(() -> PhoneLang.tr("settings.theme"),
@@ -255,14 +303,18 @@ public final class SettingsApp extends PhoneApp {
                             dir -> open(Page.ACCENT), PhoneTheme.accent(), true),
                     new Row(() -> PhoneLang.tr("settings.wallpaper"), SettingsApp::wallpaperName,
                             dir -> open(Page.WALLPAPER), null, true),
+                    toggle("settings.frameless", () -> s.frameless, v -> s.frameless = v),
                     new Row(() -> PhoneLang.tr("settings.animations"),
                             () -> PhoneLang.tr(s.animations ? "settings.on" : "settings.off"),
-                            dir -> s.animations = !s.animations, null, false))));
+                            dir -> s.animations = !s.animations, null, false),
+                    slider("settings.icon_size", () -> s.homeIconScale + "%", 70, 140, 5,
+                            () -> s.homeIconScale, v -> s.homeIconScale = v),
+                    toggle("settings.icon_labels", () -> s.homeLabels, v -> s.homeLabels = v))));
             case MUSIC -> {
                 result.add(new Section("settings.section.music", List.of(
-                        new Row(() -> PhoneLang.tr("settings.music_volume"),
-                                () -> Math.round(s.musicVolume * 100) + "%",
-                                dir -> s.musicVolume = Math.floorMod(Math.round(s.musicVolume * 10) + dir, 11) / 10f, null, false),
+                        slider("settings.music_volume", () -> Math.round(s.musicVolume * 100) + "%", 0, 100, 5,
+                                () -> Math.round(s.musicVolume * 100), v -> s.musicVolume = v / 100f),
+                        toggle("settings.music_stop_on_leave", () -> s.musicStopOnLeave, v -> s.musicStopOnLeave = v),
                         new Row(() -> PhoneLang.tr("settings.music_hud"),
                                 () -> PhoneLang.tr(s.musicHud ? "settings.hud.style." + s.hudStyle : "settings.off"),
                                 dir -> open(Page.HUD), null, true),
@@ -280,15 +332,12 @@ public final class SettingsApp extends PhoneApp {
                         new Row(() -> PhoneLang.tr("settings.hud.anchor"),
                                 () -> PhoneLang.tr("settings.hud.anchor." + s.remoteAnchor),
                                 dir -> s.remoteAnchor = cycle(MusicHud.ANCHORS, s.remoteAnchor, dir), null, false),
-                        new Row(() -> PhoneLang.tr("settings.hud.offset_x"),
-                                () -> String.valueOf(s.remoteOffsetX),
-                                dir -> s.remoteOffsetX = Math.floorMod(s.remoteOffsetX / 8 + dir, 41) * 8, null, false),
-                        new Row(() -> PhoneLang.tr("settings.hud.offset_y"),
-                                () -> String.valueOf(s.remoteOffsetY),
-                                dir -> s.remoteOffsetY = Math.floorMod(s.remoteOffsetY / 8 + dir, 41) * 8, null, false),
-                        new Row(() -> PhoneLang.tr("settings.hud.scale"),
-                                () -> s.remoteScale + "%",
-                                dir -> s.remoteScale = Math.floorMod((s.remoteScale - 50) / 10 + dir, 16) * 10 + 50, null, false))));
+                        slider("settings.hud.offset_x", () -> String.valueOf(s.remoteOffsetX), 0, 320, 2,
+                                () -> s.remoteOffsetX, v -> s.remoteOffsetX = v),
+                        slider("settings.hud.offset_y", () -> String.valueOf(s.remoteOffsetY), 0, 320, 2,
+                                () -> s.remoteOffsetY, v -> s.remoteOffsetY = v),
+                        slider("settings.hud.scale", () -> s.remoteScale + "%", 50, 200, 5,
+                                () -> s.remoteScale, v -> s.remoteScale = v))));
             }
             case LYRICS -> {
                 boolean world = !dev.blockphone.fabric.client.music.lyrics.LyricsHud.screenMode(s.lyricsMode);
@@ -305,12 +354,11 @@ public final class SettingsApp extends PhoneApp {
                                 dir -> s.lyricsSize = Math.floorMod(s.lyricsSize - 1 + dir, 4) + 1, null, false))));
                 List<Row> look = new ArrayList<>();
                 if (world) {
-                    look.add(new Row(() -> PhoneLang.tr("settings.lyrics_height"),
-                            () -> PhoneLang.tr("settings.lyrics_blocks_f", String.format(Locale.ROOT, "%.2f", s.lyricsHeight)),
-                            dir -> s.lyricsHeight = Math.floorMod(Math.round(s.lyricsHeight * 4) + dir, 13) / 4f, null, false));
-                    look.add(new Row(() -> PhoneLang.tr("settings.lyrics_distance"),
-                            () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance),
-                            dir -> s.lyricsDistance = Math.floorMod(s.lyricsDistance - 3 + dir, 28) + 3, null, false));
+                    look.add(slider("settings.lyrics_height",
+                            () -> PhoneLang.tr("settings.lyrics_blocks_f", String.format(Locale.ROOT, "%.2f", s.lyricsHeight)), 0, 300, 5,
+                            () -> Math.round(s.lyricsHeight * 100), v -> s.lyricsHeight = v / 100f));
+                    look.add(slider("settings.lyrics_distance", () -> PhoneLang.tr("settings.lyrics_blocks", s.lyricsDistance), 3, 30, 1,
+                            () -> s.lyricsDistance, v -> s.lyricsDistance = v));
                     look.add(new Row(() -> PhoneLang.tr("settings.lyrics_scatter"),
                             () -> PhoneLang.tr(s.lyricsScatter ? "settings.on" : "settings.off"),
                             dir -> s.lyricsScatter = !s.lyricsScatter, null, false));
@@ -326,10 +374,10 @@ public final class SettingsApp extends PhoneApp {
                         new Row(() -> PhoneLang.tr("settings.lyrics_unsynced"),
                                 () -> PhoneLang.tr(s.lyricsUnsynced ? "settings.on" : "settings.off"),
                                 dir -> s.lyricsUnsynced = !s.lyricsUnsynced, null, false),
-                        new Row(() -> PhoneLang.tr("settings.lyrics_offset"),
+                        slider("settings.lyrics_offset",
                                 () -> (s.lyricsOffsetMs > 0 ? "+" : "") + String.format(Locale.ROOT, "%.1f", s.lyricsOffsetMs / 1000f)
-                                        + PhoneLang.tr("settings.lyrics_seconds"),
-                                dir -> s.lyricsOffsetMs = Math.max(-3000, Math.min(3000, s.lyricsOffsetMs + dir * 250)), null, false),
+                                        + PhoneLang.tr("settings.lyrics_seconds"), -3000, 3000, 50,
+                                () -> s.lyricsOffsetMs, v -> s.lyricsOffsetMs = v),
                         new Row(() -> PhoneLang.tr("settings.lyrics_online"),
                                 () -> PhoneLang.tr(s.lyricsOnline ? "settings.on" : "settings.off"),
                                 dir -> {
@@ -338,6 +386,8 @@ public final class SettingsApp extends PhoneApp {
                                 }, null, false))));
             }
             case TELEGRAM -> result.add(new Section("settings.telegram.video_notes", List.of(
+                    slider("settings.telegram.media_volume", () -> s.mediaVolume + "%", 0, 300, 10,
+                            () -> s.mediaVolume, v -> s.mediaVolume = v),
                     toggle("settings.telegram.note_mic", () -> s.videoNoteMic, v -> s.videoNoteMic = v),
                     toggle("settings.telegram.note_music", () -> s.videoNoteMusic, v -> s.videoNoteMusic = v))));
             case ABOUT -> {
@@ -371,9 +421,11 @@ public final class SettingsApp extends PhoneApp {
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
         hits.clear();
+        sliderHits.clear();
         int bottom = switch (page) {
             case MAIN -> renderMenu(g, mouseX, mouseY);
-            case GENERAL, LOOK, MUSIC, LYRICS, TELEGRAM, ABOUT -> renderSections(g, mouseX, mouseY, pageSections(page), 4 - (int) scroll);
+            case GENERAL, LOOK, MUSIC, LYRICS, ABOUT -> renderSections(g, mouseX, mouseY, pageSections(page), 4 - (int) scroll);
+            case TELEGRAM -> renderTelegram(g, mouseX, mouseY);
             case ACCENT -> renderAccent(g, mouseX, mouseY);
             case WALLPAPER -> renderWallpapers(g, mouseX, mouseY);
             case HUD -> renderHud(g, mouseX, mouseY);
@@ -383,7 +435,78 @@ public final class SettingsApp extends PhoneApp {
         };
         double max = Math.max(0, bottom + (int) scroll - contentHeight() + 6);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v, () -> scroll);
+    }
+
+    // --- Telegram: прокси ---
+
+    /** Раздел Telegram: «кружочки» и прокси (режим, состояние, свои прокси, поле для ссылки). */
+    private int renderTelegram(GuiGraphics g, int mouseX, int mouseY) {
+        int w = contentWidth();
+        dev.blockphone.fabric.client.telegram.TelegramProxy.tick();
+        List<Section> sections = new ArrayList<>(pageSections(Page.TELEGRAM));
+        sections.add(new Section("settings.telegram.proxy", List.of(
+                new Row(() -> PhoneLang.tr("settings.telegram.proxy_mode"),
+                        () -> PhoneLang.tr("settings.telegram.proxy_mode." + dev.blockphone.fabric.client.telegram.TelegramProxy.mode()),
+                        dir -> dev.blockphone.fabric.client.telegram.TelegramProxy.setMode(
+                                cycle(dev.blockphone.fabric.client.telegram.TelegramProxy.MODES,
+                                        dev.blockphone.fabric.client.telegram.TelegramProxy.mode(), dir)), null, false))));
+        int y = renderSections(g, mouseX, mouseY, sections, 4 - (int) scroll);
+        String state = dev.blockphone.fabric.client.telegram.Telegram.running()
+                ? dev.blockphone.fabric.client.telegram.TelegramProxy.statusText() : PhoneLang.tr("settings.telegram.proxy_idle");
+        y += PhoneDraw.wrapped(g, state, MARGIN + 2, y - 4, w - 2 * MARGIN - 4, PhoneTheme.secondaryText(), 0.6f, false) + 2;
+        y += PhoneDraw.wrapped(g, PhoneLang.tr("settings.telegram.proxy_help"), MARGIN + 2, y, w - 2 * MARGIN - 4,
+                PhoneTheme.secondaryText(), 0.55f, false) + 6;
+        PhoneDraw.text(g, PhoneLang.tr("settings.telegram.proxy_mine").toUpperCase(PhoneClock.locale()), MARGIN + 2, y + 3,
+                PhoneTheme.secondaryText(), 0.6f, false);
+        y += 12;
+        List<String> mine = dev.blockphone.fabric.client.telegram.TelegramProxy.custom();
+        if (!mine.isEmpty()) {
+            PhoneDraw.card(g, MARGIN, y, w - MARGIN, y + mine.size() * ROW_H, false);
+            for (int i = 0; i < mine.size(); i++) {
+                String link = mine.get(i);
+                int ry = y + i * ROW_H;
+                if (i > 0) {
+                    g.fill(MARGIN + 6, ry, w - MARGIN - 6, ry + 1, PhoneTheme.separator());
+                }
+                var parsed = dev.blockphone.fabric.client.telegram.TelegramProxy.parse(link);
+                String label = parsed != null ? parsed.label() : link;
+                PhoneDraw.text(g, PhoneDraw.ellipsize(label, w - 2 * MARGIN - 30, 0.65f), MARGIN + 6, ry + 7, PhoneTheme.text(), 0.65f, false);
+                int bx = w - MARGIN - 20;
+                PhoneDraw.button(g, bx, ry + 3, 14, 14, "✕", mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER);
+                hits.add(new Hit(bx, ry + 3, 14, 14, dir -> {
+                    if (dir > 0) {
+                        dev.blockphone.fabric.client.telegram.TelegramProxy.removeCustom(link);
+                    }
+                }));
+            }
+            y += mine.size() * ROW_H + 6;
+        }
+        int addW = 54;
+        proxyInput.setBounds(MARGIN, y, w - 2 * MARGIN - addW - 4, 18);
+        proxyInput.render(g, mouseX, mouseY);
+        int ax = w - MARGIN - addW;
+        PhoneDraw.button(g, ax, y, addW, 18, PhoneLang.tr("settings.telegram.proxy_add"), mouseX, mouseY, PhoneDraw.ButtonStyle.PRIMARY);
+        hits.add(new Hit(ax, y, addW, 18, dir -> addProxy()));
+        y += 22;
+        if (!proxyError.isEmpty()) {
+            y += PhoneDraw.wrapped(g, proxyError, MARGIN + 2, y, w - 2 * MARGIN - 4, PhoneTheme.danger(), 0.6f, false) + 4;
+        }
+        return y + 6;
+    }
+
+    private void addProxy() {
+        String link = proxyInput.text().strip();
+        if (link.isEmpty()) {
+            return;
+        }
+        if (dev.blockphone.fabric.client.telegram.TelegramProxy.addCustom(link)) {
+            proxyInput.setText("");
+            proxyInput.setFocused(false);
+            proxyError = "";
+        } else {
+            proxyError = PhoneLang.tr("settings.telegram.proxy_bad");
+        }
     }
 
     // --- Виджет музыки ---
@@ -439,29 +562,22 @@ public final class SettingsApp extends PhoneApp {
                 new Row(() -> PhoneLang.tr("settings.hud.color"),
                         () -> PhoneLang.tr("settings.hud.color." + s.hudColor),
                         dir -> s.hudColor = cycle(MusicHud.COLORS, s.hudColor, dir), null, false),
-                new Row(() -> PhoneLang.tr("settings.hud.opacity"),
-                        () -> s.hudOpacity + "%",
-                        dir -> s.hudOpacity = Math.floorMod(s.hudOpacity / 10 + dir, 11) * 10, null, false),
-                new Row(() -> PhoneLang.tr("settings.hud.scale"),
-                        () -> s.hudScale + "%",
-                        dir -> s.hudScale = Math.floorMod((s.hudScale - 50) / 10 + dir, 16) * 10 + 50, null, false))));
+                slider("settings.hud.opacity", () -> s.hudOpacity + "%", 0, 100, 5, () -> s.hudOpacity, v -> s.hudOpacity = v),
+                slider("settings.hud.scale", () -> s.hudScale + "%", 50, 200, 5, () -> s.hudScale, v -> s.hudScale = v))));
         result.add(new Section("settings.hud.place", List.of(
                 new Row(() -> PhoneLang.tr("settings.hud.anchor"),
                         () -> PhoneLang.tr("settings.hud.anchor." + s.hudAnchor),
                         dir -> s.hudAnchor = cycle(MusicHud.ANCHORS, s.hudAnchor, dir), null, false),
-                new Row(() -> PhoneLang.tr("settings.hud.offset_x"),
-                        () -> String.valueOf(s.hudOffsetX),
-                        dir -> s.hudOffsetX = Math.floorMod(s.hudOffsetX / 4 + dir, 31) * 4, null, false),
-                new Row(() -> PhoneLang.tr("settings.hud.offset_y"),
-                        () -> String.valueOf(s.hudOffsetY),
-                        dir -> s.hudOffsetY = Math.floorMod(s.hudOffsetY / 4 + dir, 31) * 4, null, false))));
+                slider("settings.hud.offset_x", () -> String.valueOf(s.hudOffsetX), 0, 160, 1, () -> s.hudOffsetX, v -> s.hudOffsetX = v),
+                slider("settings.hud.offset_y", () -> String.valueOf(s.hudOffsetY), 0, 160, 1, () -> s.hudOffsetY, v -> s.hudOffsetY = v))));
         result.add(new Section("settings.hud.show", List.of(
                 toggle("settings.hud.cover", () -> s.hudShowCover, v -> s.hudShowCover = v),
                 toggle("settings.hud.artist", () -> s.hudShowArtist, v -> s.hudShowArtist = v),
                 toggle("settings.hud.progress", () -> s.hudShowProgress, v -> s.hudShowProgress = v),
                 toggle("settings.hud.time", () -> s.hudShowTime, v -> s.hudShowTime = v),
                 toggle("settings.hud.lyrics", () -> s.hudShowLyrics, v -> s.hudShowLyrics = v),
-                toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v))));
+                toggle("settings.hud.paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v),
+                toggle("settings.hud.pc_media", () -> s.hudWindowsMedia, v -> s.hudWindowsMedia = v))));
         result.add(new Section("settings.hud.reset_section", List.of(
                 new Row(() -> PhoneLang.tr("settings.hud.reset"), () -> "", dir -> resetHud(s), null, false))));
         return result;
@@ -492,10 +608,16 @@ public final class SettingsApp extends PhoneApp {
                         open(Page.SOUND);
                     }, null, true));
         }
-        sounds.add(new Row(() -> PhoneLang.tr("settings.sound.volume"), () -> s.soundVolume + "%",
-                dir -> s.soundVolume = Math.floorMod(s.soundVolume / 10 + dir, 11) * 10, null, false));
+        sounds.add(slider("settings.sound.volume", () -> s.soundVolume + "%", 0, 100, 5, () -> s.soundVolume, v -> s.soundVolume = v));
         result.add(new Section("settings.sound.section", sounds));
         return result;
+    }
+
+    /** Строка с ползунком; ЛКМ/ПКМ по строке без перетаскивания тоже работают (шаг вперёд/назад). */
+    private static Row slider(String key, Supplier<String> value, int min, int max, int step,
+                              java.util.function.IntSupplier get, IntConsumer set) {
+        Slider slider = new Slider(min, max, step, get, set);
+        return new Row(() -> PhoneLang.tr(key), value, dir -> set.accept(slider.snap(get.getAsInt() + dir * step)), null, false, slider);
     }
 
     private static Row toggle(String key, java.util.function.BooleanSupplier get, java.util.function.Consumer<Boolean> set) {
@@ -528,14 +650,21 @@ public final class SettingsApp extends PhoneApp {
                     PhoneTheme.secondaryText(), 0.6f, false);
             y += 12;
             int top = y;
-            int bottom = y + section.rows().size() * ROW_H;
+            int bottom = y;
+            for (Row row : section.rows()) {
+                bottom += row.height();
+            }
             PhoneDraw.card(g, MARGIN, top, w - MARGIN, bottom, false);
+            int ry = top;
             for (int i = 0; i < section.rows().size(); i++) {
                 Row row = section.rows().get(i);
-                int ry = top + i * ROW_H;
-                boolean hovered = row.action() != null && PhoneDraw.inside(mouseX, mouseY, MARGIN, ry, w - 2 * MARGIN, ROW_H);
+                if (i > 0) {
+                    ry += section.rows().get(i - 1).height();
+                }
+                int rh = row.height();
+                boolean hovered = row.action() != null && row.slider() == null && PhoneDraw.inside(mouseX, mouseY, MARGIN, ry, w - 2 * MARGIN, rh);
                 if (hovered) {
-                    g.fill(MARGIN + 1, ry + (i == 0 ? 1 : 0), w - MARGIN - 1, ry + ROW_H - (i == section.rows().size() - 1 ? 1 : 0),
+                    g.fill(MARGIN + 1, ry + (i == 0 ? 1 : 0), w - MARGIN - 1, ry + rh - (i == section.rows().size() - 1 ? 1 : 0),
                             PhoneTheme.cardHover());
                 }
                 if (i > 0) {
@@ -556,9 +685,14 @@ public final class SettingsApp extends PhoneApp {
                     int sx = (int) (valueRight - PhoneDraw.width(value, 0.75f)) - 12;
                     PhoneDraw.rawRoundedRect(g, sx, ry + 5, sx + 9, ry + 14, 2, row.swatch());
                 }
-                if (row.action() != null) {
+                if (row.slider() != null) {
+                    int tx = MARGIN + 10;
+                    int tw = w - 2 * MARGIN - 20;
+                    drawSlider(g, row.slider(), tx, ry + 21, tw, mouseX, mouseY);
+                    sliderHits.add(new SliderHit(MARGIN, ry, w - 2 * MARGIN, rh, tx, tw, row.slider()));
+                } else if (row.action() != null) {
                     IntConsumer action = row.action();
-                    hits.add(new Hit(MARGIN, ry, w - 2 * MARGIN, ROW_H, dir -> {
+                    hits.add(new Hit(MARGIN, ry, w - 2 * MARGIN, rh, dir -> {
                         action.accept(dir);
                         save();
                     }));
@@ -567,6 +701,30 @@ public final class SettingsApp extends PhoneApp {
             y = bottom + 8;
         }
         return y;
+    }
+
+    /** Дорожка (заполнена акцентом до значения) и круглая ручка. */
+    private void drawSlider(GuiGraphics g, Slider slider, int x, int y, int w, int mouseX, int mouseY) {
+        float f = Math.max(0, Math.min(1, slider.fraction()));
+        int knob = x + Math.round(w * f);
+        PhoneDraw.rawRoundedRect(g, x, y - 1, x + w, y + 2, 1, PhoneTheme.field());
+        if (knob > x) {
+            PhoneDraw.rawRoundedRect(g, x, y - 1, knob, y + 2, 1, PhoneTheme.accent());
+        }
+        boolean active = dragging != null && dragging.slider() == slider
+                || PhoneDraw.inside(mouseX, mouseY, knob - 6, y - 6, 12, 12);
+        int r = active ? 5 : 4;
+        PhoneDraw.rawRoundedRect(g, knob - r, y + 0 - r + 1, knob + r, y + r + 1, r, active ? PhoneTheme.accentHover() : PhoneTheme.accent());
+        PhoneDraw.rawRoundedRect(g, knob - 2, y - 1, knob + 2, y + 3, 2, PhoneTheme.onAccent());
+    }
+
+    private void dragSlider(SliderHit hit, double x) {
+        Slider s = hit.slider();
+        float f = (float) Math.max(0, Math.min(1, (x - hit.trackX()) / Math.max(1, hit.trackW())));
+        int value = s.snap(Math.round(s.min() + f * (s.max() - s.min())));
+        if (value != s.get().getAsInt()) {
+            s.set().accept(value);
+        }
     }
 
     // --- Акцентный цвет ---
@@ -795,7 +953,8 @@ public final class SettingsApp extends PhoneApp {
         }
         for (dev.blockphone.common.apps.AppDefinition app : apps) {
             int top = y;
-            int h = 62;
+            boolean hasUid = !app.uid().isEmpty();
+            int h = hasUid ? 74 : 62;
             PhoneDraw.card(g, MARGIN, top, w - MARGIN, top + h, false);
             dev.blockphone.fabric.client.phone.AppRegistry.Entry entry = dev.blockphone.fabric.client.phone.AppRegistry.get(dev.blockphone.fabric.client.apps.custom.CustomApps.PREFIX + app.id());
             if (entry != null) {
@@ -823,7 +982,15 @@ public final class SettingsApp extends PhoneApp {
             boolean hover = PhoneDraw.inside(mouseX, mouseY, MARGIN, top + 44, w - 2 * MARGIN, 16);
             PhoneDraw.text(g, PhoneDraw.ellipsize(hash, w - 2 * MARGIN - 12, 0.5f), MARGIN + 6, top + 48,
                     hover ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.5f, false);
-            hits.add(new Hit(MARGIN, top + 44, w - 2 * MARGIN, 16, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(hash)));
+            hits.add(new Hit(MARGIN, top + 44, w - 2 * MARGIN, 14, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(hash)));
+            if (hasUid) {
+                // Уникальный id из магазина — им админ сервера разрешает/блокирует приложение (нажатие — копировать).
+                String uid = "uid:" + app.uid();
+                boolean uidHover = PhoneDraw.inside(mouseX, mouseY, MARGIN, top + 58, w - 2 * MARGIN, 14);
+                PhoneDraw.text(g, PhoneDraw.ellipsize(uid, w - 2 * MARGIN - 12, 0.55f), MARGIN + 6, top + 61,
+                        uidHover ? PhoneTheme.accent() : PhoneTheme.text(), 0.55f, false);
+                hits.add(new Hit(MARGIN, top + 58, w - 2 * MARGIN, 14, dir -> Minecraft.getInstance().keyboardHandler.setClipboard(uid)));
+            }
             y += h + 6;
         }
         List<String> errors = dev.blockphone.fabric.client.apps.custom.CustomApps.errors();
@@ -865,8 +1032,24 @@ public final class SettingsApp extends PhoneApp {
         if (page == Page.ACCENT && hex.mouseClicked(mx, my, button)) {
             return true;
         }
+        if (page == Page.TELEGRAM && proxyInput.mouseClicked(mx, my, button)) {
+            return true;
+        }
         if (button != 0 && button != 1) {
             return false;
+        }
+        for (SliderHit hit : List.copyOf(sliderHits)) {
+            if (PhoneDraw.inside(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) {
+                if (button == 0) {
+                    dragging = hit;
+                    dragSlider(hit, mx);
+                } else {
+                    Slider s = hit.slider();
+                    s.set().accept(s.snap(s.get().getAsInt() - s.step()));
+                    save();
+                }
+                return true;
+            }
         }
         for (Hit hit : List.copyOf(hits)) {
             if (PhoneDraw.inside(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) {
@@ -893,21 +1076,40 @@ public final class SettingsApp extends PhoneApp {
             applyHex();
             return true;
         }
+        if (page == Page.TELEGRAM && proxyInput.isFocused()) {
+            if (event.key() == GLFW.GLFW_KEY_ENTER || event.key() == GLFW.GLFW_KEY_KP_ENTER) {
+                addProxy();
+                return true;
+            }
+            return proxyInput.keyPressed(event);
+        }
         return page == Page.ACCENT && hex.keyPressed(event);
     }
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        if (page == Page.TELEGRAM && proxyInput.isFocused()) {
+            return proxyInput.charTyped(event);
+        }
         return page == Page.ACCENT && hex.charTyped(event);
     }
 
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+        if (dragging != null) {
+            dragSlider(dragging, x);
+            return true;
+        }
         return page == Page.ACCENT && hex.mouseDragged(x, y);
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
+        if (dragging != null) {
+            dragging = null;
+            save();
+            return true;
+        }
         return page == Page.ACCENT && hex.mouseReleased();
     }
 }

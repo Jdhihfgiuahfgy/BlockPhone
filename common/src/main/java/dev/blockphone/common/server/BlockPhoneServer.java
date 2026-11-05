@@ -6,6 +6,8 @@ import dev.blockphone.common.protocol.Packets;
 import dev.blockphone.common.protocol.ProtocolException;
 import dev.blockphone.common.protocol.packet.ClientHelloPacket;
 import dev.blockphone.common.protocol.packet.AppPackets;
+import dev.blockphone.common.protocol.packet.ImagePackets;
+import dev.blockphone.common.protocol.packet.VoicePackets;
 import dev.blockphone.common.protocol.packet.PhoneUsePackets;
 import dev.blockphone.common.protocol.packet.ServerHelloPacket;
 
@@ -27,8 +29,11 @@ public final class BlockPhoneServer {
     private final Backend backend;
     /** Игроки, приславшие ClientHello с совместимой версией: UUID → ник. */
     private final Map<UUID, String> modded = new ConcurrentHashMap<>();
+    private final FloodGuard flood = new FloodGuard();
     /** Кто сейчас с телефоном в руках (для «телефона в руке» у других). */
     private final java.util.Set<UUID> phoneUsers = ConcurrentHashMap.newKeySet();
+    /** Кто держит телефон набок (двумя руками). */
+    private final java.util.Set<UUID> phoneSideways = ConcurrentHashMap.newKeySet();
     private final AppService apps;
     private java.nio.file.Path appsDir;
 
@@ -73,6 +78,30 @@ public final class BlockPhoneServer {
         modded.clear();
     }
 
+    /** Право на команду {@code /blockphone reload} (по умолчанию — операторы и консоль). */
+    public static final String RELOAD_PERMISSION = "blockphone.admin.reload";
+
+    /**
+     * Перезагрузка настроек: старое ядро останавливается (база закрывается), новое запускается с новыми настройками,
+     * а игрокам с модом заново отправляется приветствие — телефон сбрасывает серверное состояние и здоровается снова.
+     * Вызывать в главном потоке платформы.
+     */
+    public static BlockPhoneServer restart(BlockPhoneServer old, ServerPlatform platform, ServerSettings settings) {
+        java.util.Set<UUID> players = old != null ? java.util.Set.copyOf(old.modded.keySet()) : java.util.Set.of();
+        java.nio.file.Path apps = old != null ? old.appsDir : null;
+        if (old != null) {
+            old.stop();
+        }
+        BlockPhoneServer next = new BlockPhoneServer(platform, settings);
+        next.setAppsDirectory(apps);
+        next.start();
+        for (UUID player : players) {
+            next.onChannelReady(player);
+        }
+        platform.info("BlockPhone config reloaded (" + players.size() + " players with the mod re-greeted)");
+        return next;
+    }
+
     /** Бэкенд с базой данных (null — мессенджер и лента выключены). */
     public Backend backend() {
         return backend;
@@ -98,8 +127,10 @@ public final class BlockPhoneServer {
     }
 
     public void onQuit(UUID player) {
+        flood.forget(player);
+        phoneSideways.remove(player);
         if (phoneUsers.remove(player)) {
-            broadcastPhoneUse(player, false);
+            broadcastPhoneUse(player, false, false);
         }
         if (modded.remove(player) != null && backend != null) {
             backend.onQuit(player);
@@ -112,11 +143,29 @@ public final class BlockPhoneServer {
 
     /** Байты из канала blockphone:main от игрока. */
     public void onMessage(UUID player, String name, byte[] data) {
+        long now = System.currentTimeMillis();
         Packet packet;
         try {
             packet = Packets.decode(data);
         } catch (ProtocolException | IndexOutOfBoundsException e) {
-            platform.warn("Bad packet from " + name + ": " + e.getMessage(), null);
+            flood.allow(player, now); // испорченный пакет тоже засчитывается
+            int skipped = flood.logSlot(player, now);
+            if (skipped >= 0) {
+                platform.warn("Bad packet from " + name + ": " + e.getMessage()
+                        + (skipped > 0 ? " (+" + skipped + " more, not logged)" : ""), null);
+            }
+            return;
+        }
+        // Куски загрузок и звук звонка идут часто, но у них свои пределы (размер, частота) — их общий лимит не считает.
+        boolean bulk = packet instanceof ImagePackets.UploadChunk || packet instanceof VoicePackets.UploadChunk
+                || packet instanceof VoicePackets.CallAudio;
+        if (!bulk && !flood.allow(player, now)) {
+            int skipped = flood.logSlot(player, now);
+            if (skipped >= 0) {
+                platform.warn(name + " sends too many BlockPhone packets (over " + FloodGuard.LIMIT + " per "
+                        + FloodGuard.WINDOW_MS / 1000 + " s), extra ones are dropped"
+                        + (skipped > 0 ? " (+" + skipped + " more warnings)" : ""), null);
+            }
             return;
         }
         if (packet instanceof ClientHelloPacket hello) {
@@ -131,7 +180,7 @@ public final class BlockPhoneServer {
             }
             if (settings.phoneInHandVisible()) {
                 for (UUID user : phoneUsers) {
-                    platform.send(player, Packets.encode(new PhoneUsePackets.State(user, true)));
+                    platform.send(player, Packets.encode(new PhoneUsePackets.State(user, true, phoneSideways.contains(user))));
                 }
             }
             if (backend != null) {
@@ -147,9 +196,13 @@ public final class BlockPhoneServer {
             return;
         }
         if (packet instanceof PhoneUsePackets.InUse use) {
-            if (modded.containsKey(player) && settings.phoneInHandVisible()
-                    && (use.using() ? phoneUsers.add(player) : phoneUsers.remove(player))) {
-                broadcastPhoneUse(player, use.using());
+            if (modded.containsKey(player) && settings.phoneInHandVisible()) {
+                boolean changed = use.using() ? phoneUsers.add(player) : phoneUsers.remove(player);
+                boolean sideways = use.using() && use.sideways();
+                changed |= sideways ? phoneSideways.add(player) : phoneSideways.remove(player);
+                if (changed) {
+                    broadcastPhoneUse(player, use.using(), sideways);
+                }
             }
             return;
         }
@@ -159,8 +212,8 @@ public final class BlockPhoneServer {
     }
 
     /** Разослать всем игрокам с модом (кроме самого игрока), что он взял/убрал телефон. */
-    private void broadcastPhoneUse(UUID player, boolean using) {
-        byte[] data = Packets.encode(new PhoneUsePackets.State(player, using));
+    private void broadcastPhoneUse(UUID player, boolean using, boolean sideways) {
+        byte[] data = Packets.encode(new PhoneUsePackets.State(player, using, sideways));
         for (UUID other : modded.keySet()) {
             if (!other.equals(player)) {
                 platform.send(other, data);

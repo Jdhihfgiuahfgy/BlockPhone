@@ -221,8 +221,63 @@ public final class ImageOps {
 
     // --- Файлы и текстуры ---
 
+    /** Наибольшая сторона и число пикселей картинки, которую телефон согласен раскодировать (защита от «бомб»). */
+    public static final int MAX_SIDE = 8192;
+    public static final long MAX_PIXELS = 40_000_000L;
+
+    /**
+     * Раскодировать картинку, сначала прочитав только размер из заголовка: файл в несколько килобайт может объявить
+     * 50000×50000 пикселей и при раскодировании занять гигабайты памяти (игра упала бы с OutOfMemoryError).
+     */
+    public static BufferedImage readImage(javax.imageio.stream.ImageInputStream in, String what) throws IOException {
+        if (in == null) {
+            throw new IOException("Cannot read " + what);
+        }
+        try (in) {
+            java.util.Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) {
+                throw new IOException("Unsupported image " + what);
+            }
+            javax.imageio.ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                checkSize(reader.getWidth(0), reader.getHeight(0), what);
+                return reader.read(0);
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    public static BufferedImage readImage(byte[] data, String what) throws IOException {
+        return readImage(ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(data)), what);
+    }
+
+    /** Проверить размер картинки по заголовку (для NativeImage.read — он раскодирует всё сразу). */
+    public static void checkSize(byte[] data, String what) throws IOException {
+        try (javax.imageio.stream.ImageInputStream in = ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(data))) {
+            java.util.Iterator<javax.imageio.ImageReader> readers = in == null ? null : ImageIO.getImageReaders(in);
+            if (readers == null || !readers.hasNext()) {
+                throw new IOException("Unsupported image " + what);
+            }
+            javax.imageio.ImageReader reader = readers.next();
+            try {
+                reader.setInput(in, true, true);
+                checkSize(reader.getWidth(0), reader.getHeight(0), what);
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    private static void checkSize(int w, int h, String what) throws IOException {
+        if (w <= 0 || h <= 0 || w > MAX_SIDE || h > MAX_SIDE || (long) w * h > MAX_PIXELS) {
+            throw new IOException("Image too large (" + w + "x" + h + "): " + what);
+        }
+    }
+
     public static Picture read(Path file) throws IOException {
-        BufferedImage image = ImageIO.read(file.toFile());
+        BufferedImage image = readImage(ImageIO.createImageInputStream(file.toFile()), file.toString());
         if (image == null) {
             throw new IOException("Unsupported image " + file);
         }

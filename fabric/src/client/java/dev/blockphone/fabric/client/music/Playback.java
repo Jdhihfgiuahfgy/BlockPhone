@@ -126,7 +126,9 @@ final class Playback implements Runnable {
                     phase = Phase.FINISHED;
                     return;
                 }
-                float gain = MusicPlayer.gain();
+                // Колонки телефона: копия до громкости игры; если музыка идёт только из колонок — «в ушах» тишина.
+                dev.blockphone.fabric.client.screens.PhoneSpeakers.feed(samples, n, channels, rate);
+                float gain = dev.blockphone.fabric.client.screens.PhoneSpeakers.muteLocal() ? 0 : MusicPlayer.gain();
                 for (int i = 0; i < n; i++) {
                     int v = Math.round(samples[i] * gain);
                     samples[i] = (short) v;

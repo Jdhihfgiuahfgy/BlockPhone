@@ -32,6 +32,8 @@ public final class PhotoMeta {
     public int height;
     /** Фото изменено в редакторе галереи. */
     public boolean edited;
+    /** Картинка с компьютера: имя исходного файла (null — снимок камеры). */
+    public String importedFrom;
     /** Имя исходного файла, если это отредактированная копия. */
     public String editedFrom;
 
@@ -57,6 +59,7 @@ public final class PhotoMeta {
         m.height = height;
         m.edited = edited;
         m.editedFrom = editedFrom;
+        m.importedFrom = importedFrom;
         return m;
     }
 }

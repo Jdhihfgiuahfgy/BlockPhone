@@ -1,0 +1,13 @@
+# Свой сервер комнат для сетевой игры в приложении BlockPhone. Поменяйте name на своё и выполните: wrangler deploy
+name = "my-blockphone-relay"
+main = "worker.js"
+compatibility_date = "2026-10-21"
+preview_urls = false
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayRoom"]

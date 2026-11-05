@@ -60,6 +60,20 @@ public final class MessengerApp extends PhoneApp {
         }
     }
 
+    /** Открыт список чатов (корень вкладки «Чаты»). */
+    public boolean atRoot() {
+        return stack.size() == 1;
+    }
+
+    /** «Мои стикеры» поверх списка чатов. */
+    public void openStickers() {
+        view().onHidden();
+        while (stack.size() > 1) {
+            stack.pop();
+        }
+        push(new StickersView(this));
+    }
+
     /** Для автоскриншотов: «Мои стикеры». */
     public void debugStickers() {
         push(new StickersView(this));
@@ -109,6 +123,45 @@ public final class MessengerApp extends PhoneApp {
     @Override
     public String headerAction() {
         return view().headerAction();
+    }
+
+    @Override
+    public boolean onTitleClick() {
+        return view().onTitleClick();
+    }
+
+    /** Кто открывает профиль игрока (общее приложение «Мессенджер» — во вкладке ленты); null — профилей нет. */
+    private java.util.function.Consumer<java.util.UUID> profileOpener;
+
+    public void setProfileOpener(java.util.function.Consumer<java.util.UUID> opener) {
+        profileOpener = opener;
+    }
+
+    /** Кто открывает пост ленты из сообщения «Поделиться» (общее приложение — во вкладке ленты); null — некуда. */
+    private java.util.function.LongConsumer postOpener;
+
+    public void setPostOpener(java.util.function.LongConsumer opener) {
+        postOpener = opener;
+    }
+
+    void openPost(long postId) {
+        if (postOpener != null && dev.blockphone.fabric.client.network.ClientNetwork.socialAvailable()) {
+            postOpener.accept(postId);
+        }
+    }
+
+    /** Выбрать свой чат (переслать, поделиться): список чатов поверх текущего экрана. */
+    public void pickChat(String title, java.util.function.LongConsumer onPick) {
+        push(new ChatPickView(this, title, onPick));
+    }
+
+    /** Открыть профиль игрока; false — некуда (лента на сервере выключена). */
+    boolean openProfile(java.util.UUID uuid) {
+        if (profileOpener == null || uuid == null || !dev.blockphone.fabric.client.network.ClientNetwork.socialAvailable()) {
+            return false;
+        }
+        profileOpener.accept(uuid);
+        return true;
     }
 
     @Override

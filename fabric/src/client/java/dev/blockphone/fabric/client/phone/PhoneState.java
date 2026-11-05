@@ -70,8 +70,19 @@ public final class PhoneState {
                 && (closedAt == 0 || System.currentTimeMillis() - closedAt > LOCK_AFTER_MS);
     }
 
+    /** Забыть экземпляр (приложение удалили): скрыть его и убрать из памяти. */
+    public static void forget(String id) {
+        PhoneApp app = APPS.remove(id);
+        if (app != null) {
+            app.onHidden();
+        }
+        if (id.equals(currentId)) {
+            currentId = HOME;
+        }
+    }
+
     public static void reset() {
-        APPS.clear();
+        APPS.values().removeIf(app -> !app.keepOnReset());
         currentId = HOME;
     }
 

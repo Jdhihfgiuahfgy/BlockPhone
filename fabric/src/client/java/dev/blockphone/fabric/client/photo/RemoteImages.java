@@ -42,6 +42,8 @@ public final class RemoteImages {
     private static final Set<Long> FAILED = new HashSet<>();
     private static final Set<Long> REQUESTED = new HashSet<>();
     private static final Map<Long, Download> DOWNLOADS = new HashMap<>();
+    private static final int MAX_DOWNLOAD = 32 * 1024 * 1024;
+    private static final int MAX_PARALLEL = 48;
     /** Растёт при выходе с сервера: результаты старых фоновых задач отбрасываются. */
     private static int generation;
 
@@ -112,6 +114,13 @@ public final class RemoteImages {
         if (data.total() <= 0) {
             REQUESTED.remove(id);
             DOWNLOADS.remove(id);
+            FAILED.add(id);
+            LOADING.removeIf(k -> k.startsWith(id + ":"));
+            return;
+        }
+        // Размер объявляет сервер: не верить больше разумного (иначе new byte[2 ГБ] — падение игры).
+        if (data.total() > MAX_DOWNLOAD || (!DOWNLOADS.containsKey(id) && DOWNLOADS.size() >= MAX_PARALLEL)) {
+            REQUESTED.remove(id);
             FAILED.add(id);
             LOADING.removeIf(k -> k.startsWith(id + ":"));
             return;

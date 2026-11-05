@@ -377,7 +377,7 @@ public final class SocialClient {
             case SocialPackets.Notice p -> onNotice(p);
             case SocialPackets.Failure p -> {
                 String arg = p.arg();
-                if (p.key().equals("social.error.muted")) {
+                if (p.key().equals("social.error.muted") || p.key().equals("social.error.banned")) {
                     arg = arg.isEmpty() ? PhoneLang.tr("social.forever") : SocialFormat.dateTime(Long.parseLong(arg));
                 }
                 showMessage(PhoneLang.tr(p.key(), arg), true);

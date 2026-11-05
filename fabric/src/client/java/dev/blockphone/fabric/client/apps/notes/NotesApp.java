@@ -180,7 +180,7 @@ public final class NotesApp extends PhoneApp {
     private void clampScroll(int count, int top) {
         double max = Math.max(0, count * ROW_H - (contentHeight() - top) + 4);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(top, contentHeight(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(top, contentHeight(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     private static String formatDate(long millis, boolean full) {

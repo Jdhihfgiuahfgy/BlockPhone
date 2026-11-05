@@ -2,13 +2,11 @@ package dev.blockphone.fabric.client.telegram;
 
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.fabric.BlockPhoneFabric;
-import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.photo.ImageOps;
 import dev.blockphone.fabric.client.photo.Picture;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
-import net.minecraft.sounds.SoundSource;
 import org.jcodec.api.FrameGrab;
 import org.jcodec.api.PictureWithMetadata;
 import org.jcodec.codecs.aac.AACDecoder;
@@ -128,7 +126,74 @@ public final class VideoPlayer implements AutoCloseable {
         }
     }
 
+    /** Звук Opus («кружочки» BlockPhone и некоторых клиентов): Concentus, 48 кГц. true — дорожка была. */
+    private boolean playOpus(int gen, double from) throws Exception {
+        Mp4Audio.OpusTrack track = Mp4Audio.readOpus(file);
+        if (track == null) {
+            return false;
+        }
+        int ch = track.channels();
+        io.github.jaredmdobson.concentus.OpusDecoder decoder = new io.github.jaredmdobson.concentus.OpusDecoder(48_000, ch);
+        AudioFormat format = new AudioFormat(48_000, 16, ch, true, false);
+        SourceDataLine line = AudioSystem.getSourceDataLine(format);
+        try {
+            line.open(format, 48_000 * ch * 2 / 4);
+            line.start();
+            short[] pcm = new short[48_000 * 120 / 1000 * ch];
+            byte[] bytes = new byte[pcm.length * 2];
+            long skip = track.preSkip() + Math.round(from * 48_000);
+            long played = 0;
+            for (byte[] packet : track.packets()) {
+                if (!alive(gen)) {
+                    break;
+                }
+                int n = decoder.decode(packet, 0, packet.length, pcm, 0, pcm.length / ch, false);
+                int start = (int) Math.min(n, Math.max(0, skip));
+                skip -= start;
+                if (start >= n) {
+                    continue;
+                }
+                float gain = volume();
+                int count = 0;
+                for (int i = start * ch; i < n * ch; i++) {
+                    int v = Math.max(-32768, Math.min(32767, Math.round(pcm[i] * gain)));
+                    bytes[count++] = (byte) v;
+                    bytes[count++] = (byte) (v >> 8);
+                }
+                while (paused && alive(gen)) {
+                    line.stop();
+                    Thread.sleep(20);
+                }
+                if (!line.isRunning()) {
+                    line.start();
+                }
+                line.write(bytes, 0, count);
+                played += n - start;
+                long buffered = (line.getBufferSize() - line.available()) / (2L * ch);
+                audioClock = from + Math.max(0, played - buffered) / 48_000.0;
+            }
+            if (alive(gen)) {
+                line.drain();
+            }
+        } finally {
+            line.stop();
+            line.close();
+        }
+        return true;
+    }
+
     private void playAudio(int gen, double from) {
+        try {
+            if (playOpus(gen, from)) {
+                if (alive(gen)) {
+                    audioEnded = true;
+                    audioClock = -1;
+                }
+                return;
+            }
+        } catch (Throwable e) {
+            BlockPhoneFabric.LOGGER.info("Video Opus audio {} skipped: {}", file.getFileName(), e.toString());
+        }
         SourceDataLine line = null;
         try (SeekableByteChannel ch = NIOUtils.readableChannel(file.toFile())) {
             MP4Demuxer demuxer = MP4Demuxer.createMP4Demuxer(ch);
@@ -207,8 +272,7 @@ public final class VideoPlayer implements AutoCloseable {
     }
 
     private static float volume() {
-        Minecraft mc = Minecraft.getInstance();
-        return Math.max(0.2f, PhoneSettings.get().musicVolume) * mc.options.getSoundSourceVolume(SoundSource.MASTER);
+        return dev.blockphone.fabric.client.voice.VoiceMessages.mediaGain();
     }
 
     /** Текущее время (секунды): по звуку, если он идёт, иначе по часам. */

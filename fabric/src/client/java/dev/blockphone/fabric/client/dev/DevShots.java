@@ -14,11 +14,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.TitleScreen;
-import net.minecraft.world.Difficulty;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
-import net.minecraft.world.level.WorldDataConfiguration;
-import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
@@ -89,6 +85,46 @@ public final class DevShots {
         BlockPhoneFabric.LOGGER.info("[DevShots] screenshots will be written to {}", value);
     }
 
+    /**
+     * Проверка неофициального API Яндекс Музыки входом игрока: файл BLOCKPHONE_DEV_PROBE — строки «GET /путь» или
+     * «POST /путь {json}» ({uid} — id аккаунта); ответы — в папку снимков probe_<n>.txt (первые 300 КБ).
+     */
+    private void planYandexProbe() {
+        boolean[] done = {false};
+        step(5, mc -> new Thread(() -> {
+            try {
+                String token = dev.blockphone.fabric.client.music.Accounts.get().yandexToken;
+                var api = new dev.blockphone.fabric.client.music.yandex.YandexApi(token);
+                String uid = api.account().uid();
+                List<String> lines = java.nio.file.Files.readAllLines(Path.of(System.getenv("BLOCKPHONE_DEV_PROBE")));
+                int n = 0;
+                for (String line : lines) {
+                    if (line.isBlank() || line.startsWith("#")) {
+                        continue;
+                    }
+                    n++;
+                    String[] parts = line.strip().split(" ", 3);
+                    String path = parts[1].replace("{uid}", uid);
+                    String out;
+                    try {
+                        String body = parts.length > 2 ? parts[2].replace("{uid}", uid) : null;
+                        var r = parts[0].equals("FORM") ? api.rawForm(path, body) : api.raw(parts[0], path, body);
+                        String text = r.body() == null ? "" : r.body();
+                        out = line + "\nHTTP " + r.code() + "\n" + (text.length() > 300_000 ? text.substring(0, 300_000) : text);
+                    } catch (Exception e) {
+                        out = line + "\nERROR " + e;
+                    }
+                    java.nio.file.Files.createDirectories(dir);
+                    java.nio.file.Files.writeString(dir.resolve("probe_" + n + ".txt"), out);
+                }
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] yandex probe failed", e);
+            }
+            done[0] = true;
+        }, "yandex probe").start());
+        waitFor(mc -> done[0]);
+    }
+
     private void step(int delay, Consumer<Minecraft> action) {
         steps.add(new Step(delay, mc -> true, action));
     }
@@ -123,25 +159,54 @@ public final class DevShots {
                 }
                 // Только для снимков: клавиша «0» выдаёт по очереди оружие (3D-модели от первого лица).
                 Files.writeString(target.resolve("dev.lua"), """
-                        local list = {11, 12, 13, 6, 8, 10, 9, 7, 5, 3, 1, 14, 17}
+                        local D = require("data")
+                        local list = {"ak47", "m4a1s", "awp", "sg553", "xm1014", "mp7", "negev", "dualies", "r8", "zeus",
+                          "knife", "molotov", "c4"}
                         local i = 0
-                        local maps, m = {5, 6, 7, 8, 9}, 0
+                        local maps, m = {"quarter", "dust", "snow", "office", "lake"}, 0
                         return {key = function(G, key, Sim, api)
                           if key == "9" then
                             m = m % #maps + 1
-                            local def = require("maps").LIST[maps[m]]
-                            api.start("offline", {map = maps[m], firstTo = 8, level = 2, bots = 5, team = 0,
+                            local M = require("maps")
+                            local idx = 1
+                            for n, d in ipairs(M.LIST) do if d.key == maps[m] then idx = n end end
+                            local def = M.LIST[idx]
+                            api.start("offline", {map = idx, firstTo = 8, level = 2, bots = 5, team = 0,
                               wingman = def.wingman == true})
                             print("dev map " .. def.key)
                             return true
                           end
+                          if key == "6" and G.S then
+                            -- бросить молотов и ложную гранату вперёд (проверка моделей в полёте и огня)
+                            local P = G.S.players[G.me.id]
+                            local fx, fy, fz = Sim.forward(G.me.yaw, 0)
+                            for _, wid in ipairs({D.MOLOTOV, D.DECOY}) do
+                              P[D.NADE_FIELD[wid]] = 1
+                              Sim.throw(G.S, P, wid, P.x + fx * 0.4, P.y + 0.85, P.z + fz * 0.4, fx * 7, 3.5, fz * 7)
+                            end
+                            print("dev nades")
+                            return true
+                          end
+                          if key == "7" then
+                            -- страницы настроек по очереди
+                            G.setTab = G.menu == "settings" and (G.setTab % 3 + 1) or 1
+                            G.menu = "settings"
+                            print("dev settings " .. G.setTab)
+                            return true
+                          end
+                          if key == "8" and G.S then
+                            Sim.hurt(G.S, G.S.players[G.me.id], nil, D.HE, 500, false)
+                            print("dev spectate")
+                            return true
+                          end
                           if key ~= "0" or not G.S then return false end
                           i = i % #list + 1
-                          local wid = list[i]
+                          local wid = D[list[i]]
                           local P = G.S.players[G.me.id]
-                          local w = require("data").WEAPONS[wid]
+                          local w = D.WEAPONS[wid]
                           if w.slot == 1 then P.pri = wid elseif w.slot == 2 then P.sec = wid
-                          elseif w.slot == 4 then P.he = 1 elseif w.slot == 5 then P.bomb = true end
+                          elseif wid == D.ZEUS then P.zeus = 1
+                          elseif D.NADE_FIELD[wid] then P[D.NADE_FIELD[wid]] = 1 elseif w.slot == 5 then P.bomb = true end
                           Sim.giveAmmo(P, wid)
                           G.me.wpn, G.me.switchT, G.me.ammo[wid] = wid, 0, P.ammo[wid] and {math.max(1, P.ammo[wid][1] - 20), P.ammo[wid][2]}
                           print("dev weapon " .. w.key)
@@ -180,7 +245,8 @@ public final class DevShots {
             a.debugKey("b");
         }));
         shot(120, "strike_live");
-        String[] guns = {"ak47", "m4a4", "awp", "nova", "p90", "famas", "galil", "mp9", "deagle", "usp", "knife", "he", "c4"};
+        String[] guns = {"ak47", "m4a1s", "awp", "sg553", "xm1014", "mp7", "negev", "dualies", "r8", "zeus", "knife",
+                "molotov", "c4"};
         for (String gun : guns) {
             step(1, mc -> customApp("blockstrike", a -> a.debugKey("0")));
             shot(12, "strike_w_" + gun);
@@ -190,12 +256,22 @@ public final class DevShots {
             a.debugKey("r");
         }));
         shot(25, "strike_reload");
-        shot(300, "strike_fight");
+        step(1, mc -> customApp("blockstrike", a -> a.debugKey("6")));
+        shot(8, "strike_nades_fly");
+        shot(40, "strike_nades_fire");
+        shot(200, "strike_fight");
+        // Наблюдение: свой игрок погибает — камера у бота (прицел, руки, оружие).
+        step(1, mc -> customApp("blockstrike", a -> a.debugKey("8")));
+        shot(30, "strike_spectate");
         shot(300, "strike_later");
         step(1, mc -> phone(mc, PhoneScreen::back));
         shot(20, "strike_pause");
-        // Новые карты (Ледник, Офис, Храм, Озеро и Переулок — «Напарники»): игра с ботами, снимок в начале раунда.
-        for (String map : new String[]{"snow", "office", "temple", "lake", "alley"}) {
+        for (int tab = 1; tab <= 3; tab++) {
+            step(1, mc -> customApp("blockstrike", a -> a.debugKey("7")));
+            shot(12, "strike_settings_" + tab);
+        }
+        // Карты (Квартал, Пустыня, Ледник, Офис, Озеро — «Напарники»): игра с ботами, снимок в начале раунда.
+        for (String map : new String[]{"quarter", "dust", "snow", "office", "lake"}) {
             step(1, mc -> customApp("blockstrike", a -> a.debugKey("9")));
             shot(160, "strike_map_" + map);
         }
@@ -325,8 +401,600 @@ public final class DevShots {
         shot(30, "apps_script_timeout");
     }
 
+    /**
+     * Режим экрана своих приложений на примере «Блочных гонок» (docs/examples/scripts/racing): меню, «Режим на экране»
+     * (приглашение как из меню экрана), лобби на экране, джойстик (телефон набок двумя руками), гонка на двоих (второй
+     * игрок — подставной «Alex» из dev.lua) с делением экрана, страница экрана в «Экранах».
+     */
+    private void planScreensGame() {
+        step(1, mc -> {
+            mc.setScreen(null);
+            var c = mc.player.connection;
+            c.sendCommand("time set noon");
+            c.sendCommand("weather clear");
+            c.sendCommand("gamerule doDaylightCycle false");
+            c.sendCommand("tp @s ~ ~ ~ -90 0");
+            try {
+                Path example = Path.of("..", "..", "docs", "examples", "scripts", "racing");
+                Path target = dev.blockphone.fabric.client.apps.custom.CustomApps.folder().resolve("racing");
+                try (var files = Files.walk(example)) {
+                    for (Path f : files.toList()) {
+                        Path to = target.resolve(example.relativize(f).toString());
+                        if (Files.isDirectory(f)) {
+                            Files.createDirectories(to);
+                        } else {
+                            Files.copy(f, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }
+                }
+                // Только для снимков: второй «игрок» Alex едет сам (гонка на двоих — экран пополам).
+                Files.writeString(target.resolve("dev.lua"), """
+                        return function(game, now)
+                          if game.phase == "lobby" or game.phase == "countdown" then
+                            game:input("Alex", 1, now)
+                          else
+                            local c = game:carOf("Alex")
+                            if c then c.input = game:bot(c) c.seen = now end
+                          end
+                        end
+                        """);
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] racing copy failed", e);
+            }
+            dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
+        });
+        step(20, mc -> {
+            var c = mc.player.connection;
+            c.sendCommand("fill ~1 ~ ~-4 ~9 ~5 ~4 minecraft:air");
+            c.sendCommand("fill ~9 ~ ~-4 ~9 ~4 ~4 minecraft:black_concrete");
+        });
+        step(20, mc -> {
+            net.minecraft.core.BlockPos p = mc.player.blockPosition();
+            var data = dev.blockphone.fabric.client.screens.ScreenStore.data();
+            data.screens.clear();
+            data.speakers.clear();
+            data.groups.clear();
+            var s = new dev.blockphone.fabric.client.screens.ScreenData.Screen();
+            s.id = "devgame";
+            s.name = "Гонки";
+            s.dim = mc.level.dimension().identifier().toString();
+            s.x1 = p.getX() + 9;
+            s.y1 = p.getY();
+            s.z1 = p.getZ() - 4;
+            s.x2 = p.getX() + 9;
+            s.y2 = p.getY() + 4;
+            s.z2 = p.getZ() + 4;
+            s.face = net.minecraft.core.Direction.WEST.get3DDataValue();
+            data.screens.add(s);
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+        });
+        step(20, mc -> mc.setScreen(new PhoneScreen()));
+        step(20, mc -> phone(mc, p -> p.openApp("app.racing")));
+        shot(40, "racing_menu");
+        // Как «Экраны → экран → Приложение → Блочные гонки»: приглашение на свой экран — приложение начинает лобби.
+        step(1, mc -> dev.blockphone.fabric.client.screens.AppDisplays.invite("racing",
+                dev.blockphone.fabric.client.screens.AppDisplays.key(mc.getUser().getName(), "devgame")));
+        shot(40, "racing_lobby_phone");
+        step(1, mc -> mc.setScreen(null));
+        step(60, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] racing: {}", dev.blockphone.fabric.client.screens.AppDisplays.debugStatus()));
+        shot(20, "racing_screen_lobby");
+        // Джойстик (клавиша G у экрана) и газ — «готов».
+        step(1, mc -> dev.blockphone.fabric.client.screens.AppDisplays.toggleControl(mc));
+        step(1, mc -> dev.blockphone.fabric.client.screens.AppDisplays.debugKeys.add("w"));
+        shot(20, "racing_control");
+        step(50, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] racing countdown: {}", dev.blockphone.fabric.client.screens.AppDisplays.debugStatus()));
+        shot(1, "racing_countdown");
+        step(120, mc -> dev.blockphone.fabric.client.screens.AppDisplays.debugKeys.add("d"));
+        step(6, mc -> dev.blockphone.fabric.client.screens.AppDisplays.debugKeys.remove("d"));
+        shot(1, "racing_race");
+        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));
+        shot(30, "racing_hand");
+        step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
+        shot(200, "racing_race_later");
+        step(1, mc -> {
+            dev.blockphone.fabric.client.screens.AppDisplays.debugKeys.clear();
+            mc.setScreen(null);
+        });
+        step(20, mc -> mc.setScreen(new PhoneScreen()));
+        step(20, mc -> phone(mc, p -> p.openApp("screens")));
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.debugOpen("devgame");
+            }
+        });
+        shot(40, "racing_screens_app");
+        step(1, mc -> mc.setScreen(null));
+    }
+
+    /** Браузер (Chromium): копия примера docs/examples/scripts/browser, ожидание скачивания, страница, набок. */
+    /** Экраны: стена перед игроком, экран с видео, звук из экрана, приложение и выбор углов прицелом. */
+    private void planScreens() {
+        if ("spr".equals(System.getenv("BLOCKPHONE_DEV_SCREENS"))) {
+            planScreensSoundPhysics();
+            return;
+        }
+        if ("sites".equals(System.getenv("BLOCKPHONE_DEV_SCREENS"))) {
+            planScreensSites();
+            return;
+        }
+        if ("game".equals(System.getenv("BLOCKPHONE_DEV_SCREENS"))) {
+            planScreensGame();
+            return;
+        }
+        long[] started = new long[1];
+        step(1, mc -> {
+            mc.setScreen(null);
+            var c = mc.player.connection;
+            c.sendCommand("time set noon");
+            c.sendCommand("weather clear");
+            c.sendCommand("gamerule doDaylightCycle false");
+            c.sendCommand("tp @s ~ ~ ~ -90 0");
+        });
+        step(20, mc -> {
+            var c = mc.player.connection;
+            c.sendCommand("fill ~1 ~ ~-4 ~6 ~5 ~4 minecraft:air");
+            c.sendCommand("fill ~6 ~ ~-4 ~6 ~4 ~4 minecraft:white_concrete");
+            c.sendCommand("setblock ~2 ~ ~-4 minecraft:note_block");
+        });
+        step(20, mc -> {
+            net.minecraft.core.BlockPos p = mc.player.blockPosition();
+            var data = dev.blockphone.fabric.client.screens.ScreenStore.data();
+            data.screens.clear();
+            data.speakers.clear();
+            var s = new dev.blockphone.fabric.client.screens.ScreenData.Screen();
+            s.id = "devscreen";
+            s.name = "Кино";
+            s.dim = mc.level.dimension().identifier().toString();
+            s.x1 = p.getX() + 6;
+            s.y1 = p.getY();
+            s.z1 = p.getZ() - 4;
+            s.x2 = p.getX() + 6;
+            s.y2 = p.getY() + 4;
+            s.z2 = p.getZ() + 4;
+            s.face = net.minecraft.core.Direction.WEST.get3DDataValue();
+            // BLOCKPHONE_DEV_SCREEN_URL — своя ссылка (например, ролик YouTube) вместо тестового видео.
+            String devUrl = System.getenv("BLOCKPHONE_DEV_SCREEN_URL");
+            s.url = devUrl != null && !devUrl.isBlank() ? devUrl : "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.480p.vp9.webm";
+            s.paused = false;
+            s.volume = 15;
+            s.setPosition(devUrl != null && !devUrl.isBlank() ? 0 : 60_000, System.currentTimeMillis());
+            data.screens.add(s);
+            var sp = new dev.blockphone.fabric.client.screens.ScreenData.Speaker();
+            sp.id = "devspeaker";
+            sp.dim = s.dim;
+            sp.x = p.getX() + 2;
+            sp.y = p.getY();
+            sp.z = p.getZ() - 4;
+            sp.screen = s.id;
+            sp.channel = "L";
+            data.speakers.add(sp);
+            // Правая колонка — объёмный звук (левый/правый канал).
+            var right = new dev.blockphone.fabric.client.screens.ScreenData.Speaker();
+            right.id = "devright";
+            right.dim = s.dim;
+            right.x = p.getX() + 2;
+            right.y = p.getY();
+            right.z = p.getZ() + 4;
+            right.screen = s.id;
+            right.channel = "R";
+            data.speakers.add(right);
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            started[0] = System.currentTimeMillis();
+        });
+        waitFor(mc -> dev.blockphone.fabric.client.browser.WebEngine.state() == dev.blockphone.fabric.client.browser.WebEngine.State.READY
+                || dev.blockphone.fabric.client.browser.WebEngine.state() == dev.blockphone.fabric.client.browser.WebEngine.State.FAILED
+                || System.currentTimeMillis() - started[0] > 600_000);
+        // BLOCKPHONE_DEV_SCREENS=audio — минута записей журнала раз в 2 с (проверка звука страницы).
+        boolean audioLog = "audio".equals(System.getenv("BLOCKPHONE_DEV_SCREENS"));
+        for (int i = 0; i < (audioLog ? 30 : 4); i++) {
+            step(audioLog ? 40 : 100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        }
+        shot(20, "screens_world");
+        // Перемотка и пауза владельцем.
+        step(1, mc -> {
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+            s.setPosition(300_000, System.currentTimeMillis());
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+        });
+        step(100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens after seek: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        shot(20, "screens_world_seek");
+        step(1, mc -> mc.setScreen(new PhoneScreen()));
+        step(20, mc -> phone(mc, p -> p.openApp("screens")));
+        shot(40, "screens_app_list");
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.debugOpen("devscreen");
+            }
+        });
+        shot(40, "screens_app_screen");
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.mouseScrolled(10, 10, -40);
+            }
+        });
+        shot(30, "screens_app_screen_bottom");
+        step(1, mc -> dev.blockphone.fabric.client.screens.ScreenPicker.start(dev.blockphone.fabric.client.screens.ScreenPicker.Mode.SCREEN, ""));
+        shot(40, "screens_pick");
+        // Выбор двух углов взглядом: второй экран на той же стене (слева сверху — справа снизу).
+        net.minecraft.core.BlockPos[] base = new net.minecraft.core.BlockPos[1];
+        step(1, mc -> {
+            base[0] = mc.player.blockPosition();
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                    net.minecraft.world.phys.Vec3.atCenterOf(base[0].offset(6, 3, -3)).add(-0.5, 0, 0));
+        });
+        shot(20, "screens_pick_hover");
+        step(1, mc -> dev.blockphone.fabric.client.screens.ScreenPicker.debugClick());
+        step(5, mc -> mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                net.minecraft.world.phys.Vec3.atCenterOf(base[0].offset(6, 1, 0)).add(-0.5, 0, 0)));
+        shot(20, "screens_pick_second");
+        step(1, mc -> dev.blockphone.fabric.client.screens.ScreenPicker.debugClick());
+        shot(40, "screens_created");
+        step(1, mc -> {
+            BlockPhoneFabric.LOGGER.info("[DevShots] screens created: {}", dev.blockphone.fabric.client.screens.ScreenStore.data().screens.size());
+            mc.setScreen(null);
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                    net.minecraft.world.phys.Vec3.atCenterOf(base[0].offset(6, 2, 0)));
+        });
+        shot(20, "screens_two");
+        // Группы: оба экрана объединены (одна вкладка), колонки — в группе с общей громкостью.
+        String[] groupIds = new String[1];
+        step(1, mc -> {
+            var data = dev.blockphone.fabric.client.screens.ScreenStore.data();
+            var grp = new dev.blockphone.fabric.client.screens.ScreenData.Group();
+            grp.id = "devgroup";
+            grp.name = "Зал";
+            grp.kind = "screens";
+            grp.sync = true;
+            for (var sc : data.screens) {
+                grp.members.add(sc.id);
+            }
+            data.groups.removeIf(x -> true);
+            data.groups.add(grp);
+            var sg = new dev.blockphone.fabric.client.screens.ScreenData.Group();
+            sg.id = "devspk";
+            sg.name = "Колонки зала";
+            sg.kind = "speakers";
+            sg.volume = 50;
+            for (var sp : data.speakers) {
+                sg.members.add(sp.id);
+            }
+            data.groups.add(sg);
+            data.propagate(data.screen("devscreen"));
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            groupIds[0] = grp.id;
+        });
+        step(120, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens group: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        shot(10, "screens_group_sync");
+        // Подсветка колонок (сквозь стены, с подписями) и «качание» от басов.
+        step(1, mc -> {
+            dev.blockphone.fabric.client.screens.Screens.setShowSpeakers(true);
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                    net.minecraft.world.phys.Vec3.atCenterOf(mc.player.blockPosition().offset(2, 0, -2)));
+        });
+        for (int i = 0; i < 5; i++) {
+            step(7, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens pulse: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()
+                    .replaceAll(".*[|] pulse: ", "")));
+        }
+        shot(5, "screens_speakers_highlight");
+        step(1, mc -> dev.blockphone.fabric.client.screens.Screens.setShowSpeakers(false));
+        step(1, mc -> mc.setScreen(new PhoneScreen()));
+        step(20, mc -> phone(mc, p -> p.openApp("screens")));
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.debugOpenGroup(groupIds[0]);
+            }
+        });
+        shot(30, "screens_group_page");
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.onBack();
+            }
+            mc.setScreen(null);
+        });
+        step(1, mc -> {
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+            s.paused = true;
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+        });
+        step(60, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens paused: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        // Страница сайта с видео (не прямой файл): видео должно занять весь экран.
+        step(1, mc -> {
+            mc.setScreen(null);
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+            s.url = "https://commons.wikimedia.org/wiki/File:Big_Buck_Bunny_4K.webm";
+            s.paused = false;
+            s.setPosition(30_000, System.currentTimeMillis());
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+        });
+        for (int i = 0; i < 3; i++) {
+            step(100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens page: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        }
+        shot(10, "screens_world_page");
+        // Колонка телефона: музыка проигрывателя телефона звучит из блока рядом.
+        float[] volume = new float[1];
+        step(1, mc -> {
+            volume[0] = PhoneSettings.get().musicVolume;
+            dev.blockphone.fabric.client.screens.PhoneSpeakers.debugLoopback = true;
+            PhoneSettings.get().musicVolume = 0.2f;
+            copyMinecraftMusic(mc);
+            dev.blockphone.fabric.client.music.LocalLibrary.rescan();
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+            s.on = false;
+            var p = mc.player.blockPosition();
+            var sp = new dev.blockphone.fabric.client.screens.ScreenData.Speaker();
+            sp.id = "devphone";
+            sp.dim = s.dim;
+            sp.x = p.getX() + 2;
+            sp.y = p.getY();
+            sp.z = p.getZ() + 3;
+            sp.screen = dev.blockphone.fabric.client.screens.ScreenData.PHONE;
+            dev.blockphone.fabric.client.screens.ScreenStore.data().speakers.add(sp);
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+        });
+        waitFor(mc -> dev.blockphone.fabric.client.music.LocalLibrary.scanned() && !dev.blockphone.fabric.client.music.LocalLibrary.scanning());
+        step(1, mc -> dev.blockphone.fabric.client.music.MusicPlayer.play(dev.blockphone.fabric.client.music.LocalLibrary.tracks(), 0, null, "dev"));
+        for (int i = 0; i < 2; i++) {
+            step(80, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens phone: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        }
+        step(1, mc -> mc.setScreen(new PhoneScreen()));
+        step(20, mc -> phone(mc, p -> p.openApp("screens")));
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.onBack();
+            }
+        });
+        shot(40, "screens_phone_speakers");
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.debugOpenSpeaker("devphone");
+            }
+        });
+        shot(30, "screens_speaker_page");
+        step(1, mc -> {
+            if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                a.onBack();
+            }
+        });
+        step(1, mc -> {
+            dev.blockphone.fabric.client.music.MusicPlayer.stop();
+            PhoneSettings.get().musicVolume = volume[0];
+        });
+        // Трансляция телефона: экран «Кино» показывает телефон; телефон «на ходу» в углу, потом закрыт.
+        step(1, mc -> {
+            dev.blockphone.fabric.client.screens.PhoneMirror.debugLoopback = true;
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+            s.on = true;
+            s.mirror = true;
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            mc.setScreen(null);
+            dev.blockphone.fabric.client.phone.PhonePin.pin(mc);
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                    net.minecraft.world.phys.Vec3.atCenterOf(base[0].offset(6, 2, 0)));
+        });
+        step(20, mc -> phone(mc, p -> p.openApp("weather")));
+        step(80, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens mirror: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        shot(10, "screens_mirror");
+        step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.unpin(mc));
+        shot(40, "screens_mirror_closed");
+        step(1, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens mirror closed: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+    }
+
+    /** Видеосайты на экране: Rutube, Vimeo, YouTube — плеер без сайта, видео на весь экран, «Управлять страницей». */
+    private void planScreensSites() {
+        String[] urls = {"https://rutube.ru/video/69fcca9724a5c697d1c105950b0ae56f/", "https://vimeo.com/76979871",
+                "https://www.youtube.com/watch?v=aqz-KE-bpKQ"};
+        long[] started = new long[1];
+        planScreensSoundPhysics(); // стена и экран
+        for (int i = 0; i < urls.length; i++) {
+            String url = urls[i];
+            String name = "site_" + i;
+            step(1, mc -> {
+                var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+                s.url = url;
+                s.paused = false;
+                s.setPosition(5_000, System.currentTimeMillis());
+                dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            });
+            for (int k = 0; k < 3; k++) {
+                step(100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens {}: {}", name, dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+            }
+            shot(10, "screens_" + name);
+            if (i == 0) {
+                step(1, mc -> mc.setScreen(new PhoneScreen()));
+                step(20, mc -> phone(mc, p -> p.openApp("screens")));
+                step(1, mc -> {
+                    if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                        a.debugOpen("devscreen");
+                        a.debugPage();
+                    }
+                });
+                shot(60, "screens_page_control");
+                // Нажатие на странице записывается; после перезагрузки страницы оно повторяется само.
+                step(1, mc -> {
+                    if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                        a.mouseClicked(a.contentWidth() / 2.0, a.contentHeight() / 2.0, 0);
+                        a.mouseReleased(a.contentWidth() / 2.0, a.contentHeight() / 2.0, 0);
+                    }
+                });
+                step(20, mc -> {
+                    var s = dev.blockphone.fabric.client.screens.ScreenStore.screen("devscreen");
+                    BlockPhoneFabric.LOGGER.info("[DevShots] screens actions: {}", s.actions);
+                    s.rev++;
+                    dev.blockphone.fabric.client.screens.ScreenStore.changed();
+                });
+                step(100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens after reload"));
+                step(1, mc -> {
+                    if (dev.blockphone.fabric.client.phone.PhoneState.existing("screens") instanceof dev.blockphone.fabric.client.apps.screens.ScreensApp a) {
+                        a.onBack();
+                        a.onBack();
+                    }
+                    mc.setScreen(null);
+                });
+            }
+        }
+    }
+
+    /** Проверка Sound Physics: колонка экрана за стеной, журнал Sound Physics (debug) показывает обработку. */
+    private void planScreensSoundPhysics() {
+        long[] started = new long[1];
+        step(1, mc -> {
+            mc.setScreen(null);
+            var c = mc.player.connection;
+            c.sendCommand("time set noon");
+            c.sendCommand("tp @s ~ ~ ~ -90 0");
+        });
+        step(20, mc -> {
+            var c = mc.player.connection;
+            c.sendCommand("fill ~1 ~ ~-4 ~6 ~5 ~4 minecraft:air");
+            c.sendCommand("fill ~6 ~ ~-4 ~6 ~4 ~4 minecraft:white_concrete");
+        });
+        step(20, mc -> {
+            net.minecraft.core.BlockPos p = mc.player.blockPosition();
+            var data = dev.blockphone.fabric.client.screens.ScreenStore.data();
+            data.screens.clear();
+            data.speakers.clear();
+            var s = new dev.blockphone.fabric.client.screens.ScreenData.Screen();
+            s.id = "devscreen";
+            s.dim = mc.level.dimension().identifier().toString();
+            s.x1 = p.getX() + 6;
+            s.y1 = p.getY();
+            s.z1 = p.getZ() - 4;
+            s.x2 = p.getX() + 6;
+            s.y2 = p.getY() + 4;
+            s.z2 = p.getZ() + 4;
+            s.face = net.minecraft.core.Direction.WEST.get3DDataValue();
+            s.url = "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.480p.vp9.webm";
+            s.volume = 10;
+            s.setPosition(60_000, System.currentTimeMillis());
+            data.screens.add(s);
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            started[0] = System.currentTimeMillis();
+        });
+        waitFor(mc -> dev.blockphone.fabric.client.browser.WebEngine.state() == dev.blockphone.fabric.client.browser.WebEngine.State.READY
+                || System.currentTimeMillis() - started[0] > 600_000);
+        for (int i = 0; i < 4; i++) {
+            step(100, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] screens spr: {}", dev.blockphone.fabric.client.screens.Screens.debugStatus()));
+        }
+    }
+
+    private void planBrowser() {
+        long[] started = new long[1];
+        step(1, mc -> {
+            try {
+                Path example = Path.of("..", "..", "docs", "examples", "scripts", "browser");
+                Path target = dev.blockphone.fabric.client.apps.custom.CustomApps.folder().resolve("browser");
+                Files.createDirectories(target);
+                try (var files = Files.list(example)) {
+                    for (Path f : files.toList()) {
+                        Files.copy(f, target.resolve(f.getFileName().toString()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+                dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] browser copy failed", e);
+            }
+            PhoneSettings.get().language = "ru_ru";
+            started[0] = System.currentTimeMillis();
+            if (mc.screen == null) {
+                mc.setScreen(new PhoneScreen());
+            }
+        });
+        step(20, mc -> phone(mc, p -> p.openApp("app.browser")));
+        shot(40, "browser_status");
+        waitFor(mc -> {
+            var st = dev.blockphone.fabric.client.browser.WebEngine.state();
+            return st == dev.blockphone.fabric.client.browser.WebEngine.State.READY
+                    || st == dev.blockphone.fabric.client.browser.WebEngine.State.FAILED
+                    || System.currentTimeMillis() - started[0] > 600_000;
+        });
+        step(1, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] browser state {} after {} s: {}",
+                dev.blockphone.fabric.client.browser.WebEngine.state(), (System.currentTimeMillis() - started[0]) / 1000,
+                dev.blockphone.fabric.client.browser.WebEngine.error()));
+        shot(20, "browser_home");
+        step(1, mc -> customApp("browser", a -> a.debugSubmit("url", "https://en.wikipedia.org/wiki/Minecraft")));
+        shot(200, "browser_page");
+        // Нажать в страницу (фокус) и набрать текст — проверка ввода (раньше KEY_TYPED ронял игру).
+        step(1, mc -> customApp("browser", a -> a.debugClick(a.contentWidth() / 2.0, a.contentHeight() / 2.0)));
+        step(10, mc -> customApp("browser", a -> a.debugType("blockphone test")));
+        shot(40, "browser_typed");
+        step(1, mc -> customApp("browser", a -> a.debugClick(a.contentWidth() - 11, 10)));
+        shot(100, "browser_fullscreen");
+    }
+
+    /**
+     * Любое своё приложение (уже лежит в blockphone/apps): BLOCKPHONE_DEV_APP — его id, BLOCKPHONE_DEV_APP_STEPS — шаги
+     * через «;»: shot:имя, wait:тики, click:x,y, rclick:x,y (правая кнопка), pclick/prclick:x,y (в текущее приложение телефона), submit:поле=текст, type:текст, key:клавиша,
+     * back, lang:ru_ru|en_us. Пример: «shot:list;click:80,40;wait:40;shot:chat».
+     */
+    private void planAppScript() {
+        String id = System.getenv().getOrDefault("BLOCKPHONE_DEV_APP", "");
+        step(1, mc -> {
+            dev.blockphone.fabric.client.apps.custom.CustomApps.scan(true);
+            if (mc.screen == null) {
+                mc.setScreen(new PhoneScreen());
+            }
+        });
+        step(20, mc -> phone(mc, p -> p.openApp("app." + id)));
+        step(40, mc -> {
+        });
+        for (String raw : System.getenv().getOrDefault("BLOCKPHONE_DEV_APP_STEPS", "shot:app").split(";")) {
+            String stepText = raw.strip();
+            int colon = stepText.indexOf(':');
+            String kind = colon < 0 ? stepText : stepText.substring(0, colon);
+            String arg = colon < 0 ? "" : stepText.substring(colon + 1);
+            switch (kind) {
+                case "shot" -> shot(30, "app_" + arg);
+                case "wait" -> step(Integer.parseInt(arg), mc -> {
+                });
+                case "click", "rclick" -> {
+                    String[] xy = arg.split(",");
+                    double x = Double.parseDouble(xy[0]);
+                    double y = Double.parseDouble(xy[1]);
+                    int button = kind.equals("click") ? 0 : 1;
+                    step(5, mc -> customApp(id, a -> a.mouseClicked(x, y, button)));
+                }
+                case "pclick", "prclick" -> {
+                    // Нажатие в текущее приложение телефона (рабочий стол и т. п.), не только в своё приложение.
+                    String[] xy = arg.split(",");
+                    double x = Double.parseDouble(xy[0]);
+                    double y = Double.parseDouble(xy[1]);
+                    int button = kind.equals("pclick") ? 0 : 1;
+                    step(5, mc -> dev.blockphone.fabric.client.phone.PhoneState.current().mouseClicked(x, y, button));
+                }
+                case "submit" -> {
+                    int eq = arg.indexOf('=');
+                    step(5, mc -> customApp(id, a -> a.debugSubmit(arg.substring(0, eq), arg.substring(eq + 1))));
+                }
+                case "type" -> step(5, mc -> customApp(id, a -> a.debugType(arg)));
+                case "key" -> step(5, mc -> customApp(id, a -> a.debugKey(arg)));
+                case "back" -> step(5, mc -> phone(mc, PhoneScreen::back));
+                case "lang" -> step(5, mc -> PhoneSettings.get().language = arg);
+                default -> BlockPhoneFabric.LOGGER.warn("[DevShots] unknown app step: {}", stepText);
+            }
+        }
+    }
+
     /** Часы: будильники (список и редактор), секундомер с кругами, таймер (выбор и идёт), звонок. */
     private void planClock() {
+        // «Отзывы» и предупреждение перед входом в Telegram.
+        step(1, mc -> {
+            if (mc.screen == null) {
+                mc.setScreen(new PhoneScreen());
+            }
+            phone(mc, p -> p.openApp("feedback"));
+        });
+        shot(30, "feedback_app");
+        boolean[] warned = new boolean[1];
+        step(1, mc -> {
+            warned[0] = PhoneSettings.get().telegramBetaAccepted;
+            PhoneSettings.get().telegramBetaAccepted = false;
+            phone(mc, p -> p.openApp("telegram"));
+        });
+        shot(30, "telegram_beta_warning");
+        step(1, mc -> {
+            PhoneSettings.get().telegramBetaAccepted = warned[0];
+            phone(mc, PhoneScreen::goHome);
+        });
         int[] volume = new int[1];
         step(1, mc -> {
             // Звуки телефона — тихо (5 %); свой звук — копия музыки Minecraft в blockphone/sounds.
@@ -538,7 +1206,7 @@ public final class DevShots {
                 dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:1", "messenger", "Пропущенный звонок", "Строители",
                         steve, p -> {
                         });
-                dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:1", "feed", "Steve оценил ваш пост",
+                dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:1", "messenger", "Steve оценил ваш пост",
                         "Закат над морем с нового маяка", steve, p -> {
                         });
                 dev.blockphone.fabric.client.phone.PhoneNotifications.add("telegram:1", "telegram", "Мама", "Ужин в семь, не опаздывай",
@@ -581,6 +1249,7 @@ public final class DevShots {
         }
 
         // 2. Мир.
+
         step(5, mc -> {
             settings.darkTheme = false;
             settings.language = "ru_ru";
@@ -589,8 +1258,7 @@ public final class DevShots {
             if (mc.getLevelSource().levelExists(WORLD)) {
                 mc.createWorldOpenFlows().openWorld(WORLD, () -> mc.setScreen(new TitleScreen()));
             } else {
-                LevelSettings level = new LevelSettings("BlockPhone Dev", GameType.CREATIVE, false, Difficulty.PEACEFUL, true,
-                        new GameRules(WorldDataConfiguration.DEFAULT.enabledFeatures()), WorldDataConfiguration.DEFAULT);
+                LevelSettings level = dev.blockphone.fabric.client.compat.ClientCompat.devLevelSettings("BlockPhone Dev");
                 mc.createWorldOpenFlows().createFreshLevel(WORLD, level, new WorldOptions(20261019L, true, false),
                         WorldPresets::createNormalWorldDimensions, new TitleScreen());
             }
@@ -600,7 +1268,29 @@ public final class DevShots {
         if (!world) {
             step(100, mc -> mc.setScreen(new PhoneScreen())); // мир прогрузился — сразу к своему сценарию
         } else {
-            shot(200, "world_game");            step(1, mc -> mc.setScreen(new PhoneScreen()));            shot(30, "world_home");            step(1, mc -> phone(mc, p -> p.openApp("weather")));            shot(20, "world_weather");            // Режим «на ходу»: телефон прикреплён в углу, мышь у игры (курсора нет).            step(1, mc -> {                mc.setScreen(null);                dev.blockphone.fabric.client.phone.PhonePin.pin(mc);            });            shot(30, "world_compact");            // Телефон в руке: свой персонаж от третьего лица спереди.            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));            shot(30, "world_phone_in_hand");            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));            // Как при зажатом Alt: курсор, телефоном можно пользоваться.            step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true);            shot(30, "world_compact_cursor");            step(1, mc -> {                dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;                dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);                mc.setScreen(new PhoneScreen());            });
+            shot(200, "world_game");
+            step(1, mc -> mc.setScreen(new PhoneScreen()));
+            shot(30, "world_home");
+            step(1, mc -> phone(mc, p -> p.openApp("weather")));
+            shot(20, "world_weather");
+            // Режим «на ходу»: телефон прикреплён в углу, мышь у игры (курсора нет).
+            step(1, mc -> {
+                mc.setScreen(null);
+                dev.blockphone.fabric.client.phone.PhonePin.pin(mc);
+            });
+            shot(30, "world_compact");
+            // Как при зажатом Alt: курсор, телефоном можно пользоваться.
+            step(1, mc -> dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true);
+            shot(30, "world_compact_cursor");
+            // Телефон в руке: свой персонаж от третьего лица спереди (рука поднята, пока экран телефона открыт).
+            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.THIRD_PERSON_FRONT));
+            shot(30, "world_phone_in_hand");
+            step(1, mc -> mc.options.setCameraType(net.minecraft.client.CameraType.FIRST_PERSON));
+            step(1, mc -> {
+                dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;
+                dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);
+                mc.setScreen(new PhoneScreen());
+            });
         }
 
         if (scenario.equals("messenger")) {
@@ -615,14 +1305,42 @@ public final class DevShots {
             planTelegram();
         } else if (scenario.equals("apps")) {
             planApps();
+        } else if (scenario.equals("browser")) {
+            planBrowser();
+        } else if (scenario.equals("app")) {
+            planAppScript();
+        } else if (scenario.equals("soundcloud")) {
+            planSoundCloud(settings);
+        } else if (scenario.equals("yandex")) {
+            planYandex(settings);
+        } else if (scenario.equals("yprobe")) {
+            planYandexProbe();
+        } else if (scenario.equals("together")) {
+            planTogether(settings);
         } else if (scenario.equals("clock")) {
             planClock();
         } else if (scenario.equals("store")) {
             planStore();
         } else if (scenario.equals("strike")) {
             planStrike();
+        } else if (scenario.equals("screens")) {
+            planScreens();
         } else if (scenario.equals("hand")) {
             // только общая часть (мир, телефон, «на ходу», телефон в руке)
+            // «На ходу» набок: курсор показан, открыта галерея.
+            step(1, mc -> {
+                mc.setScreen(null);
+                PhoneSettings.get().compactLandscape = true;
+                dev.blockphone.fabric.client.phone.PhonePin.pin(mc);
+                dev.blockphone.fabric.client.phone.PhonePin.debugCursor = true;
+            });
+            step(20, mc -> phone(mc, p -> p.openApp("gallery")));
+            shot(40, "world_compact_side");
+            step(1, mc -> {
+                dev.blockphone.fabric.client.phone.PhonePin.debugCursor = false;
+                dev.blockphone.fabric.client.phone.PhonePin.unpin(mc);
+                PhoneSettings.get().compactLandscape = false;
+            });
         } else {
             planCameraGalleryNotes();
         }
@@ -671,6 +1389,7 @@ public final class DevShots {
         shot(40, "gallery_grid");
 
         // 4. Заметки.
+
         step(1, mc -> {
             if (NotesStore.all().stream().noneMatch(n -> n.text.startsWith("Список покупок"))) {
                 NotesStore.Note note = NotesStore.create();
@@ -700,7 +1419,10 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
         });
         shot(30, "msg_home_badge");
-        step(1, mc -> phone(mc, p -> p.openApp("messenger")));
+        step(1, mc -> {
+            phone(mc, p -> p.openApp("messenger"));
+            messenger(app -> { });
+        });
         shot(20, "msg_list");
         step(1, mc -> messenger(app -> app.openChat(directChat.get())));
         shot(30, "msg_chat");
@@ -741,7 +1463,10 @@ public final class DevShots {
             mc.setScreen(new PhoneScreen());
         });
         shot(30, "social_home");
-        step(1, mc -> phone(mc, p -> p.openApp("feed")));
+        step(1, mc -> {
+            phone(mc, p -> p.openApp("messenger"));
+            social(app -> app.switchTab(SocialApp.Tab.FEED));
+        });
         shot(40, "social_feed");
         step(1, mc -> social(SocialApp::debugOpenFirstPost));
         shot(40, "social_post");
@@ -802,7 +1527,7 @@ public final class DevShots {
         shot(60, "sticker_sent");
         step(1, mc -> {
             settings.darkTheme = true;
-            phone(mc, p -> p.openApp("feed"));
+            phone(mc, p -> p.openApp("messenger"));
             social(app -> app.switchTab(SocialApp.Tab.FEED));
         });
         shot(40, "social_feed_dark");
@@ -827,6 +1552,140 @@ public final class DevShots {
         } catch (java.io.IOException e) {
             BlockPhoneFabric.LOGGER.warn("[DevShots] lyrics: {}", e.toString());
         }
+    }
+
+    /**
+     * Совместное прослушивание (сервер комнат — BLOCKPHONE_LISTEN_URL, обычно wrangler dev): сначала ведущий — играет
+     * трек Minecraft, создаёт комнату (код — в лог «[DevShots] together host room …»), снимки `together_lobby`,
+     * `together_host`; затем гость — код из файла `together_guest_code.txt` в папке игры (его пишет проверочный скрипт),
+     * снимок `together_guest`. Гость слушает через Яндекс (Spotify на ПК не открывается).
+     */
+    private void planTogether(PhoneSettings settings) {
+        float originalVolume = settings.musicVolume;
+        String originalVia = settings.togetherVia;
+        step(1, mc -> {
+            settings.musicVolume = 0.05f;
+            settings.togetherVia = "yandex";
+            copyMinecraftMusic(mc);
+            LocalLibrary.rescan();
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        waitFor(mc -> LocalLibrary.scanned() && !LocalLibrary.scanning());
+        step(10, mc -> phone(mc, p -> p.openApp("music")));
+        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.TOGETHER)));
+        shot(30, "together_lobby");
+        step(1, mc -> MusicPlayer.play(LocalLibrary.tracks(), 0, null, "Моя музыка"));
+        step(40, mc -> dev.blockphone.fabric.client.music.together.ListenTogether.create(err ->
+                BlockPhoneFabric.LOGGER.info("[DevShots] together create: {}", err == null ? "ok" : err)));
+        waitFor(mc -> dev.blockphone.fabric.client.music.together.ListenTogether.link()
+                == dev.blockphone.fabric.client.music.together.ListenTogether.Link.ONLINE);
+        step(1, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] together host room {}",
+                dev.blockphone.fabric.client.music.together.ListenTogether.code()));
+        // Скрипт-гость успевает войти; ведущий перематывает и ставит паузу — гость должен это получить.
+        step(200, mc -> MusicPlayer.seek(30_000));
+        step(60, mc -> MusicPlayer.pause());
+        shot(60, "together_host");
+        step(1, mc -> MusicPlayer.toggle());
+        step(60, mc -> {
+            dev.blockphone.fabric.client.music.together.ListenTogether.leave();
+            MusicPlayer.stop();
+        });
+        Path codeFile = Path.of("together_guest_code.txt");
+        waitFor(mc -> Files.exists(codeFile));
+        step(20, mc -> {
+            try {
+                String code = Files.readString(codeFile).strip();
+                BlockPhoneFabric.LOGGER.info("[DevShots] together guest join {}: {}", code,
+                        dev.blockphone.fabric.client.music.together.ListenTogether.join(code));
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("[DevShots] together code", e);
+            }
+        });
+        shot(160, "together_guest");
+        step(1, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] together guest status {} track '{}' members {}",
+                dev.blockphone.fabric.client.music.together.ListenTogether.guestStatus(),
+                dev.blockphone.fabric.client.music.together.ListenTogether.shared().title(),
+                dev.blockphone.fabric.client.music.together.ListenTogether.members()));
+        step(1, mc -> {
+            dev.blockphone.fabric.client.music.together.ListenTogether.leave();
+            settings.musicVolume = originalVolume;
+            settings.togetherVia = originalVia;
+            try {
+                Files.deleteIfExists(codeFile);
+            } catch (Exception ignored) {
+                // не важно
+            }
+        });
+    }
+
+    /** SoundCloud во вкладке «Музыки» (сайт в браузере): страница, кодеки Chromium, проигрывание первого трека. */
+    private void planSoundCloud(PhoneSettings settings) {
+        step(1, mc -> {
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        step(10, mc -> phone(mc, p -> p.openApp("music")));
+        step(20, mc -> music(a -> a.switchTab(MusicApp.Tab.SOUNDCLOUD)));
+        waitFor(mc -> dev.blockphone.fabric.client.browser.WebEngine.state() == dev.blockphone.fabric.client.browser.WebEngine.State.READY
+                || dev.blockphone.fabric.client.browser.WebEngine.state() == dev.blockphone.fabric.client.browser.WebEngine.State.FAILED);
+        shot(400, "soundcloud_page");
+        step(1, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.view().eval(
+                "console.log('__bpsc-probe:'+JSON.stringify({aac:window.MediaSource&&MediaSource.isTypeSupported('audio/mp4; codecs=\\\"mp4a.40.2\\\"'),"
+                        + "opus:window.MediaSource&&MediaSource.isTypeSupported('audio/webm; codecs=\\\"opus\\\"'),"
+                        + "mp3:document.createElement('audio').canPlayType('audio/mpeg'),ua:navigator.userAgent}))"));
+        // Окно согласия на куки — «Отклонить всё» (только необходимые).
+        step(20, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.view().eval(
+                "(function(){var b=document.querySelector('#onetrust-reject-all-handler');console.log('__bpsc-probe:reject '+!!b);if(b)b.click();})()"));
+        step(20, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.view().load("https://soundcloud.com/forss/flickermood"));
+        step(200, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.view().eval(
+                "(function(){var b=Array.from(document.querySelectorAll('.sc-button-play,.playButton')).find(function(x){return !x.classList.contains('playControl')});console.log('__bpsc-probe:play button '+!!b);if(b)b.click();})()"));
+        for (int i = 0; i < 4; i++) {
+            step(100, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.view().eval(
+                    "(function(){var pw=document.querySelector('.playbackTimeline__progressWrapper');var pc=document.querySelector('.playControl');"
+                            + "console.log('__bpsc-probe:state '+(pw&&pw.getAttribute('aria-valuenow'))+'/'+(pw&&pw.getAttribute('aria-valuemax'))"
+                            + "+' playing='+(pc&&pc.className)+' title='+(navigator.mediaSession&&navigator.mediaSession.metadata&&navigator.mediaSession.metadata.title))})()"));
+        }
+        shot(20, "soundcloud_playing");
+        step(1, mc -> dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.pause());
+    }
+
+    /** Яндекс Музыка входом игрока: главная, настройки волны, коллекция, книги, книга, артист, поиск, волна и меню трека. */
+    private void planYandex(PhoneSettings settings) {
+        float originalVolume = settings.musicVolume;
+        step(1, mc -> {
+            settings.musicVolume = 0.03f;
+            PhoneState.setCurrent(PhoneState.HOME);
+            mc.setScreen(new PhoneScreen());
+        });
+        step(10, mc -> phone(mc, p -> p.openApp("music")));
+        step(20, mc -> music(a -> a.switchTab(MusicApp.Tab.SOUNDCLOUD)));
+        shot(80, "soundcloud");
+        step(20, mc -> music(a -> a.debugYandex("home")));
+        shot(120, "yandex_home");
+        step(1, mc -> music(a -> a.debugYandex("wave")));
+        shot(80, "yandex_wave_settings");
+        step(1, mc -> music(a -> a.debugYandex("collection")));
+        shot(80, "yandex_collection");
+        step(1, mc -> music(a -> a.debugYandex("books")));
+        shot(100, "yandex_books");
+        step(1, mc -> music(a -> a.debugYandex("album:22391418")));
+        shot(80, "yandex_book");
+        step(1, mc -> music(a -> a.debugYandex("artist:249991")));
+        shot(80, "yandex_artist");
+        shot(100, "yandex_artist_later");
+        step(1, mc -> music(a -> a.debugYandex("search:Oxxxymiron")));
+        shot(100, "yandex_search");
+        shot(100, "yandex_search_later");
+        step(1, mc -> dev.blockphone.fabric.client.music.yandex.YandexMusic.playWave());
+        step(200, mc -> BlockPhoneFabric.LOGGER.info("[DevShots] yandex wave: {} {} ({}), queue {}", MusicPlayer.state(),
+                MusicPlayer.current() == null ? "-" : MusicPlayer.current().label(), MusicPlayer.queueName(), MusicPlayer.queue().size()));
+        step(1, mc -> music(a -> a.debugYandex("menu")));
+        shot(30, "yandex_track_menu");
+        step(1, mc -> {
+            MusicPlayer.stop();
+            settings.musicVolume = originalVolume;
+        });
     }
 
     private void planMusic(PhoneSettings settings) {
@@ -884,8 +1743,8 @@ public final class DevShots {
         step(1, mc -> phone(mc, PhoneScreen::back));
         step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.YANDEX)));
         shot(40, "music_yandex_login");
-        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.SPOTIFY)));
-        shot(40, "music_spotify_connect");
+        step(1, mc -> music(app -> app.switchTab(MusicApp.Tab.MEDIA)));
+        shot(40, "music_media");
         step(1, mc -> {
             settings.darkTheme = true;
             music(app -> app.switchTab(MusicApp.Tab.LOCAL));
@@ -1211,8 +2070,9 @@ public final class DevShots {
     }
 
     private static void social(Consumer<SocialApp> action) {
-        if (PhoneState.app("feed") instanceof SocialApp app) {
-            action.accept(app);
+        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+        if (hub != null) {
+            action.accept(hub.socialShown());
         }
     }
 
@@ -1226,7 +2086,7 @@ public final class DevShots {
         UUID self = mc.player.getUUID();
         core.social().runInThread(repo -> {
             // Страница Стива: фигура, машет рукой, оранжевый фон, фиолетовый баннер.
-            repo.setLook(STEVE, new dev.blockphone.common.server.SocialRepository.LookRow(1, 1, 2, 4, 0), System.currentTimeMillis());
+            repo.setLook(STEVE, new dev.blockphone.common.server.SocialRepository.LookRow(1, 1, 2, 4, 0, 0), System.currentTimeMillis());
             List<dev.blockphone.common.server.SocialRepository.PublicRow> existing = repo.searchPublics("Новости сервера", 1);
             if (!existing.isEmpty()) {
                 publicId.set(existing.get(0).id());
@@ -1266,8 +2126,9 @@ public final class DevShots {
     }
 
     private static void messenger(Consumer<MessengerApp> action) {
-        if (PhoneState.app("messenger") instanceof MessengerApp app) {
-            action.accept(app);
+        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+        if (hub != null) {
+            action.accept(hub.chatsShown());
         }
     }
 

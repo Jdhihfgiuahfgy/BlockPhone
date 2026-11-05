@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import dev.blockphone.common.BlockPhone;
 import dev.blockphone.common.apps.AppDefinition;
 import dev.blockphone.common.apps.AppLoader;
+import dev.blockphone.common.apps.AppPermission;
 import dev.blockphone.common.apps.AppsSettings;
 import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.fabric.BlockPhoneFabric;
@@ -83,7 +84,7 @@ public final class CustomApps {
     /** Разрешено ли приложение на текущем сервере (в одиночной игре и на серверах без BlockPhone — да). */
     public static boolean allowedHere(AppDefinition app) {
         AppPackets.Policy p = policy;
-        return p == null || AppsSettings.allowed(p.mode(), p.blacklist(), p.whitelist(), app.id(), app.sha256());
+        return p == null || AppsSettings.allowed(p.mode(), p.blacklist(), p.whitelist(), app.id(), app.uid(), app.sha256());
     }
 
     /** Есть ли у приложения серверная часть на текущем сервере. */
@@ -118,7 +119,7 @@ public final class CustomApps {
         } else {
             ScriptHost.queue(r.appId(), r.fromName(), r.payload());
         }
-        if (!open) {
+        if (!open && !(existing != null && existing.runsInBackground())) {
             String name = name(def);
             dev.blockphone.fabric.client.phone.PhoneNotifications.add("app:" + r.appId(), PREFIX + r.appId(), name,
                     PhoneLang.tr("app.message_from", r.fromName()), r.from(), phone -> phone.openApp(PREFIX + r.appId()));
@@ -181,6 +182,12 @@ public final class CustomApps {
             try {
                 Files.createDirectories(dir);
                 copyResource("CUSTOM_APPS.md", dir.resolve("CUSTOM_APPS.md"), true);
+                // Шаблон своего сервера комнат (игра по сети без плагина на своём Cloudflare) — обновляется с модом.
+                Path relay = dir.resolve("relay-server-template");
+                Files.createDirectories(relay);
+                for (String f : new String[]{"worker.js", "wrangler.toml", "README.md"}) {
+                    copyResource("relay-server-template/" + f, relay.resolve(f), !f.equals("wrangler.toml"));
+                }
                 if (!Files.exists(dir.resolve("example-tapper.json.example"))) {
                     copyResource("example-tapper.json", dir.resolve("example-tapper.json.example"), false);
                 }
@@ -194,6 +201,44 @@ public final class CustomApps {
         try (var in = CustomApps.class.getResourceAsStream("/blockphone/apps/" + name)) {
             if (in != null && (replace || !Files.exists(target))) {
                 Files.write(target, in.readAllBytes());
+            }
+        }
+    }
+
+    // --- Работа в фоне ---
+
+    /**
+     * Каждый такт клиента: приложения с разрешением background запущены всегда (с начала игры, при любом мире и
+     * сервере) и получают onTick, пока их не видно на экране телефона (тогда такт даёт сам телефон).
+     */
+    public static void tickBackground(Minecraft mc) {
+        for (AppDefinition app : apps) {
+            if (app.script() == null || !allowedHere(app)) {
+                continue;
+            }
+            boolean background = app.has(AppPermission.BACKGROUND);
+            // Приложение на экране в мире (режим экрана) тоже работает с закрытым телефоном — но только уже запущенное.
+            var existing = dev.blockphone.fabric.client.phone.PhoneState.existing(PREFIX + app.id());
+            if (!background && !(existing instanceof CustomApp running && running.displaying())) {
+                continue;
+            }
+            if (!(dev.blockphone.fabric.client.phone.PhoneState.app(PREFIX + app.id()) instanceof CustomApp custom)) {
+                continue;
+            }
+            boolean shown = dev.blockphone.fabric.client.phone.PhoneState.current() == custom
+                    && (mc.screen instanceof dev.blockphone.fabric.client.phone.PhoneScreen
+                    || dev.blockphone.fabric.client.phone.PhonePin.active());
+            if (!shown) {
+                custom.tickAlways();
+            }
+        }
+    }
+
+    /** Закрытие игры: записать хранилища всех запущенных приложений. */
+    public static void saveAll() {
+        for (AppDefinition app : apps) {
+            if (PhoneState.existing(PREFIX + app.id()) instanceof CustomApp custom) {
+                custom.saveStorageNow();
             }
         }
     }
@@ -217,6 +262,7 @@ public final class CustomApps {
         ICON_SOURCES.put(key, app.icon());
         Identifier id = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "custom_app/" + key);
         try {
+            dev.blockphone.fabric.client.photo.ImageOps.checkSize(app.icon(), "app icon " + key);
             NativeImage image = NativeImage.read(app.icon());
             mc.getTextureManager().register(id, new DynamicTexture(() -> "BlockPhone app " + key, image));
             ICONS.put(key, id);

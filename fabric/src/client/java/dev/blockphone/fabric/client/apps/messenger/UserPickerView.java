@@ -167,7 +167,7 @@ final class UserPickerView extends MessengerView {
     private void clampScroll(int count) {
         double max = Math.max(0, count * UserRows.ROW_H - (height() - listTop()));
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(listTop(), height(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(listTop(), height(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     @Override

@@ -133,6 +133,7 @@ public final class MusicPlayer {
         if (tracks.isEmpty()) {
             return;
         }
+        dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.pause(); // два трека сразу не нужны
         QUEUE.clear();
         QUEUE.addAll(tracks);
         HISTORY.clear();

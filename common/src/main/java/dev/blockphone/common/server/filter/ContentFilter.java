@@ -19,7 +19,31 @@ import java.util.regex.Pattern;
  */
 public final class ContentFilter {
     /** Где написан текст. */
-    public enum Context { MESSAGE, GROUP_NAME, POST, COMMENT, BIO, PUBLIC }
+    public enum Context {
+        MESSAGE("messages"), GROUP_MESSAGE("group_messages"), GROUP_NAME("group_names"), POST("posts"), COMMENT("comments"),
+        BIO("profiles"), PUBLIC("publics");
+
+        /** Имя места в настройках ({@link FilterSettings#PLACES}). */
+        public final String place;
+
+        Context(String place) {
+            this.place = place;
+        }
+    }
+
+    /** Список мест содержит это место (или «all»/«*»). */
+    static boolean covers(List<String> where, Context context) {
+        for (String w : where) {
+            String s = w.strip().toLowerCase(Locale.ROOT).replace('-', '_');
+            if (s.equals("all") || s.equals("*") || s.equals(context.place)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record ExtraRule(String name, List<WordRule> words, List<String> where, boolean block) {
+    }
 
     /**
      * Итог проверки.
@@ -61,6 +85,7 @@ public final class ContentFilter {
     private final FilterSettings settings;
     private final List<WordRule> blacklist;
     private final List<WordRule> whitelist;
+    private final List<ExtraRule> extra = new ArrayList<>();
     private final Map<String, Pattern> customFormats = new java.util.LinkedHashMap<>();
     private final Map<UUID, List<Long>> violations = new ConcurrentHashMap<>();
     private final Map<UUID, Long> mutedUntil = new ConcurrentHashMap<>();
@@ -69,6 +94,9 @@ public final class ContentFilter {
         this.settings = settings.fixNulls();
         this.blacklist = rules(settings.words.blacklist);
         this.whitelist = rules(settings.words.whitelist);
+        for (FilterSettings.Rule r : settings.rules) {
+            extra.add(new ExtraRule(r.name, rules(r.words), r.where, "block".equalsIgnoreCase(r.action)));
+        }
         settings.links.customFormats.forEach((name, regex) -> {
             try {
                 customFormats.put(name.toLowerCase(Locale.ROOT), Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE));
@@ -86,7 +114,7 @@ public final class ContentFilter {
     public boolean applies(Context context) {
         FilterSettings.ApplyTo a = settings.applyTo;
         return settings.enabled && switch (context) {
-            case MESSAGE -> a.messages;
+            case MESSAGE, GROUP_MESSAGE -> a.messages;
             case GROUP_NAME -> a.groupNames;
             case POST -> a.posts;
             case COMMENT -> a.comments;
@@ -98,7 +126,9 @@ public final class ContentFilter {
     /** Записи списков, которые не удалось разобрать (для предупреждения в логе). */
     public List<String> badEntries() {
         List<String> bad = new ArrayList<>();
-        for (String entry : settings.words.blacklist) {
+        List<String> all = new ArrayList<>(settings.words.blacklist);
+        settings.rules.forEach(r -> all.addAll(r.words));
+        for (String entry : all) {
             if (rule(entry) == null && !entry.isBlank()) {
                 bad.add(entry);
             }
@@ -111,26 +141,48 @@ public final class ContentFilter {
         return bad;
     }
 
+    /** Проверка без учёта места (общий список и ссылки — везде). */
     public Verdict check(String text) {
+        return check(text, null);
+    }
+
+    /** Проверка текста для места context: общий список, ссылки и дополнительные правила — только там, где они включены. */
+    public Verdict check(String text, Context context) {
         List<Range> wordHits = new ArrayList<>();
         List<String> found = new ArrayList<>();
-        if (!blacklist.isEmpty()) {
+        boolean blockWords = false;
+        List<List<WordRule>> lists = new ArrayList<>();
+        List<Boolean> listBlock = new ArrayList<>();
+        if (context == null || covers(settings.words.where, context)) {
+            lists.add(blacklist);
+            listBlock.add("block".equalsIgnoreCase(settings.words.action));
+        }
+        for (ExtraRule r : extra) {
+            if (context == null || covers(r.where(), context)) {
+                lists.add(r.words());
+                listBlock.add(r.block());
+            }
+        }
+        if (lists.stream().anyMatch(l -> !l.isEmpty())) {
             Skeleton sk = Skeleton.of(text);
             List<Range> allowed = new ArrayList<>();
             for (WordRule rule : whitelist) {
                 allowed.addAll(matches(rule, text, sk));
             }
-            for (WordRule rule : blacklist) {
-                for (Range r : matches(rule, text, sk)) {
-                    if (!r.inside(allowed)) {
-                        wordHits.add(r);
-                        found.add("word " + text.substring(r.start, r.end));
+            for (int i = 0; i < lists.size(); i++) {
+                for (WordRule rule : lists.get(i)) {
+                    for (Range r : matches(rule, text, sk)) {
+                        if (!r.inside(allowed)) {
+                            wordHits.add(r);
+                            found.add("word " + text.substring(r.start, r.end));
+                            blockWords |= listBlock.get(i);
+                        }
                     }
                 }
             }
         }
         List<Range> linkHits = new ArrayList<>();
-        for (Link link : findLinks(text)) {
+        for (Link link : context == null || covers(settings.links.where, context) ? findLinks(text) : List.<Link>of()) {
             if (!allowed(link)) {
                 linkHits.add(new Range(link.start, link.end));
                 found.add("link " + text.substring(link.start, link.end) + " " + link.formats);
@@ -140,11 +192,9 @@ public final class ContentFilter {
             return new Verdict(text, false, null, List.of());
         }
         String reason = !wordHits.isEmpty() ? "filter_words" : "filter_links";
-        boolean block = (!wordHits.isEmpty() && "block".equalsIgnoreCase(settings.words.action))
-                || (!linkHits.isEmpty() && "block".equalsIgnoreCase(settings.links.action));
+        boolean block = blockWords || (!linkHits.isEmpty() && "block".equalsIgnoreCase(settings.links.action));
         if (block) {
-            return new Verdict(text, true, !wordHits.isEmpty() && "block".equalsIgnoreCase(settings.words.action)
-                    ? "filter_words" : "filter_links", found);
+            return new Verdict(text, true, blockWords ? "filter_words" : "filter_links", found);
         }
         char[] chars = text.toCharArray();
         for (List<Range> hits : List.of(wordHits, linkHits)) {

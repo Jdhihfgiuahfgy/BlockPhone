@@ -243,6 +243,13 @@ public final class AppService {
         return result;
     }
 
+    /** Неподставленное поле {имя} в команде. */
+    private static final java.util.regex.Pattern UNFILLED = java.util.regex.Pattern.compile("\\{[A-Za-z0-9_]+(\\|[^}]*)?}");
+
+    private static boolean isConsole(JsonObject function) {
+        return function.has("as") && "console".equalsIgnoreCase(function.get("as").getAsString());
+    }
+
     private AppResult call(UUID player, AppPackets.Call p) {
         ServerPart part = parts.get(p.appId());
         JsonObject function = part != null ? part.functions().get(p.function()) : null;
@@ -258,14 +265,16 @@ public final class AppService {
                 }
                 inputs.put(def.getKey(), InputRules.normalize(rules, raw));
             }
-        } else {
+        } else if (function == null || !isConsole(function)) {
+            // Без описания полей — только для команд от имени игрока (их он мог бы ввести и сам). От консоли
+            // подставляются лишь описанные и проверенные поля: иначе изменённый телефон дописал бы в команду что угодно.
             p.inputs().forEach((k, v) -> inputs.put(k, InputRules.clean(v)));
         }
         AppResult result = AppResult.ok();
         if (function != null) {
             Map<String, String> builtins = builtins(player);
             String name = builtins.get("player");
-            boolean console = function.has("as") && "console".equalsIgnoreCase(function.get("as").getAsString());
+            boolean console = isConsole(function);
             List<String> commands = new ArrayList<>();
             if (function.has("command")) {
                 commands.add(function.get("command").getAsString());
@@ -280,6 +289,11 @@ public final class AppService {
                 String command = AppText.substitute(platform.placeholders(player, AppText.substitute(template, builtins)), inputs).strip();
                 if (command.startsWith("/")) {
                     command = command.substring(1);
+                }
+                if (console && UNFILLED.matcher(command).find()) {
+                    platform.warn("[apps] " + p.appId() + "." + p.function() + ": console command has fields not described in"
+                            + " \"inputs\" (only described and checked fields are used for console commands): /" + command, null);
+                    return AppResult.error(function.has("error") ? text(function.get("error"), builtins, inputs) : "@app.error.command");
                 }
                 platform.info("[apps] " + name + " (" + p.appId() + "." + p.function() + "): " + (console ? "console" : "player") + " /" + command);
                 if (command.isEmpty() || !platform.runCommand(player, command, console)) {

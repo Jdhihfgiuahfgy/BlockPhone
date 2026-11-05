@@ -35,7 +35,7 @@ import java.util.logging.Level;
 public final class BlockPhoneBungee extends Plugin implements Listener, ServerPlatform {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private BlockPhoneServer core;
+    private volatile BlockPhoneServer core;
 
     /** Настройки: plugins/BlockPhone/config.json (как у Velocity). */
     static final class Config {
@@ -50,12 +50,14 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         /** Стикеры и квота загрузок игрока. */
         dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+        /** Модерация: лог сообщений в чат (chatLog), команды прокси при бане (banCommand, unbanCommand). */
+        dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
         Storage storage = new Storage();
 
         static final class Social {
             boolean enabled = true;
             /** "any" — любые фото, "server" — только снятые в этой сети, "none" — без фото. */
-            String photos = "server";
+            String photos = "any";
             int maxPhotoKb = 600;
             int maxPhotoSide = 1280;
             int maxPublicsPerPlayer = 3;
@@ -64,6 +66,8 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
         static final class Voice {
             boolean messages = true;
             int maxSeconds = 60;
+            /** Звонки в чатах сети (голос идёт через прокси). */
+            boolean calls = true;
         }
 
         static final class Storage {
@@ -79,19 +83,45 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
 
     @Override
     public void onEnable() {
+        core = new BlockPhoneServer(this, readSettings());
+        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
+        core.start();
+        getProxy().registerChannel(BlockPhone.CHANNEL);
+        getProxy().getPluginManager().registerListener(this, this);
+        // /bpb reload (своё имя: /blockphone может быть занято плагином BlockPhone на сервере сети).
+        getProxy().getPluginManager().registerCommand(this, new net.md_5.bungee.api.plugin.Command("bpb", null, "blockphonebungee") {
+            @Override
+            public void execute(net.md_5.bungee.api.CommandSender sender, String[] args) {
+                if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("/bpb reload"));
+                    return;
+                }
+                if (!sender.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("No permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")"));
+                    return;
+                }
+                try {
+                    core = BlockPhoneServer.restart(core, BlockPhoneBungee.this, readSettings());
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("BlockPhone: config reloaded"));
+                } catch (RuntimeException e) {
+                    getLogger().log(Level.WARNING, "BlockPhone reload failed", e);
+                    sender.sendMessage(new net.md_5.bungee.api.chat.TextComponent("BlockPhone: reload failed — " + e.getMessage()));
+                }
+            }
+        });
+    }
+
+    private ServerSettings readSettings() {
         Config config = loadConfig();
         Path dir = getDataFolder().toPath();
         ServerSettings.Storage storage = new ServerSettings.Storage(config.storage.type, dir.resolve("messenger"), config.storage.host,
                 config.storage.port, config.storage.database, config.storage.user, config.storage.password, config.storage.tablePrefix);
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled, ImageRef.PhotoPolicy.parse(config.social.photos),
                 config.social.maxPhotoKb * 1024, config.social.maxPhotoSide, config.social.maxPublicsPerPlayer);
-        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
-        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
-        core.setAppsDirectory(getDataFolder().toPath().resolve("apps"));
-        core.start();
-        getProxy().registerChannel(BlockPhone.CHANNEL);
-        getProxy().getPluginManager().registerListener(this, this);
+        // Звонки через прокси работают (голос пересылает сам BlockPhone); громкой связи нет — прокси не знает, кто где стоит.
+        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, config.voice.calls, "normal", 0);
+        return new ServerSettings(config.messengerEnabled, true, storage, social,
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }
 
     @Override
@@ -163,6 +193,10 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             config.uploads = new dev.blockphone.common.server.UploadSettings();
         }
         config.uploads.fixNulls();
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
+        }
+        config.moderation.fixNulls();
         if (config.moderators == null) {
             config.moderators = new ArrayList<>();
         }
@@ -212,6 +246,28 @@ public final class BlockPhoneBungee extends Plugin implements Listener, ServerPl
             return false;
         }
         return getProxy().getPluginManager().dispatchCommand(console ? getProxy().getConsole() : target, command);
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new ArrayList<>();
+        for (ProxiedPlayer player : getProxy().getPlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public void sendChat(UUID player, String text) {
+        ProxiedPlayer target = getProxy().getPlayer(player);
+        if (target != null) {
+            target.sendMessage(net.md_5.bungee.api.chat.TextComponent.fromLegacyText(text));
+        }
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        return getProxy().getPluginManager().dispatchCommand(getProxy().getConsole(), command);
     }
 
     @Override

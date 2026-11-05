@@ -72,7 +72,7 @@ final class TelegramNotifications {
         }
 
         @Override
-        public void render(GuiGraphics g, Font font, long time) {
+        public void render(GuiGraphics g, Font font, long time) { // mc:render — в 26.1 extractRenderState/extractBackground
             PhoneDraw.rawRoundedRect(g, 0, 0, width(), height(), 4, PhoneTheme.bodyEdge());
             PhoneDraw.rawRoundedRect(g, 1, 1, width() - 1, height() - 1, 3, 0xF0111725);
             g.fill(1, 1, 3, height() - 1, COLOR);

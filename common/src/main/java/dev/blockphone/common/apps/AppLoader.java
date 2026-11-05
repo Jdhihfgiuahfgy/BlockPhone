@@ -188,10 +188,18 @@ public final class AppLoader {
                 }
             }
         }
+        String uid = root.has("uid") ? root.get("uid").getAsString().toLowerCase(Locale.ROOT) : "";
+        if (!uid.isEmpty() && !AppDefinition.UID.matcher(uid).matches()) {
+            throw new AppException("uid must be 6-24 chars of a-z and 0-9 (the phone creates it when you publish the app)");
+        }
+        String category = root.has("category") ? root.get("category").getAsString().toLowerCase(Locale.ROOT) : "other";
         return new AppDefinition(id, name, version, author, color, icon, java.util.Collections.unmodifiableSet(permissions), start, order,
-                pages, actions, inputs, sha256, script);
+                pages, actions, inputs, sha256, script, uid, category);
     }
 
+    /** Свой сервер комнат: https (http — только localhost/127.0.0.1 для проверки через wrangler dev). */
+    private static final Pattern RELAY = Pattern.compile(
+            "https://[a-z0-9-]+(\\.[a-z0-9-]+)+(:\\d{1,5})?/?|http://(localhost|127\\.0\\.0\\.1)(:\\d{1,5})?/?");
     private static final Pattern HOST = Pattern.compile("(\\*\\.)?[a-z0-9-]+(\\.[a-z0-9-]+)+|localhost");
 
     /** Код *.lua и картинки *.png из папки приложения (с подпапками, без ссылок наружу), "hosts", ориентация. */
@@ -225,14 +233,16 @@ public final class AppLoader {
                     long size = Files.size(file);
                     totalAssets += size;
                     if (assets.size() >= AppScript.MAX_ASSETS || size > AppScript.MAX_ASSET_BYTES || totalAssets > AppScript.MAX_TOTAL_ASSETS) {
-                        throw new AppException("images are too big (max " + AppScript.MAX_ASSETS + " files, 1 MB each)");
+                        throw new AppException("images are too big (max " + AppScript.MAX_ASSETS + " files, " + AppScript.MAX_ASSET_BYTES / (1024 * 1024) + " MB each, "
+                                + AppScript.MAX_TOTAL_ASSETS / (1024 * 1024) + " MB in all)");
                     }
                     assets.put(rel, Files.readAllBytes(file));
                 } else if (AppScript.isSound(lower)) {
                     long size = Files.size(file);
                     totalAssets += size;
                     if (assets.size() >= AppScript.MAX_ASSETS || size > AppScript.MAX_SOUND_BYTES || totalAssets > AppScript.MAX_TOTAL_ASSETS) {
-                        throw new AppException("sounds are too big (max 4 MB each, 16 MB with images)");
+                        throw new AppException("sounds are too big (max 4 MB each, " + AppScript.MAX_TOTAL_ASSETS / (1024 * 1024)
+                                + " MB with images)");
                     }
                     assets.put(rel, Files.readAllBytes(file));
                 }
@@ -264,8 +274,19 @@ public final class AppLoader {
             throw new AppException("\"orientation\" must be portrait or landscape");
         }
         boolean fullscreen = root.has("fullscreen") && root.get("fullscreen").getAsBoolean();
+        String relay = null;
+        if (root.has("relay")) {
+            relay = root.get("relay").getAsString().strip();
+            if (!RELAY.matcher(relay).matches()) {
+                throw new AppException("bad \"relay\" (example: https://my-relay.example.workers.dev)");
+            }
+            relay = relay.replaceFirst("/+$", "");
+            if (!permissions.contains(AppPermission.MULTIPLAYER)) {
+                throw new AppException("\"relay\" needs the \"multiplayer\" permission");
+            }
+        }
         return new AppScript(main, java.util.Collections.unmodifiableMap(sources), java.util.Collections.unmodifiableMap(assets),
-                orientation.equals("landscape"), fullscreen, List.copyOf(hosts));
+                orientation.equals("landscape"), fullscreen, List.copyOf(hosts), relay);
     }
 
     /** Какое разрешение нужно действию (null — только переходы и сообщения). */

@@ -16,6 +16,11 @@ final class TrackRows {
     private static final int COVER = 18;
 
     static void draw(MusicView view, GuiGraphics g, Track track, int y, int w, int mx, int my, Runnable action) {
+        draw(view, g, track, track.title(), y, w, mx, my, action);
+    }
+
+    /** Строка трека со своей подписью (главы книги — без повторения названия книги). */
+    static void draw(MusicView view, GuiGraphics g, Track track, String title, int y, int w, int mx, int my, Runnable action) {
         if (PhoneDraw.inside(mx, my, 0, y, w, H)) {
             g.fill(0, y, w, y + H, PhoneTheme.cardHover());
         }
@@ -33,11 +38,11 @@ final class TrackRows {
             equalizer(g, (int) right - 8, y + 8, MusicPlayer.state() == MusicPlayer.State.PLAYING);
             right -= 12;
         }
-        PhoneDraw.text(g, PhoneDraw.ellipsize(track.title(), right - tx, 0.8f), tx, y + 4, playing ? PhoneTheme.accent() : PhoneTheme.text(),
+        PhoneDraw.text(g, PhoneDraw.ellipsize(title, right - tx, 0.8f), tx, y + 4, playing ? PhoneTheme.accent() : PhoneTheme.text(),
                 0.8f, false);
         String sub = track.artist().isEmpty() ? track.album() : track.artist();
         PhoneDraw.text(g, PhoneDraw.ellipsize(sub, right - tx, 0.6f), tx, y + 14, PhoneTheme.secondaryText(), 0.6f, false);
-        view.hit(0, y, w, H, action);
+        view.hit(0, y, w, H, action, track.source() == Track.Source.YANDEX ? () -> view.app.trackMenu(track) : null);
     }
 
     /** Список треков с прокруткой (область top..bottom); клик — играть весь список с этого трека. */

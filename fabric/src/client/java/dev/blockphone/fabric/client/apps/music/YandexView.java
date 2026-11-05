@@ -16,14 +16,23 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 /**
- * Вкладка «Яндекс»: без входа — инструкция (страница входа → скопировать адрес → вставить); после входа —
- * «Моя волна», поиск и «Мне нравится». Неофициальный API: может перестать работать без предупреждения.
+ * Вкладка «Яндекс»: без входа — инструкция (страница входа → скопировать адрес → вставить); после входа — поиск по
+ * всему и разделы «Главная» («Моя волна» с настройками, «для вас», чарт, новинки, плейлисты), «Коллекция» (треки,
+ * плейлисты, альбомы) и «Книги» (аудиокниги и подкасты, «Продолжить»). ПКМ по треку — волна по треку, артист, альбом.
+ * Неофициальный API: может перестать работать без предупреждения.
  */
 final class YandexView extends MusicView {
     private final TextArea tokenInput = new TextArea(true, 0.7f);
     private final TextArea search = new TextArea(false, 0.75f);
-    /** Что показано под поиском: «Мне нравится» или «Мои плейлисты». */
-    private boolean showPlaylists;
+    private static final net.minecraft.resources.Identifier SETTINGS_GLYPH = net.minecraft.resources.Identifier.fromNamespaceAndPath(
+            dev.blockphone.common.BlockPhone.MOD_ID, "textures/gui/glyph/settings.png");
+
+    private enum Section { HOME, COLLECTION, BOOKS }
+
+    private enum Collection { TRACKS, PLAYLISTS, ALBUMS }
+
+    private Section section = Section.HOME;
+    private Collection collection = Collection.TRACKS;
 
     YandexView(MusicApp app) {
         super(app);
@@ -31,7 +40,7 @@ final class YandexView extends MusicView {
         search.setMaxLength(64);
         search.setOnChange(text -> {
             scroll = 0;
-            YandexMusic.search(text.strip());
+            dev.blockphone.fabric.client.music.yandex.YandexBrowse.search(text.strip());
         });
     }
 
@@ -113,72 +122,306 @@ final class YandexView extends MusicView {
         YandexApi.Account account = YandexMusic.account();
         String who = account == null ? "" : account.name() + (account.plus() ? " · " + tr("music.plus") : "");
         PhoneDraw.text(g, PhoneDraw.ellipsize(who, w - 16, 0.6f), 8, 3, PhoneTheme.secondaryText(), 0.6f, false);
-
-        // «Моя волна» — градиентная кнопка.
-        int py = 12;
-        boolean hover = PhoneDraw.inside(mx, my, 6, py, w - 12, 22);
-        int left = PhoneTheme.mix(PhoneTheme.accent(), 0xFFE0559B, 0.5f);
-        PhoneDraw.gradientPill(g, 6, py, w - 6, py + 22, hover ? PhoneTheme.mix(left, 0xFFFFFFFF, 0.15f) : left, 0xFFF29544);
-        String wave = YandexMusic.startingWave() ? tr("music.loading") : "▶  " + tr("music.my_wave");
-        PhoneDraw.centeredText(g, wave, w / 2f, py + 7, 0xFFFFFFFF, 0.85f, true);
-        hit(6, py, w - 12, 22, YandexMusic::playWave);
-
-        int sy = py + 28;
+        int sy = 12;
         search.setBounds(6, sy, w - 12, 16);
-        search.setPlaceholder(tr("music.search_placeholder"));
+        search.setPlaceholder(tr("music.y.search_all"));
         search.render(g, mx, my);
         int top = sy + 20;
-        if (search.text().isBlank()) {
-            // Переключатель «Мне нравится» / «Мои плейлисты».
-            int half = (w - 16) / 2;
-            PhoneDraw.button(g, 6, top, half, 14, tr("music.liked"), mx, my,
-                    showPlaylists ? PhoneDraw.ButtonStyle.NORMAL : PhoneDraw.ButtonStyle.SELECTED);
-            hit(6, top, half, 14, () -> {
-                showPlaylists = false;
+        if (!search.text().isBlank()) {
+            renderSearch(g, mx, my, top);
+            return;
+        }
+        // Разделы: Главная / Коллекция / Книги.
+        Section[] sections = Section.values();
+        int bw = (w - 12 - 4 * (sections.length - 1)) / sections.length;
+        for (int i = 0; i < sections.length; i++) {
+            Section sec = sections[i];
+            int bx = 6 + i * (bw + 4);
+            PhoneDraw.button(g, bx, top, bw, 14, tr("music.y.section." + sec.name().toLowerCase()), mx, my,
+                    sec == section ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
+            hit(bx, top, bw, 14, () -> {
+                section = sec;
                 scroll = 0;
             });
-            PhoneDraw.button(g, 10 + half, top, half, 14, tr("music.playlists"), mx, my,
-                    showPlaylists ? PhoneDraw.ButtonStyle.SELECTED : PhoneDraw.ButtonStyle.NORMAL);
-            hit(10 + half, top, half, 14, () -> {
-                showPlaylists = true;
-                scroll = 0;
-                YandexMusic.loadPlaylists();
-            });
-            top += 18;
-            if (showPlaylists) {
-                renderPlaylists(g, mx, my, top);
-                return;
+        }
+        top += 18;
+        switch (section) {
+            case HOME -> renderHome(g, mx, my, top);
+            case COLLECTION -> renderCollection(g, mx, my, top);
+            case BOOKS -> renderBooks(g, mx, my, top);
+        }
+    }
+
+    // --- Главная ---
+
+    private void renderHome(GuiGraphics g, int mx, int my, int top) {
+        int w = width();
+        int listMouseY = my >= top ? my : -1000;
+        dev.blockphone.fabric.client.music.yandex.YandexCatalog.Landing landing = dev.blockphone.fabric.client.music.yandex.YandexBrowse.landing();
+        beginList(g, top, height());
+        int y = top + 2 - (int) scroll;
+        // «Моя волна» — градиентная кнопка и шестерёнка настроек.
+        int pw = w - 12 - 26;
+        boolean hover = PhoneDraw.inside(mx, listMouseY, 6, y, pw, 22);
+        int left = PhoneTheme.mix(PhoneTheme.accent(), 0xFFE0559B, 0.5f);
+        PhoneDraw.gradientPill(g, 6, y, 6 + pw, y + 22, hover ? PhoneTheme.mix(left, 0xFFFFFFFF, 0.15f) : left, 0xFFF29544);
+        String wave = YandexMusic.startingWave() ? tr("music.loading") : "▶  " + tr("music.my_wave");
+        PhoneDraw.centeredText(g, wave, 6 + pw / 2f, y + 7, 0xFFFFFFFF, 0.85f, true);
+        hit(6, y, pw, 22, YandexMusic::playWave);
+        int gx = w - 6 - 22;
+        PhoneDraw.button(g, gx, y, 22, 22, "", mx, listMouseY, PhoneDraw.ButtonStyle.NORMAL);
+        PhoneDraw.tinted(g, SETTINGS_GLYPH, gx + 5, y + 5, 12, 12, 32, 32, PhoneTheme.text());
+        hit(gx, y, 22, 22, () -> app.push(new YandexWaveSettingsView(app)));
+        y += 28;
+        if (landing == null) {
+            PhoneDraw.text(g, tr("music.loading"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+            y += 14;
+        } else {
+            if (!landing.forYou().isEmpty()) {
+                section(g, tr("music.y.for_you"), y + 2);
+                y += 12;
+                for (YandexApi.Playlist p : landing.forYou()) {
+                    YandexRows.playlist(this, g, p, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!landing.chart().isEmpty()) {
+                section(g, tr("music.y.chart"), y + 2);
+                y += 12;
+                List<Track> chart = landing.chart();
+                y = TrackRows.list(this, g, chart.subList(0, Math.min(5, chart.size())), y, w, mx, listMouseY, tr("music.y.chart"));
+                YandexRows.more(this, g, tr("music.y.whole_chart"), y, w, mx, listMouseY, () -> app.push(new YandexTracksView(app,
+                        tr("music.y.chart"), dev.blockphone.fabric.client.music.yandex.YandexBrowse::chart)));
+                y += 16;
+            }
+            if (!landing.newReleases().isEmpty()) {
+                section(g, tr("music.y.new_releases"), y + 2);
+                y += 12;
+                for (var album : landing.newReleases()) {
+                    YandexRows.album(this, g, album, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!landing.playlists().isEmpty()) {
+                section(g, tr("music.y.popular_playlists"), y + 2);
+                y += 12;
+                for (YandexApi.Playlist p : landing.playlists()) {
+                    YandexRows.playlist(this, g, p, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
             }
         }
-        int listMouseY = my >= top ? my : -1000;
-        List<Track> list;
-        String name;
-        String empty;
-        boolean loading;
-        if (!search.text().isBlank()) {
-            list = YandexMusic.searchResults();
-            name = tr("music.search_results");
-            empty = tr("music.nothing_found");
-            loading = YandexMusic.searching();
-        } else {
-            list = YandexMusic.likes();
-            name = tr("music.liked");
-            empty = tr("music.no_likes");
-            loading = YandexMusic.loadingLikes();
+        endList(g);
+        clampScroll(y + (int) scroll - top + 6, height() - top);
+    }
+
+    // --- Коллекция ---
+
+    private void renderCollection(GuiGraphics g, int mx, int my, int top) {
+        int w = width();
+        Collection[] kinds = Collection.values();
+        int bw = (w - 12 - 4 * (kinds.length - 1)) / kinds.length;
+        for (int i = 0; i < kinds.length; i++) {
+            Collection c = kinds[i];
+            int bx = 6 + i * (bw + 4);
+            PhoneDraw.button(g, bx, top, bw, 13, tr("music.y.collection." + c.name().toLowerCase()), mx, my,
+                    c == collection ? PhoneDraw.ButtonStyle.PRIMARY : PhoneDraw.ButtonStyle.NORMAL);
+            hit(bx, top, bw, 13, () -> {
+                collection = c;
+                scroll = 0;
+                if (c == Collection.PLAYLISTS) {
+                    YandexMusic.loadPlaylists();
+                }
+            });
         }
+        top += 17;
+        switch (collection) {
+            case PLAYLISTS -> renderPlaylists(g, mx, my, top);
+            case ALBUMS -> renderAlbums(g, mx, my, top, false);
+            case TRACKS -> {
+                List<Track> list = YandexMusic.likes();
+                int listMouseY = my >= top ? my : -1000;
+                beginList(g, top, height());
+                int y = top - (int) scroll;
+                if (list == null || (YandexMusic.loadingLikes() && list.isEmpty())) {
+                    PhoneDraw.text(g, tr("music.loading"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+                } else if (list.isEmpty()) {
+                    PhoneDraw.text(g, tr("music.no_likes"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+                } else {
+                    TrackRows.list(this, g, list, y, w, mx, listMouseY, tr("music.liked"));
+                }
+                endList(g);
+                clampScroll((list == null ? 0 : list.size()) * TrackRows.H + 8, height() - top);
+            }
+        }
+    }
+
+    /** Понравившиеся альбомы (spoken = false) или книги и подкасты (spoken = true). */
+    private void renderAlbums(GuiGraphics g, int mx, int my, int top, boolean spoken) {
+        int w = width();
+        var all = dev.blockphone.fabric.client.music.yandex.YandexBrowse.likedAlbums();
+        int listMouseY = my >= top ? my : -1000;
         beginList(g, top, height());
         int y = top - (int) scroll;
-        section(g, name + (list != null && !list.isEmpty() ? " · " + list.size() : ""), y + 2);
-        y += 12;
-        if (list == null || (loading && list.isEmpty())) {
+        int count = 0;
+        if (all == null) {
             PhoneDraw.text(g, tr("music.loading"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
-        } else if (list.isEmpty()) {
-            PhoneDraw.text(g, empty, 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
         } else {
-            y = TrackRows.list(this, g, list, y, w, mx, listMouseY, name);
+            for (var album : all) {
+                if (album.spoken() == spoken) {
+                    YandexRows.album(this, g, album, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                    count++;
+                }
+            }
+            if (count == 0) {
+                PhoneDraw.text(g, tr("music.y.nothing_here"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+            }
         }
         endList(g);
-        clampScroll((list == null ? 0 : list.size()) * TrackRows.H + 20, height() - top);
+        clampScroll(count * YandexRows.H + 8, height() - top);
+    }
+
+    // --- Книги и подкасты ---
+
+    private void renderBooks(GuiGraphics g, int mx, int my, int top) {
+        int w = width();
+        int listMouseY = my >= top ? my : -1000;
+        beginList(g, top, height());
+        int y = top - (int) scroll;
+        // «Продолжить слушать»: с аккаунта Яндекса (как в его приложении) и своё, чего там ещё нет.
+        var catalogue = dev.blockphone.fabric.client.music.yandex.YandexBrowse.spoken();
+        java.util.Set<String> shown = new java.util.HashSet<>();
+        int continueRows = 0;
+        if (catalogue != null) {
+            for (var item : catalogue.continueItems()) {
+                if (continueRows == 0) {
+                    section(g, tr("music.y.continue_listening"), y + 2);
+                    y += 12;
+                }
+                var album = item.album();
+                long pos = Math.max(item.positionMs(), dev.blockphone.fabric.client.music.yandex.YandexBooks.livePosition(item.trackKey()));
+                String chapter = item.trackTitle().startsWith(album.title()) && item.trackTitle().length() > album.title().length() + 1
+                        ? item.trackTitle().substring(album.title().length()).replaceFirst("^[\\s.,:;—–-]+", "") : item.trackTitle();
+                String sub = chapter + " · " + time(pos) + (item.durationMs() > 0 ? " / " + time(item.durationMs()) : "");
+                YandexRows.row(this, g, album.coverUrl(), album.title(), sub, y, w, mx, listMouseY, false,
+                        () -> app.push(new YandexAlbumView(app, album.id(), album.title())));
+                y += YandexRows.H;
+                shown.add(album.id());
+                continueRows++;
+            }
+        }
+        for (var e : dev.blockphone.fabric.client.music.yandex.YandexBooks.recent()) {
+            if (continueRows >= 6 || shown.contains(e.albumId)) {
+                continue;
+            }
+            if (continueRows == 0) {
+                section(g, tr("music.y.continue_listening"), y + 2);
+                y += 12;
+            }
+            String sub = tr("music.y.part", e.trackIndex + 1) + " · " + time(e.positionMs)
+                    + (e.durationMs > 0 ? " / " + time(e.durationMs) : "");
+            YandexRows.row(this, g, e.coverUrl, e.title, sub, y, w, mx, listMouseY, false,
+                    () -> app.push(new YandexAlbumView(app, e.albumId, e.title)));
+            y += YandexRows.H;
+            continueRows++;
+        }
+        // Моя полка: понравившиеся книги и подкасты.
+        var liked = dev.blockphone.fabric.client.music.yandex.YandexBrowse.likedAlbums();
+        if (liked != null && liked.stream().anyMatch(a -> a.spoken())) {
+            section(g, tr("music.y.bookshelf"), y + 2);
+            y += 12;
+            for (var album : liked) {
+                if (album.spoken()) {
+                    YandexRows.album(this, g, album, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+        }
+        var shelves = catalogue == null ? null : catalogue.shelves();
+        if (shelves == null) {
+            PhoneDraw.text(g, tr("music.loading"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+            y += 14;
+        } else {
+            for (var shelf : shelves) {
+                section(g, shelf.title(), y + 2);
+                y += 12;
+                for (var album : shelf.albums().subList(0, Math.min(6, shelf.albums().size()))) {
+                    YandexRows.album(this, g, album, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+                for (var p : shelf.playlists().subList(0, Math.min(4, shelf.playlists().size()))) {
+                    YandexRows.playlist(this, g, p, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+        }
+        endList(g);
+        clampScroll(y + (int) scroll - top + 6, height() - top);
+    }
+
+    // --- Поиск ---
+
+    private void renderSearch(GuiGraphics g, int mx, int my, int top) {
+        int w = width();
+        var r = dev.blockphone.fabric.client.music.yandex.YandexBrowse.searchResults();
+        int listMouseY = my >= top ? my : -1000;
+        beginList(g, top, height());
+        int y = top - (int) scroll;
+        if (r == null) {
+            PhoneDraw.text(g, tr(dev.blockphone.fabric.client.music.yandex.YandexBrowse.searching() ? "music.loading" : "music.nothing_found"),
+                    8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+        } else {
+            boolean any = false;
+            if (!r.tracks().isEmpty()) {
+                any = true;
+                section(g, tr("music.y.tracks"), y + 2);
+                y += 12;
+                y = TrackRows.list(this, g, r.tracks().subList(0, Math.min(8, r.tracks().size())), y, w, mx, listMouseY,
+                        tr("music.search_results"));
+            }
+            if (!r.artists().isEmpty()) {
+                any = true;
+                section(g, tr("music.y.artists"), y + 2);
+                y += 12;
+                for (var a : r.artists().subList(0, Math.min(3, r.artists().size()))) {
+                    YandexRows.artist(this, g, a, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!r.albums().isEmpty()) {
+                any = true;
+                section(g, tr("music.y.albums"), y + 2);
+                y += 12;
+                for (var a : r.albums().subList(0, Math.min(4, r.albums().size()))) {
+                    YandexRows.album(this, g, a, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!r.spoken().isEmpty()) {
+                any = true;
+                section(g, tr("music.y.books_podcasts"), y + 2);
+                y += 12;
+                for (var a : r.spoken().subList(0, Math.min(5, r.spoken().size()))) {
+                    YandexRows.album(this, g, a, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!r.playlists().isEmpty()) {
+                any = true;
+                section(g, tr("music.y.playlists"), y + 2);
+                y += 12;
+                for (var p : r.playlists().subList(0, Math.min(3, r.playlists().size()))) {
+                    YandexRows.playlist(this, g, p, y, w, mx, listMouseY);
+                    y += YandexRows.H;
+                }
+            }
+            if (!any) {
+                PhoneDraw.text(g, tr("music.nothing_found"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
+            }
+        }
+        endList(g);
+        clampScroll(y + (int) scroll - top + 6, height() - top);
     }
 
     /** Список своих плейлистов: обложка, название, число треков; нажатие — треки плейлиста. */
@@ -194,25 +437,8 @@ final class YandexView extends MusicView {
             PhoneDraw.text(g, tr("music.no_playlists"), 8, y + 2, PhoneTheme.secondaryText(), 0.7f, false);
         } else {
             for (YandexApi.Playlist playlist : playlists) {
-                int rowH = TrackRows.H;
-                boolean hover = PhoneDraw.inside(mx, listMouseY, 4, y, w - 8, rowH);
-                if (hover) {
-                    PhoneDraw.roundedRect(g, 4, y, w - 4, y + rowH, 4, PhoneTheme.cardHover());
-                }
-                int cs = rowH - 6;
-                dev.blockphone.fabric.client.photo.PhotoTextures.Image cover = dev.blockphone.fabric.client.music.Covers.url(playlist.coverUrl());
-                if (cover != null) {
-                    PhoneDraw.texture(g, cover.id(), 8, y + 3, cs, cs, cover.width(), cover.height());
-                } else {
-                    PhoneDraw.roundedRect(g, 8, y + 3, 8 + cs, y + 3 + cs, 3, PhoneTheme.card());
-                    PhoneDraw.tinted(g, NOTE, 8 + cs / 2 - 5, y + 3 + cs / 2 - 5, 10, 10, 32, 32, PhoneTheme.accent());
-                }
-                PhoneDraw.text(g, PhoneDraw.ellipsize(playlist.title(), w - cs - 24, 0.75f), 14 + cs, y + 5, PhoneTheme.text(), 0.75f, false);
-                PhoneDraw.text(g, tr("music.tracks_count", playlist.trackCount()), 14 + cs, y + 14, PhoneTheme.secondaryText(), 0.6f, false);
-                if (y + rowH > top && y < height()) {
-                    hit(4, Math.max(y, top), w - 8, rowH - Math.max(0, top - y), () -> app.push(new YandexPlaylistView(app, playlist)));
-                }
-                y += rowH;
+                YandexRows.playlist(this, g, playlist, y, w, mx, listMouseY);
+                y += YandexRows.H;
             }
         }
         endList(g);
@@ -260,6 +486,24 @@ final class YandexView extends MusicView {
             return tokenInput.charTyped(event);
         }
         return search.isFocused() && search.charTyped(event);
+    }
+
+    void debugShow(String what) {
+        scroll = 0;
+        switch (what) {
+            case "home" -> section = Section.HOME;
+            case "collection" -> {
+                section = Section.COLLECTION;
+                collection = Collection.ALBUMS;
+            }
+            case "books" -> section = Section.BOOKS;
+            default -> {
+                if (what.startsWith("search:")) {
+                    search.setText(what.substring(7));
+                    dev.blockphone.fabric.client.music.yandex.YandexBrowse.search(what.substring(7));
+                }
+            }
+        }
     }
 
     @Override

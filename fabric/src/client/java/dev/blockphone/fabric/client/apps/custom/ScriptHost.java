@@ -14,6 +14,7 @@ import dev.blockphone.common.apps.AppPermission;
 import dev.blockphone.common.apps.AppScript;
 import dev.blockphone.common.protocol.packet.AppPackets;
 import dev.blockphone.fabric.BlockPhoneFabric;
+import dev.blockphone.fabric.client.apps.custom.g3d.Lua3D;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
@@ -84,7 +85,8 @@ final class ScriptHost {
     private static final List<String> SOUND_PREFIXES = List.of("ui.", "block.note_block.", "entity.experience_orb.pickup",
             "entity.player.levelup", "entity.arrow.hit_player", "block.chest.", "entity.item.pickup", "block.wooden_button.",
             "block.stone_button.", "entity.villager.", "block.anvil.land", "entity.generic.explode");
-    private static final ExecutorService HTTP = Executors.newFixedThreadPool(2, r -> {
+    // Четыре потока: «долгий запрос» приложения-мессенджера держит один до 10 с, остальным (картинки, отправка) хватит.
+    private static final ExecutorService HTTP = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "BlockPhone App HTTP");
         t.setDaemon(true);
         return t;
@@ -116,6 +118,10 @@ final class ScriptHost {
     boolean landscape;
     boolean fullscreen;
     boolean captureKeys;
+    /** screen.background(true): onTick идёт и с закрытым телефоном (хост сетевой игры). */
+    boolean background;
+    /** screen.minimizeKey(true): клавиша телефона сворачивает приложение, даже когда оно забирает клавиши. */
+    boolean minimizeKey;
     private @Nullable String title;
 
     // Рисование (только в onDraw).
@@ -129,25 +135,18 @@ final class ScriptHost {
     private final Map<String, Identifier> textures = new HashMap<>();
     private final Map<String, int[]> textureSizes = new HashMap<>();
 
-    // 3D (g3d): растеризатор, модели, текстуры, кадр-текстура.
-    private final Raster3D raster = new Raster3D();
-    private final List<Raster3D.Mesh> meshes = new ArrayList<>();
-    private final List<Raster3D.Tex> textures3d = new ArrayList<>();
-    private final Map<String, Integer> textureIds3d = new HashMap<>();
-    private int meshVertices;
+    // 3D (g3d): движок, модели, текстуры, сцена — в Lua3D; здесь — кадр-текстура для показа.
+    private final Lua3D g3d = new Lua3D(new G3dHost());
+    /** Фото, картинки по адресу, голос (разрешения photos, microphone). */
+    final ScriptMedia media = new ScriptMedia(this);
     private @Nullable DynamicTexture frame;
     private @Nullable Identifier frameId;
     private int frameW;
     private int frameH;
-    private float regionX, regionY, regionW, regionH;
-    private boolean in3d;
-    private int clear3d;
     // Захват мыши (игры с обзором мышью).
     private boolean mouseLocked;
     private double lastCursorX = Double.NaN, lastCursorY;
     private double mouseDX, mouseDY;
-    private static final int MAX_MESH_VERTICES = 400_000;
-    private static final int MAX_FRAME_PIXELS = 360_000;
 
     // Таймеры, ответы сервера/сети.
     private record Timer(int id, LuaValue fn, long period) {
@@ -183,6 +182,7 @@ final class ScriptHost {
         try {
             globals = sandbox();
             budget = LOAD_BUDGET;
+            memoryAtCall = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
             used = 0;
             LuaValue chunk = globals.load(script.sources().get(script.main()), "@" + script.main());
             chunk.call();
@@ -224,6 +224,13 @@ final class ScriptHost {
         }
         LuaValue string = g.get("string");
         string.set("dump", LuaValue.NIL);
+        // Поиск по образцу со счётчиком шагов (в LuaJ он не виден лимиту инструкций — «.-b» по 1 МБ вешал игру).
+        new LuaPatterns(n -> {
+            used += n;
+            if (used > budget) {
+                throw new Timeout();
+            }
+        }).install((org.luaj.vm2.LuaTable) string);
         LuaValue rep = string.get("rep");
         string.set("rep", fn(a -> {
             long size = (long) a.checkjstring(1).length() * a.checkint(2);
@@ -263,6 +270,7 @@ final class ScriptHost {
             if (used > budget) {
                 throw new Timeout();
             }
+            checkMemory();
             return LuaValue.NONE;
         }), LuaValue.valueOf(""), LuaValue.valueOf(HOOK_STEP)}));
         installApi(g);
@@ -271,11 +279,11 @@ final class ScriptHost {
 
     // --- Вызовы скрипта ---
 
-    private interface Fn {
+    interface Fn {
         Varargs call(Varargs args);
     }
 
-    private static LuaValue fn(Fn body) {
+    static LuaValue fn(Fn body) {
         return new VarArgFunction() {
             @Override
             public Varargs invoke(Varargs args) {
@@ -293,12 +301,20 @@ final class ScriptHost {
         return f.isfunction() ? invoke(f, LuaValue.varargsOf(args)) : LuaValue.NONE;
     }
 
+    /** Вызвать функцию скрипта, если это функция (ответы на запросы, выбор фото, запись голоса). */
+    void call(@Nullable LuaValue f, LuaValue... args) {
+        if (f != null && f.isfunction()) {
+            invoke(f, LuaValue.varargsOf(args));
+        }
+    }
+
     private Varargs invoke(LuaValue f, Varargs args) {
         if (error != null) {
             return LuaValue.NONE;
         }
         budget = CALL_BUDGET;
         used = 0;
+        memoryAtCall = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
         try {
             return f.invoke(args);
         } catch (Throwable e) {
@@ -311,6 +327,45 @@ final class ScriptHost {
         return mouseLocked && error == null;
     }
 
+    /** Приложение забирает память: остановить его раньше, чем игра упадёт с OutOfMemoryError. */
+    private static final class MemoryLimit extends Error {
+        MemoryLimit() {
+            super("memory", null, false, false);
+        }
+    }
+
+    private long memoryAtCall;
+    private static long lastGc;
+
+    private static final long CALL_MEMORY = 512L * 1024 * 1024;
+
+    /**
+     * Каждые HOOK_STEP инструкций: занятая память выросла за вызов скрипта больше чем на 512 МБ или свободной памяти
+     * игры меньше 8 % — собрать мусор (не чаще раза в 5 с; в занятом есть и мусор) и, если всё ещё так, остановить
+     * приложение (его данные освободятся).
+     */
+    private void checkMemory() {
+        Runtime rt = Runtime.getRuntime();
+        long usedNow = rt.totalMemory() - rt.freeMemory();
+        long max = rt.maxMemory();
+        boolean full = usedNow > max * 0.92;
+        if (!full && usedNow - memoryAtCall <= CALL_MEMORY) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastGc > 5000) {
+            lastGc = now;
+            System.gc();
+            usedNow = rt.totalMemory() - rt.freeMemory();
+        } else if (!full) {
+            memoryAtCall = usedNow; // проверить пока нечем — новая точка отсчёта, проверка после следующей сборки
+            return;
+        }
+        if (usedNow > max * 0.92 || usedNow - memoryAtCall > CALL_MEMORY) {
+            throw new MemoryLimit();
+        }
+    }
+
     private void fail(Throwable e) {
         unlockMouse();
         if (e instanceof Timeout) {
@@ -319,7 +374,7 @@ final class ScriptHost {
             error = le.getMessage();
         } else if (e instanceof StackOverflowError) {
             error = PhoneLang.tr("app.script.stack");
-        } else if (e instanceof OutOfMemoryError) {
+        } else if (e instanceof OutOfMemoryError || e instanceof MemoryLimit) {
             error = PhoneLang.tr("app.script.memory");
         } else {
             error = e.toString();
@@ -336,15 +391,23 @@ final class ScriptHost {
     private final java.util.Map<Integer, dev.blockphone.fabric.client.sound.PhoneSounds.Handle> sounds = new java.util.HashMap<>();
     private int nextSound = 1;
 
-    /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 8 звуков сразу. */
+    /** Сыграть звук из файлов приложения; возвращает номер (для sound.stop). Не больше 16 звуков сразу. */
+    /** Сколько своих звуков приложения звучит одновременно (их сводит общий микшер). */
+    static final int MAX_SOUNDS = 32;
+
     private int playOwnSound(String path, float volume, boolean loop) {
+        return playOwnSound(path, volume, loop, Float.NaN, 0, 1);
+    }
+
+    /** pan = NaN — обычный звук; иначе объёмный (панорама, глухость, высота тона). */
+    private int playOwnSound(String path, float volume, boolean loop, float pan, float muffle, float pitch) {
         String name = path.replace('\\', '/');
         byte[] data = script.assets().get(name);
         if (data == null || !dev.blockphone.common.apps.AppScript.isSound(name)) {
             throw new LuaError("sound \"" + path + "\" not found in the app folder");
         }
         sounds.values().removeIf(h -> !h.playing());
-        if (sounds.size() >= 8) {
+        if (sounds.size() >= MAX_SOUNDS) {
             return 0;
         }
         try {
@@ -358,7 +421,8 @@ final class ScriptHost {
                 java.nio.file.Files.write(file, data);
             }
             int id = nextSound++;
-            sounds.put(id, dev.blockphone.fabric.client.sound.PhoneSounds.playFile(file, Math.max(0, Math.min(1, volume)), loop));
+            float v = Math.max(0, Math.min(1, volume));
+            sounds.put(id, dev.blockphone.fabric.client.sound.PhoneSounds.playApp(file, v, loop, pan, muffle, pitch));
             return id;
         } catch (Exception e) {
             throw new LuaError("sound: " + e.getMessage());
@@ -376,13 +440,22 @@ final class ScriptHost {
     }
 
     void onHide() {
+        if (storage != null) {
+            storage.flush();
+        }
+        media.onHide();
         unlockMouse();
-        stopSounds();
+        if (!displaying()) {
+            stopSounds(); // приложение на экране в мире (телефон — джойстик) звучит и со свёрнутым телефоном
+        }
         inputs.values().forEach(t -> t.setFocused(false));
         callback("onHide");
     }
 
     void tick() {
+        if (storage != null) {
+            storage.saveIfDue();
+        }
         if (error != null) {
             return;
         }
@@ -398,6 +471,13 @@ final class ScriptHost {
                 }
                 invoke(t.fn(), LuaValue.NONE);
             }
+        }
+        String invite = dev.blockphone.fabric.client.screens.AppDisplays.takeInvite(app.id());
+        if (invite != null) {
+            int slash = invite.indexOf('/');
+            var l = dev.blockphone.fabric.client.screens.AppDisplays.live(invite);
+            callback("onDisplayInvite", LuaValue.valueOf(l != null ? l.owner() : invite.substring(0, slash)),
+                    LuaValue.valueOf(invite.substring(slash + 1)), LuaValue.valueOf(l != null && l.mine()));
         }
         callback("onTick");
     }
@@ -415,13 +495,21 @@ final class ScriptHost {
         pollMouseLock();
         g = graphics;
         basePose = new org.joml.Matrix3x2f(graphics.pose());
+        webAreas.clear();
+        uiRects.clear();
         depth = 0;
         graphics.enableScissor(0, 0, w, h);
         callback("onDraw", LuaValue.valueOf(dt));
-        if (in3d && g != null) {
-            finish3d(); // скрипт забыл g3d.finish — показываем то, что нарисовал
+        if (g != null) {
+            try {
+                g3d.endFrame(); // скрипт забыл g3d.finish — показываем то, что нарисовал
+            } catch (RuntimeException e) {
+                BlockPhoneFabric.LOGGER.warn("[apps] {}: 3D frame failed", app.id(), e);
+                g3d.abortFrame();
+            }
+        } else {
+            g3d.abortFrame();
         }
-        in3d = false;
         // Скрипт мог забыть gfx.pop/unclip — возвращаем как было.
         if (g != null) {
             while (depth > 0) {
@@ -431,7 +519,17 @@ final class ScriptHost {
         }
         g = null;
         graphics.disableScissor();
+        media.renderOverlay(graphics, mx, my, w, h);
         clicks.clear();
+        lastWebAreas = List.copyOf(webAreas);
+        lastUiRects = List.copyOf(uiRects);
+        // Движение мыши над страницей (подсветка ссылок, меню по наведению).
+        for (WebArea area : lastWebAreas) {
+            int[] p = webPoint(area, mx, my);
+            if (p != null) {
+                area.view().mouseMove(p[0], p[1]);
+            }
+        }
         if (!toast.isEmpty() && now - toastAt < 3000) {
             int tw = Math.min(w - 16, (int) PhoneDraw.width(toast, 0.7f) + 16);
             int th = PhoneDraw.wrappedHeight(toast, tw - 12, 0.7f) + 8;
@@ -451,6 +549,9 @@ final class ScriptHost {
     }
 
     boolean mouseClicked(double x, double y, int button, int w, int h) {
+        if (error == null && media.pickerOpen()) {
+            return media.mouseClicked(x, y, button) || true;
+        }
         if (error != null) {
             if (PhoneDraw.inside(x, y, 8, h - 26, w - 16, 18)) {
                 owner.restartScript();
@@ -466,7 +567,21 @@ final class ScriptHost {
             }
         }
         if (onInput) {
+            webFocus = null;
             return true;
+        }
+        WebArea area = onUi(x, y) ? null : webAt(x, y);
+        if (area != null) {
+            int[] p = webPoint(area, x, y);
+            webFocus = area.view();
+            webPressed = area.view();
+            area.view().setFocus(true);
+            area.view().mouseButton(p[0], p[1], button, true);
+            return true;
+        }
+        if (webFocus != null) {
+            webFocus.setFocus(false);
+            webFocus = null;
         }
         clicks.add(new double[]{x, y, button});
         callback("onClick", LuaValue.valueOf(x), LuaValue.valueOf(y), LuaValue.valueOf(button + 1));
@@ -475,11 +590,35 @@ final class ScriptHost {
 
     boolean mouseReleased(double x, double y, int button) {
         inputs.values().forEach(TextArea::mouseReleased);
+        if (webPressed != null) {
+            for (WebArea area : lastWebAreas) {
+                if (area.view() == webPressed) {
+                    org.joml.Vector2f p = basePose.transformPosition(new org.joml.Vector2f((float) x, (float) y));
+                    org.joml.Vector2f local = new org.joml.Matrix3x2f(area.pose()).invert().transformPosition(p);
+                    int px = (int) ((local.x - area.x()) / area.w() * area.view().pageWidth());
+                    int py = (int) ((local.y - area.y()) / area.h() * area.view().pageHeight());
+                    area.view().mouseButton(px, py, button, false);
+                }
+            }
+            webPressed = null;
+            return true;
+        }
         callback("onRelease", LuaValue.valueOf(x), LuaValue.valueOf(y), LuaValue.valueOf(button + 1));
         return true;
     }
 
     boolean mouseDragged(double x, double y, double dx, double dy) {
+        if (webPressed != null) {
+            for (WebArea area : lastWebAreas) {
+                if (area.view() == webPressed) {
+                    org.joml.Vector2f p = basePose.transformPosition(new org.joml.Vector2f((float) x, (float) y));
+                    org.joml.Vector2f local = new org.joml.Matrix3x2f(area.pose()).invert().transformPosition(p);
+                    area.view().mouseMove((int) ((local.x - area.x()) / area.w() * area.view().pageWidth()),
+                            (int) ((local.y - area.y()) / area.h() * area.view().pageHeight()));
+                }
+            }
+            return true;
+        }
         for (TextArea area : inputs.values()) {
             if (area.isFocused() && area.mouseDragged(x, y)) {
                 return true;
@@ -490,6 +629,15 @@ final class ScriptHost {
     }
 
     boolean mouseScrolled(double x, double y, double amount) {
+        if (media.pickerOpen()) {
+            return media.mouseScrolled(amount) || true;
+        }
+        WebArea web = webAt(x, y);
+        if (web != null) {
+            int[] p = webPoint(web, x, y);
+            web.view().wheel(p[0], p[1], amount);
+            return true;
+        }
         for (TextArea area : inputs.values()) {
             if (area.mouseScrolled(x, y, amount)) {
                 return true;
@@ -510,6 +658,13 @@ final class ScriptHost {
                 return area.keyPressed(event);
             }
         }
+        if (webFocus != null) {
+            webFocus.key(event.key(), event.scancode(), event.modifiers());
+            return true;
+        }
+        if (minimizeKey && dev.blockphone.fabric.client.BlockPhoneClient.openPhoneKey.matches(event)) {
+            return false; // телефон свернётся (PhoneScreen), приложение получит onHide
+        }
         String name = keyName(event.key());
         if (name == null) {
             return false;
@@ -524,8 +679,20 @@ final class ScriptHost {
                 return area.charTyped(event);
             }
         }
+        if (webFocus != null) {
+            webFocus.typeChar(event.codepoint());
+            return true;
+        }
         callback("onChar", LuaValue.valueOf(new String(Character.toChars(event.codepoint()))));
         return captureKeys;
+    }
+
+    void debugChar(int codepoint) {
+        charTyped(new net.minecraft.client.input.CharacterEvent(codepoint, 0));
+    }
+
+    void debugSubmit(String id, String text) {
+        callback("onSubmit", LuaValue.valueOf(id), LuaValue.valueOf(text));
     }
 
     void debugKey(String name) {
@@ -533,6 +700,9 @@ final class ScriptHost {
     }
 
     boolean onBack() {
+        if (media.onBack()) {
+            return true;
+        }
         if (mouseLocked) {
             unlockMouse(); // Esc сначала отпускает мышь
             callback("onMouseUnlock");
@@ -541,8 +711,20 @@ final class ScriptHost {
         return callback("onBack").arg1().toboolean();
     }
 
+    boolean typingText() {
+        return error == null && (inputs.values().stream().anyMatch(TextArea::isFocused) || (webFocus != null && webFocus.editing()));
+    }
+
     boolean capturesKeyboard() {
-        return error == null && (captureKeys || inputs.values().stream().anyMatch(TextArea::isFocused));
+        return error == null && (captureKeys || webFocus != null || inputs.values().stream().anyMatch(TextArea::isFocused));
+    }
+
+    /**
+     * «На ходу»: держать курсор у телефона и после отпускания клавиши курсора — пока вводят текст (своё поле или поле на
+     * странице браузера) или приложение забирает клавиши. Просто открытая страница (видео) курсор не держит.
+     */
+    boolean holdsCursor() {
+        return error == null && (captureKeys || typingText() || (webFocus != null && webFocus.editing()));
     }
 
     private String idOf(TextArea area) {
@@ -555,8 +737,16 @@ final class ScriptHost {
     }
 
     void release() {
+        released = true;
+        dev.blockphone.fabric.client.screens.AppDisplays.unbind(display);
+        if (storage != null) {
+            storage.flush();
+        }
+        media.release();
         unlockMouse();
+        closeWebViews();
         Minecraft mc = Minecraft.getInstance();
+        g3d.release();
         if (frameId != null) {
             mc.getTextureManager().release(frameId);
             frameId = null;
@@ -626,13 +816,13 @@ final class ScriptHost {
 
     // --- API ---
 
-    private void need(AppPermission permission) {
+    void need(AppPermission permission) {
         if (!app.has(permission)) {
             throw new LuaError("permission \"" + permission.key() + "\" is not declared in app.json");
         }
     }
 
-    private GuiGraphics gfx() {
+    GuiGraphics gfx() {
         if (g == null) {
             throw new LuaError("gfx.* works only inside onDraw");
         }
@@ -659,7 +849,7 @@ final class ScriptHost {
         return c <= 0xFFFFFF && c >= 0 ? (int) (0xFF000000L | c) : (int) c;
     }
 
-    private static int i(Varargs a, int n) {
+    static int i(Varargs a, int n) {
         return (int) Math.floor(a.checkdouble(n));
     }
 
@@ -740,6 +930,7 @@ final class ScriptHost {
             }
             return t;
         }));
+        gfx.set("urlImage", fn(media::drawUrlImage));
         gfx.set("image", fn(a -> {
             String path = a.checkjstring(1);
             Identifier id = texture(path);
@@ -820,13 +1011,12 @@ final class ScriptHost {
             };
             org.joml.Vector2f local = toLocal(mouseX, mouseY);
             PhoneDraw.button(gfx(), x, y, w, h, a.checkjstring(5), (int) local.x, (int) local.y, s);
+            uiRect(x, y, w, h);
             for (Iterator<double[]> it = clicks.iterator(); it.hasNext(); ) {
                 double[] c = it.next();
                 org.joml.Vector2f p = toLocal((float) c[0], (float) c[1]);
                 if (c[2] == 0 && PhoneDraw.inside(p.x, p.y, x, y, w, h)) {
                     it.remove();
-                    Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(
-                            net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK.value(), 1.2f, 0.25f));
                     return LuaValue.TRUE;
                 }
             }
@@ -886,6 +1076,10 @@ final class ScriptHost {
             inputs.forEach((k, v) -> v.setFocused(k.equals(a.optjstring(1, ""))));
             return LuaValue.NONE;
         }));
+        ui.set("focused", fn(a -> {
+            TextArea area = inputs.get(a.checkjstring(1));
+            return LuaValue.valueOf(area != null && area.isFocused());
+        }));
         G.set("ui", ui);
 
         // --- theme ---
@@ -924,6 +1118,14 @@ final class ScriptHost {
             captureKeys = a.optboolean(1, true);
             return LuaValue.NONE;
         }));
+        screen.set("background", fn(a -> {
+            background = a.optboolean(1, true);
+            return LuaValue.NONE;
+        }));
+        screen.set("minimizeKey", fn(a -> {
+            minimizeKey = a.optboolean(1, true);
+            return LuaValue.NONE;
+        }));
         screen.set("close", fn(a -> {
             if (owner.phone() != null) {
                 owner.phone().goHome();
@@ -953,6 +1155,7 @@ final class ScriptHost {
             return r;
         }));
         G.set("input", input);
+        installDisplay(G);
 
         // --- time, timer ---
         LuaTable time = new LuaTable();
@@ -1000,12 +1203,31 @@ final class ScriptHost {
         }));
         store.set("set", fn(a -> {
             need(AppPermission.STORAGE);
-            boolean ok = storage != null && storage.put(a.checkjstring(1), toJson(a.arg(2), 0).toString());
+            // Раньше значение только попадало в память и пропадало при перезапуске игры — теперь пишется на диск.
+            boolean ok = storage != null && storage.putScript(a.checkjstring(1), toJson(a.arg(2), 0).toString());
             return LuaValue.valueOf(ok);
         }));
         G.set("storage", store);
 
         // --- toast, sound, clipboard, links, commands ---
+        G.set("notify", fn(a -> {
+            need(AppPermission.NOTIFICATIONS);
+            long now = System.currentTimeMillis();
+            while (!notifyTimes.isEmpty() && now - notifyTimes.peek() > 60_000) {
+                notifyTimes.poll();
+            }
+            if (notifyTimes.size() >= 20) {
+                return LuaValue.FALSE;
+            }
+            notifyTimes.add(now);
+            AppNotifications.show(app, a.checkjstring(1), a.optjstring(2, ""), a.optjstring(3, ""));
+            return LuaValue.TRUE;
+        }));
+        G.set("unnotify", fn(a -> {
+            need(AppPermission.NOTIFICATIONS);
+            AppNotifications.remove(app, a.optjstring(1, ""));
+            return LuaValue.NONE;
+        }));
         G.set("toast", fn(a -> {
             toast = a.checkjstring(1);
             toastAt = System.currentTimeMillis();
@@ -1014,8 +1236,11 @@ final class ScriptHost {
         LuaTable sound = new LuaTable();
         sound.set("play", fn(a -> {
             String name = a.checkjstring(1).replace("minecraft:", "");
+            // Объёмный звук: 4-й параметр — панорама −1..1, 5-й — глухость 0..1 (за стеной), 3-й — высота тона.
+            float pan = a.isnoneornil(4) ? Float.NaN : (float) a.checkdouble(4);
             if (dev.blockphone.common.apps.AppScript.isSound(name)) {
-                return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false));
+                return LuaValue.valueOf(playOwnSound(name, (float) a.optdouble(2, 1), false, pan, (float) a.optdouble(5, 0),
+                        (float) a.optdouble(3, 1)));
             }
             // Шаги и падение на блоки (block.stone.step, block.grass.fall…) — для игр с ходьбой.
             boolean footstep = name.matches("block\\.[a-z_]+\\.(step|fall)");
@@ -1024,12 +1249,41 @@ final class ScriptHost {
             }
             SoundEvent event = BuiltInRegistries.SOUND_EVENT.getValue(Identifier.withDefaultNamespace(name));
             if (event != null) {
-                Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(event,
-                        (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1))), (float) Math.max(0, Math.min(1, a.optdouble(2, 1)))));
+                float pitch = (float) Math.max(0.5, Math.min(2, a.optdouble(3, 1)));
+                float volume = (float) Math.max(0, Math.min(1, a.optdouble(2, 1)));
+                Minecraft game = Minecraft.getInstance();
+                if (!Float.isNaN(pan) && game.player != null) {
+                    // Панорама ванильного звука: источник в 2 блоках от игрока под нужным углом (OpenAL сам разведёт по ушам).
+                    double side = Math.asin(Math.max(-1, Math.min(1, pan)));
+                    double yaw = Math.toRadians(game.player.getYRot());
+                    double fx = -Math.sin(yaw), fz = Math.cos(yaw);
+                    double rx = -Math.cos(yaw), rz = -Math.sin(yaw);
+                    double dx = fx * Math.cos(side) + rx * Math.sin(side), dz = fz * Math.cos(side) + rz * Math.sin(side);
+                    game.getSoundManager().play(new SimpleSoundInstance(event, net.minecraft.sounds.SoundSource.MASTER, volume, pitch,
+                            net.minecraft.util.RandomSource.create(), game.player.getX() + dx * 2, game.player.getEyeY(), game.player.getZ() + dz * 2));
+                } else {
+                    game.getSoundManager().play(SimpleSoundInstance.forUI(event, pitch, volume));
+                }
+            }
+            return LuaValue.NONE;
+        }));
+        sound.set("place", fn(a -> {
+            // Подвинуть играющий объёмный звук: sound.place(номер, панорама, глухость).
+            dev.blockphone.fabric.client.sound.PhoneSounds.Handle h = sounds.get(a.checkint(1));
+            if (h != null) {
+                h.place((float) a.checkdouble(2), (float) a.optdouble(3, 0));
             }
             return LuaValue.NONE;
         }));
         sound.set("loop", fn(a -> LuaValue.valueOf(playOwnSound(a.checkjstring(1), (float) a.optdouble(2, 1), true))));
+        // Громкость (множитель 0..2) и высота тона (0.25..4) играющего своего звука на ходу: мотор, ветер, сирена.
+        sound.set("tune", fn(a -> {
+            dev.blockphone.fabric.client.sound.PhoneSounds.Handle h = sounds.get(a.checkint(1));
+            if (h != null) {
+                h.tune((float) a.optdouble(2, 1), (float) a.optdouble(3, 1));
+            }
+            return LuaValue.NONE;
+        }));
         sound.set("stop", fn(a -> {
             if (a.isnoneornil(1)) {
                 stopSounds();
@@ -1088,7 +1342,10 @@ final class ScriptHost {
             http("POST", a.checkjstring(1), text, a.optfunction(3, null), headers);
             return LuaValue.NONE;
         }));
+        http.set("upload", fn(media::upload));
         G.set("http", http);
+        G.set("images", media.imagesTable());
+        media.install(G);
 
         // --- net (игроки с этим же приложением) ---
         LuaTable net = new LuaTable();
@@ -1105,10 +1362,45 @@ final class ScriptHost {
         net.set("players", fn(a -> {
             need(AppPermission.MULTIPLAYER);
             playersCallbacks.add(a.checkfunction(1));
-            ClientNetwork.send(new AppPackets.RequestPlayers(app.id()));
+            if (viaPlugin()) {
+                ClientNetwork.send(new AppPackets.RequestPlayers(app.id()));
+            } else {
+                // Без плагина — игроки облачной комнаты (ответ на следующем такте, как от сервера).
+                List<String> names = relay().players();
+                Minecraft.getInstance().execute(() -> onPlayers(names));
+            }
             return LuaValue.NONE;
         }));
-        net.set("online", fn(a -> LuaValue.valueOf(ClientNetwork.serverHello() != null)));
+        net.set("online", fn(a -> LuaValue.valueOf(ClientNetwork.serverHello() != null || relay().online())));
+        // Как идёт связь: "plugin" — через плагин сервера, "cloud" — через облачную комнату, "connecting", "taken" —
+        // ник уже занят в комнате, "none" — никак.
+        net.set("mode", fn(a -> {
+            if (viaPlugin()) {
+                return LuaValue.valueOf("plugin");
+            }
+            return LuaValue.valueOf(switch (relay().status()) {
+                case ONLINE -> "cloud";
+                case CONNECTING -> "connecting";
+                case NAME_TAKEN -> "taken";
+                case OFF -> "none";
+            });
+        }));
+        // Комната по коду: играть с разных серверов и из одиночной игры (без плагина).
+        net.set("code", fn(a -> relay().code() == null ? LuaValue.NIL : LuaValue.valueOf(relay().code())));
+        net.set("newCode", fn(a -> {
+            need(AppPermission.MULTIPLAYER);
+            String code = CloudRelay.newCode();
+            relay().joinCode(code);
+            return LuaValue.valueOf(code);
+        }));
+        net.set("joinCode", fn(a -> {
+            need(AppPermission.MULTIPLAYER);
+            return LuaValue.valueOf(relay().joinCode(a.checkjstring(1)));
+        }));
+        net.set("leaveCode", fn(a -> {
+            relay().joinCode(null);
+            return LuaValue.NONE;
+        }));
         G.set("net", net);
 
         // --- server (серверная часть приложения) ---
@@ -1131,7 +1423,8 @@ final class ScriptHost {
             return LuaValue.NONE;
         }));
         G.set("server", server);
-        installG3d(G);
+        G.set("g3d", g3d.install());
+        G.set("web", installWeb());
     }
 
     private LuaValue addTimer(double seconds, LuaValue fn, boolean repeat) {
@@ -1152,18 +1445,36 @@ final class ScriptHost {
         }
     }
 
+    /** Сетевые сообщения — через плагин сервера (если он есть и не выбрана комната по коду), иначе — облачная комната. */
+    /** Облачный сервер комнат этого приложения (его "relay" или общий). */
+    private CloudRelay relay() {
+        return CloudRelay.forApp(app);
+    }
+
+    private boolean viaPlugin() {
+        return ClientNetwork.serverHello() != null && relay().code() == null;
+    }
+
     private void relay(String target, LuaValue data) {
         String payload = toJson(data, 0).toString();
         if (payload.length() > AppPackets.MAX_RELAY) {
             throw new LuaError("net: message is too big (max " + AppPackets.MAX_RELAY + " chars)");
         }
-        if (ClientNetwork.serverHello() == null) {
-            throw new LuaError("net: the server has no BlockPhone");
+        if (viaPlugin()) {
+            ClientNetwork.send(new AppPackets.Relay(app.id(), target, payload));
+        } else if (relay().online()) {
+            relay().send(app.id(), target, payload);
+        } else {
+            throw new LuaError("net: offline (no BlockPhone on the server and no cloud room)");
         }
-        ClientNetwork.send(new AppPackets.Relay(app.id(), target, payload));
     }
 
     private void http(String method, String url, @Nullable String body, @Nullable LuaValue callback, @Nullable LuaTable headers) {
+        http(method, url, body == null ? null : body.getBytes(StandardCharsets.UTF_8), null, callback, headers);
+    }
+
+    /** Адрес для запроса приложения: только http(s) и только сайты из "hosts" (иначе — ошибка скрипта). */
+    URI checkedUri(String url) {
         need(AppPermission.INTERNET);
         URI uri;
         try {
@@ -1177,6 +1488,13 @@ final class ScriptHost {
         if (!script.hostAllowed(uri.getHost())) {
             throw new LuaError("http: host \"" + uri.getHost() + "\" is not in \"hosts\" of app.json");
         }
+        return uri;
+    }
+
+    /** Запрос с телом из байтов (фото, звук — {@link ScriptMedia}); contentType — заголовок Content-Type или null. */
+    void http(String method, String url, byte @Nullable [] body, @Nullable String contentType, @Nullable LuaValue callback,
+              @Nullable LuaTable headers) {
+        URI uri = checkedUri(url);
         long now = System.currentTimeMillis();
         while (!httpTimes.isEmpty() && now - httpTimes.peek() > 60_000) {
             httpTimes.poll();
@@ -1197,12 +1515,21 @@ final class ScriptHost {
                 request.header(name, headers.get(k).tojstring());
             }
         }
-        request.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body));
+        if (contentType != null) {
+            request.header("Content-Type", contentType);
+        }
+        request.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofByteArray(body));
         HttpRequest built = request.build();
         HTTP.execute(() -> {
             int status = 0;
             String text;
             try {
+                // Только интернет: адреса домашней сети и этого компьютера (роутер, localhost, «в сети» по DNS) — нельзя.
+                for (java.net.InetAddress address : java.net.InetAddress.getAllByName(built.uri().getHost())) {
+                    if (localAddress(address)) {
+                        throw new java.io.IOException("local network addresses are not allowed (" + address.getHostAddress() + ")");
+                    }
+                }
                 HttpResponse<InputStream> response = CLIENT.send(built, HttpResponse.BodyHandlers.ofInputStream());
                 status = response.statusCode();
                 try (InputStream in = response.body()) {
@@ -1227,246 +1554,447 @@ final class ScriptHost {
     }
 
 
-    // --- 3D ---
-
-    private void installG3d(Globals G) {
-        LuaTable g3d = new LuaTable();
-        g3d.set("texture", fn(a -> LuaValue.valueOf(texture3d(a.checkjstring(1)))));
-        g3d.set("mesh", fn(a -> {
-            LuaTable t = a.checktable(1);
-            LuaTable v = t.get("vertices").checktable();
-            LuaTable ix = t.get("indices").istable() ? (LuaTable) t.get("indices") : null;
-            int n = v.length() / 5;
-            float[] pos = new float[n * 3];
-            float[] uv = new float[n * 2];
-            for (int k = 0; k < n; k++) {
-                pos[k * 3] = (float) v.get(k * 5 + 1).checkdouble();
-                pos[k * 3 + 1] = (float) v.get(k * 5 + 2).checkdouble();
-                pos[k * 3 + 2] = (float) v.get(k * 5 + 3).checkdouble();
-                uv[k * 2] = (float) v.get(k * 5 + 4).checkdouble();
-                uv[k * 2 + 1] = (float) v.get(k * 5 + 5).checkdouble();
-            }
-            int[] idx;
-            if (ix != null) {
-                idx = new int[ix.length()];
-                for (int k = 0; k < idx.length; k++) {
-                    idx[k] = ix.get(k + 1).checkint() - 1;
-                    if (idx[k] < 0 || idx[k] >= n) {
-                        throw new LuaError("g3d.mesh: index " + (idx[k] + 1) + " is out of 1.." + n);
+    /**
+     * Скачать файл (картинка, звук) по адресу из "hosts": те же проверки, что у http, свой предел — 120 в минуту.
+     * Ответ — в потоке рендера: done(bytes) или fail(причина).
+     */
+    void fetchBytes(String url, int maxBytes, java.util.function.Consumer<byte[]> done, java.util.function.Consumer<String> fail) {
+        URI uri = checkedUri(url);
+        long now = System.currentTimeMillis();
+        while (!fetchTimes.isEmpty() && now - fetchTimes.peek() > 60_000) {
+            fetchTimes.poll();
+        }
+        if (fetchTimes.size() >= 120) {
+            fail.accept("too many downloads");
+            return;
+        }
+        fetchTimes.add(now);
+        HttpRequest built = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "BlockPhone/" + BlockPhoneFabric.VERSION + " app/" + app.id()).GET().build();
+        HTTP.execute(() -> {
+            byte[] result = null;
+            String error = null;
+            try {
+                for (java.net.InetAddress address : java.net.InetAddress.getAllByName(built.uri().getHost())) {
+                    if (localAddress(address)) {
+                        throw new java.io.IOException("local network addresses are not allowed");
                     }
                 }
-            } else {
-                idx = new int[n - n % 3];
-                for (int k = 0; k < idx.length; k++) {
-                    idx[k] = k;
+                HttpResponse<InputStream> response = CLIENT.send(built, HttpResponse.BodyHandlers.ofInputStream());
+                try (InputStream in = response.body()) {
+                    byte[] bytes = in.readNBytes(maxBytes + 1);
+                    if (response.statusCode() / 100 != 2) {
+                        error = "HTTP " + response.statusCode();
+                    } else if (bytes.length > maxBytes) {
+                        error = "file is too big";
+                    } else {
+                        result = bytes;
+                    }
+                }
+            } catch (Exception e) {
+                error = e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
+            byte[] ok = result;
+            String err = error;
+            Minecraft.getInstance().execute(() -> {
+                if (ok != null) {
+                    done.accept(ok);
+                } else {
+                    fail.accept(err);
+                }
+            });
+        });
+    }
+
+    private final Deque<Long> fetchTimes = new ArrayDeque<>();
+    private final Deque<Long> notifyTimes = new ArrayDeque<>();
+
+    /** Нажали на уведомление этого приложения — onNotification(метка). */
+    void onNotification(String tag) {
+        start();
+        callback("onNotification", LuaValue.valueOf(tag));
+    }
+
+    // --- 3D ---
+
+    /** Что движку g3d нужно от игры: файлы приложения, PNG, масштаб экрана, показ кадра. */
+
+    // --- Режим экрана (display): картинка приложения на экране в мире ---
+
+    private static final int DISPLAY_MAX_PIXELS = 640_000;
+    private final DisplaySource display = new DisplaySource();
+    /** Сейчас идёт onDisplay: g3d рисует в кадр экрана, display.* — тоже. */
+    private boolean inDisplay;
+    private int[] displayFrame = new int[0];
+    private int displayW = 384;
+    private int displayH = 216;
+    private long displayLast;
+    private final List<dev.blockphone.fabric.client.screens.AppDisplays.Text> displayTexts = new ArrayList<>();
+    private final Map<String, int[]> displayImages = new HashMap<>();
+    private boolean released;
+
+    /** Приложение показывает что-то на экране в мире (тогда оно работает и с закрытым телефоном). */
+    boolean displaying() {
+        return dev.blockphone.fabric.client.screens.AppDisplays.boundKey(display) != null;
+    }
+
+    private final class DisplaySource implements dev.blockphone.fabric.client.screens.AppDisplays.Source {
+        @Override
+        public String appId() {
+            return app.id();
+        }
+
+        @Override
+        public boolean alive() {
+            return started && !released && error == null;
+        }
+
+        @Override
+        public int width() {
+            return displayW;
+        }
+
+        @Override
+        public int height() {
+            return displayH;
+        }
+
+        @Override
+        public int @Nullable [] frame(long now) {
+            if (!alive()) {
+                return null;
+            }
+            if (displayFrame.length != displayW * displayH) {
+                displayFrame = new int[displayW * displayH];
+            }
+            float dt = displayLast == 0 ? 0 : Math.min(0.25f, (now - displayLast) / 1000f);
+            displayLast = now;
+            displayTexts.clear();
+            inDisplay = true;
+            try {
+                callback("onDisplay", LuaValue.valueOf(dt), LuaValue.valueOf(displayW), LuaValue.valueOf(displayH));
+                try {
+                    g3d.endFrame();
+                } catch (RuntimeException e) {
+                    g3d.abortFrame();
+                }
+            } finally {
+                inDisplay = false;
+            }
+            return displayFrame;
+        }
+
+        @Override
+        public List<dev.blockphone.fabric.client.screens.AppDisplays.Text> texts() {
+            return displayTexts;
+        }
+    }
+
+    private void needDisplayFrame() {
+        if (!inDisplay) {
+            throw new LuaError("display drawing works only inside onDisplay");
+        }
+    }
+
+    /** Размер кадра для экрана: по ширине opts.w (по умолчанию 384) и пропорциям экрана. */
+    private void displaySize(dev.blockphone.fabric.client.screens.ScreenData.Screen s, LuaTable o) {
+        int w = Math.max(64, Math.min(960, o.get("w").optint(384)));
+        int h = o.get("h").isnil() ? Math.round(w * s.heightBlocks() / (float) Math.max(1, s.widthBlocks())) : o.get("h").checkint();
+        h = Math.max(48, Math.min(720, h));
+        if (w * h > DISPLAY_MAX_PIXELS) {
+            double k = Math.sqrt(DISPLAY_MAX_PIXELS / (double) (w * h));
+            w = (int) (w * k);
+            h = (int) (h * k);
+        }
+        displayW = w;
+        displayH = h;
+        displayFrame = new int[w * h];
+    }
+
+    private static LuaTable screenInfo(dev.blockphone.fabric.client.screens.Screens.Live l, net.minecraft.world.phys.Vec3 eye) {
+        LuaTable t = new LuaTable();
+        dev.blockphone.fabric.client.screens.ScreenData.Screen s = l.def();
+        t.set("owner", l.owner());
+        t.set("id", s.id);
+        t.set("name", s.name);
+        t.set("mine", LuaValue.valueOf(l.mine()));
+        t.set("width", s.widthBlocks());
+        t.set("height", s.heightBlocks());
+        t.set("app", s.app.isEmpty() ? LuaValue.NIL : LuaValue.valueOf(s.app));
+        t.set("distance", eye == null ? 0 : s.center().distanceTo(eye));
+        return t;
+    }
+
+    private void installDisplay(Globals G) {
+        LuaTable d = new LuaTable();
+        Minecraft mc = Minecraft.getInstance();
+        // Свои экраны (в этом измерении).
+        d.set("screens", fn(a -> {
+            need(AppPermission.DISPLAY);
+            LuaTable out = new LuaTable();
+            var eye = mc.player != null ? mc.player.getEyePosition() : null;
+            for (var l : dev.blockphone.fabric.client.screens.Screens.all()) {
+                if (l.mine()) {
+                    out.set(out.length() + 1, screenInfo(l, eye));
                 }
             }
-            return LuaValue.valueOf(addMesh(new Raster3D.Mesh(pos, uv, idx)));
+            return out;
         }));
-        g3d.set("box", fn(a -> LuaValue.valueOf(addMesh(Raster3D.box((float) a.checkdouble(1), (float) a.checkdouble(2),
-                (float) a.checkdouble(3), (float) a.optdouble(4, 0))))));
-        g3d.set("plane", fn(a -> LuaValue.valueOf(addMesh(Raster3D.plane((float) a.checkdouble(1), (float) a.checkdouble(2),
-                (float) a.optdouble(3, 0))))));
-        g3d.set("obj", fn(a -> {
-            String path = a.checkjstring(1);
-            byte[] data = script.assets().get(path);
-            if (data == null) {
-                throw new LuaError("model \"" + path + "\" not found in the app folder");
+        // Экраны рядом (до 64 блоков), на которых сейчас это приложение — к ним можно подключиться.
+        d.set("nearby", fn(a -> {
+            need(AppPermission.DISPLAY);
+            LuaTable out = new LuaTable();
+            var eye = mc.player != null ? mc.player.getEyePosition() : null;
+            double reach = Math.max(4, Math.min(64, a.optdouble(1, 64)));
+            for (var l : dev.blockphone.fabric.client.screens.Screens.all()) {
+                if (l.on() && app.id().equals(l.def().app) && (eye == null || l.def().center().distanceTo(eye) <= reach)) {
+                    out.set(out.length() + 1, screenInfo(l, eye));
+                }
             }
-            try {
-                return LuaValue.valueOf(addMesh(Raster3D.obj(new String(data, StandardCharsets.UTF_8), MAX_MESH_VERTICES - meshVertices)));
-            } catch (RuntimeException e) {
-                throw new LuaError("model \"" + path + "\": " + e.getMessage());
+            return out;
+        }));
+        // Вывести приложение на свой экран (игрок — ведущий).
+        d.set("start", fn(a -> {
+            need(AppPermission.DISPLAY);
+            var s = dev.blockphone.fabric.client.screens.ScreenStore.screen(a.checkjstring(1));
+            if (s == null || mc.player == null) {
+                return LuaValue.varargsOf(LuaValue.FALSE, LuaValue.valueOf("no such screen"));
             }
+            displaySize(s, a.opttable(2, new LuaTable()));
+            s.app = app.id();
+            s.appTitle = CustomApps.name(app);
+            s.on = true;
+            s.mirror = false;
+            dev.blockphone.fabric.client.screens.ScreenStore.changed();
+            dev.blockphone.fabric.client.screens.AppDisplays.bind(display,
+                    dev.blockphone.fabric.client.screens.AppDisplays.key(mc.getUser().getName(), s.id), true);
+            return LuaValue.TRUE;
         }));
-        // Освободить модель (новый уровень — старые модели больше не нужны; лимит вершин возвращается).
-        g3d.set("free", fn(a -> {
-            int id = a.checkint(1);
-            if (id >= 1 && id <= meshes.size() && meshes.get(id - 1) != null) {
-                meshVertices -= meshes.get(id - 1).vertices();
-                meshes.set(id - 1, null);
+        // Подключиться к экрану другого игрока (или своему), где уже это приложение.
+        d.set("join", fn(a -> {
+            need(AppPermission.DISPLAY);
+            String key = dev.blockphone.fabric.client.screens.AppDisplays.key(a.checkjstring(1), a.checkjstring(2));
+            var l = dev.blockphone.fabric.client.screens.AppDisplays.live(key);
+            if (l == null || !app.id().equals(l.def().app)) {
+                return LuaValue.varargsOf(LuaValue.FALSE, LuaValue.valueOf("the screen does not show this app"));
             }
-            return LuaValue.NONE;
+            displaySize(l.def(), a.opttable(3, new LuaTable()));
+            dev.blockphone.fabric.client.screens.AppDisplays.bind(display, key, l.mine());
+            return LuaValue.TRUE;
         }));
-        g3d.set("camera", fn(a -> {
-            raster.camX = (float) a.checkdouble(1);
-            raster.camY = (float) a.checkdouble(2);
-            raster.camZ = (float) a.checkdouble(3);
-            raster.yaw = (float) a.optdouble(4, 0);
-            raster.pitch = (float) Math.max(-89, Math.min(89, a.optdouble(5, 0)));
-            raster.fov = (float) a.optdouble(6, raster.fov);
-            return LuaValue.NONE;
-        }));
-        g3d.set("fog", fn(a -> {
-            if (a.isnil(1)) {
-                raster.fogFar = raster.fogNear = 0;
-            } else {
-                raster.fogColor = color(a.arg(1), 0xFF000000);
-                raster.fogNear = (float) a.optdouble(2, 5);
-                raster.fogFar = (float) a.optdouble(3, 30);
+        // Отключиться; ведущий ещё и убирает приложение со своего экрана.
+        d.set("stop", fn(a -> {
+            need(AppPermission.DISPLAY);
+            String key = dev.blockphone.fabric.client.screens.AppDisplays.boundKey(display);
+            if (key != null && dev.blockphone.fabric.client.screens.AppDisplays.isHost(display)) {
+                var l = dev.blockphone.fabric.client.screens.AppDisplays.live(key);
+                if (l != null && l.mine() && app.id().equals(l.def().app)) {
+                    l.def().app = "";
+                    l.def().appTitle = "";
+                    dev.blockphone.fabric.client.screens.ScreenStore.changed();
+                }
             }
+            dev.blockphone.fabric.client.screens.AppDisplays.unbind(display);
             return LuaValue.NONE;
         }));
-        g3d.set("light", fn(a -> {
-            raster.lightX = (float) a.checkdouble(1);
-            raster.lightY = (float) a.checkdouble(2);
-            raster.lightZ = (float) a.checkdouble(3);
-            raster.ambient = (float) Math.max(0, Math.min(1, a.optdouble(4, 0.45)));
-            return LuaValue.NONE;
-        }));
-        g3d.set("begin", fn(a -> {
-            gfx();
-            regionX = (float) a.checkdouble(1);
-            regionY = (float) a.checkdouble(2);
-            regionW = (float) Math.max(1, a.checkdouble(3));
-            regionH = (float) Math.max(1, a.checkdouble(4));
-            clear3d = color(a.arg(5), 0xFF000000);
-            double quality = Math.max(0.2, Math.min(1, a.optdouble(6, 1)));
-            // Разрешение кадра — по настоящим пикселям экрана (чётко), но не больше MAX_FRAME_PIXELS.
-            org.joml.Matrix3x2f pose = new org.joml.Matrix3x2f(g.pose());
-            double pixel = Math.hypot(pose.m00(), pose.m01()) * Minecraft.getInstance().getWindow().getGuiScale() * quality;
-            double fw = regionW * pixel;
-            double fh = regionH * pixel;
-            double k = Math.min(1, Math.sqrt(MAX_FRAME_PIXELS / Math.max(1, fw * fh)));
-            raster.begin(Math.max(8, (int) (fw * k)), Math.max(8, (int) (fh * k)), clear3d);
-            in3d = true;
-            return LuaValue.NONE;
-        }));
-        g3d.set("draw", fn(a -> {
-            need3d();
-            Raster3D.Mesh mesh = mesh(a.checkint(1));
-            float x = (float) a.optdouble(2, 0), y = (float) a.optdouble(3, 0), z = (float) a.optdouble(4, 0);
-            LuaTable o = a.opttable(5, new LuaTable());
-            float scale = (float) o.get("scale").optdouble(1);
-            float[] m = Raster3D.matrix((float) o.get("yaw").optdouble(0), (float) o.get("pitch").optdouble(0),
-                    (float) o.get("roll").optdouble(0), (float) o.get("sx").optdouble(scale), (float) o.get("sy").optdouble(scale),
-                    (float) o.get("sz").optdouble(scale));
-            Raster3D.Tex tex = o.get("texture").isnil() ? null : tex3d(o.get("texture").checkint());
-            raster.draw(mesh, tex, m, x, y, z, color(o.get("tint"), 0xFFFFFFFF), o.get("lit").optboolean(true),
-                    o.get("cull").optboolean(false), o.get("id").optint(0));
-            return LuaValue.NONE;
-        }));
-        g3d.set("sprite", fn(a -> {
-            need3d();
-            LuaTable o = a.opttable(7, new LuaTable());
-            raster.sprite(tex3d(a.checkint(1)), (float) a.checkdouble(2), (float) a.checkdouble(3), (float) a.checkdouble(4),
-                    (float) a.checkdouble(5), (float) a.checkdouble(6), color(o.get("tint"), 0xFFFFFFFF), o.get("id").optint(0));
-            return LuaValue.NONE;
-        }));
-        g3d.set("finish", fn(a -> {
-            need3d();
-            finish3d();
-            in3d = false;
-            return LuaValue.NONE;
-        }));
-        g3d.set("pick", fn(a -> {
-            // Что видно в точке экрана (координаты как у gfx): id объекта и расстояние до него.
-            int px = (int) ((a.checkdouble(1) - regionX) / regionW * raster.w);
-            int py = (int) ((a.checkdouble(2) - regionY) / regionH * raster.h);
-            if (px < 0 || py < 0 || px >= raster.w || py >= raster.h) {
-                return LuaValue.varargsOf(LuaValue.valueOf(0), LuaValue.valueOf(-1));
-            }
-            int i = py * raster.w + px;
-            float d = raster.depth[i] > 0 ? 1 / raster.depth[i] : -1;
-            return LuaValue.varargsOf(LuaValue.valueOf(raster.ids[i]), LuaValue.valueOf(d));
-        }));
-        g3d.set("project", fn(a -> {
-            float[] p = raster.project((float) a.checkdouble(1), (float) a.checkdouble(2), (float) a.checkdouble(3));
-            if (p == null || raster.w == 0) {
+        d.set("current", fn(a -> {
+            String key = dev.blockphone.fabric.client.screens.AppDisplays.boundKey(display);
+            var l = key == null ? null : dev.blockphone.fabric.client.screens.AppDisplays.live(key);
+            if (l == null) {
                 return LuaValue.NIL;
             }
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(regionX + p[0] / raster.w * regionW),
-                    LuaValue.valueOf(regionY + p[1] / raster.h * regionH), LuaValue.valueOf(p[2])});
+            LuaTable t = screenInfo(l, mc.player != null ? mc.player.getEyePosition() : null);
+            t.set("host", LuaValue.valueOf(dev.blockphone.fabric.client.screens.AppDisplays.isHost(display)));
+            t.set("w", displayW);
+            t.set("h", displayH);
+            return t;
         }));
-        g3d.set("forward", fn(a -> {
-            double y = Math.toRadians(a.checkdouble(1)), p = Math.toRadians(a.optdouble(2, 0));
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(Math.sin(y) * Math.cos(p)), LuaValue.valueOf(Math.sin(p)),
-                    LuaValue.valueOf(Math.cos(y) * Math.cos(p))});
+        d.set("size", fn(a -> LuaValue.varargsOf(LuaValue.valueOf(displayW), LuaValue.valueOf(displayH))));
+        // Режим джойстика: телефон закрывается, в руках набок; клавиши и мышь — сюда (input.down).
+        d.set("control", fn(a -> {
+            need(AppPermission.DISPLAY);
+            boolean on = a.optboolean(1, true);
+            String hint = a.isnil(2) ? null : a.checkjstring(2);
+            if (on && owner.phone() != null && Minecraft.getInstance().screen == owner.phone()) {
+                owner.phone().closeImmediately(); // без анимации — иначе она закроет и джойстик
+            }
+            return LuaValue.valueOf(dev.blockphone.fabric.client.screens.AppDisplays.control(display, on, hint));
         }));
-        g3d.set("right", fn(a -> {
-            double y = Math.toRadians(a.checkdouble(1));
-            return LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(Math.cos(y)), LuaValue.valueOf(0), LuaValue.valueOf(-Math.sin(y))});
+        d.set("controlling", fn(a -> LuaValue.valueOf(dev.blockphone.fabric.client.screens.AppDisplays.controls(display))));
+        // Рисование в кадр экрана (только в onDisplay): заливка, прямоугольник, картинка, текст шрифтом игры.
+        d.set("clear", fn(a -> {
+            needDisplayFrame();
+            java.util.Arrays.fill(displayFrame, color(a.arg(1), 0xFF000000) | 0xFF000000);
+            return LuaValue.NONE;
         }));
-        g3d.set("stats", fn(a -> LuaValue.varargsOf(new LuaValue[]{LuaValue.valueOf(raster.triangles), LuaValue.valueOf(raster.w),
-                LuaValue.valueOf(raster.h)})));
-        G.set("g3d", g3d);
+        d.set("rect", fn(a -> {
+            needDisplayFrame();
+            fillDisplay((int) Math.floor(a.checkdouble(1)), (int) Math.floor(a.checkdouble(2)), (int) Math.ceil(a.checkdouble(3)),
+                    (int) Math.ceil(a.checkdouble(4)), color(a.arg(5), 0xFFFFFFFF));
+            return LuaValue.NONE;
+        }));
+        d.set("image", fn(a -> {
+            needDisplayFrame();
+            int[] img = displayImage(a.checkjstring(1));
+            LuaTable o = a.opttable(6, new LuaTable());
+            blitDisplay(img, (int) Math.floor(a.checkdouble(2)), (int) Math.floor(a.checkdouble(3)),
+                    (int) Math.round(a.optdouble(4, img[0])), (int) Math.round(a.optdouble(5, img[1])),
+                    (int) Math.round(Math.max(0, Math.min(1, o.get("alpha").optdouble(1))) * 255));
+            return LuaValue.NONE;
+        }));
+        d.set("text", fn(a -> {
+            needDisplayFrame();
+            if (displayTexts.size() >= 400) {
+                return LuaValue.NONE;
+            }
+            LuaTable o = a.opttable(4, new LuaTable());
+            String align = o.get("align").optjstring("left");
+            String text = a.checkjstring(1);
+            displayTexts.add(new dev.blockphone.fabric.client.screens.AppDisplays.Text(text.length() > 200 ? text.substring(0, 200) : text,
+                    (float) a.checkdouble(2), (float) a.checkdouble(3), (float) Math.max(2, Math.min(200, o.get("size").optdouble(10))),
+                    color(o.get("color"), 0xFFFFFFFF) | 0xFF000000, align.equals("center") ? 1 : align.equals("right") ? 2 : 0,
+                    o.get("shadow").optboolean(true)));
+            return LuaValue.NONE;
+        }));
+        d.set("textWidth", fn(a -> {
+            double size = a.optdouble(2, 10);
+            return LuaValue.valueOf(mc.font.width(a.checkjstring(1)) * size / mc.font.lineHeight);
+        }));
+        G.set("display", d);
     }
 
-    private void need3d() {
-        if (!in3d || g == null) {
-            throw new LuaError("call g3d.begin(...) in onDraw first");
+    private void fillDisplay(int x, int y, int w, int h, int color) {
+        int x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(displayW, x + w), y1 = Math.min(displayH, y + h);
+        int alpha = color >>> 24;
+        for (int yy = y0; yy < y1; yy++) {
+            int row = yy * displayW;
+            for (int xx = x0; xx < x1; xx++) {
+                displayFrame[row + xx] = alpha == 255 ? color : blendPixel(displayFrame[row + xx], color, alpha);
+            }
         }
     }
 
-    private int addMesh(Raster3D.Mesh mesh) {
-        if (meshes.stream().filter(java.util.Objects::nonNull).count() >= 2000 || meshVertices + mesh.vertices() > MAX_MESH_VERTICES) {
-            throw new LuaError("too many 3D models (max 2000, " + MAX_MESH_VERTICES + " vertices; free unused with g3d.free)");
-        }
-        meshVertices += mesh.vertices();
-        meshes.add(mesh);
-        return meshes.size();
+    private static int blendPixel(int dst, int src, int a) {
+        int r = ((src >> 16 & 255) * a + (dst >> 16 & 255) * (255 - a)) / 255;
+        int g = ((src >> 8 & 255) * a + (dst >> 8 & 255) * (255 - a)) / 255;
+        int b = ((src & 255) * a + (dst & 255) * (255 - a)) / 255;
+        return 0xFF000000 | r << 16 | g << 8 | b;
     }
 
-    private Raster3D.Mesh mesh(int id) {
-        if (id < 1 || id > meshes.size() || meshes.get(id - 1) == null) {
-            throw new LuaError("unknown 3D model " + id);
-        }
-        return meshes.get(id - 1);
-    }
-
-    private Raster3D.Tex tex3d(int id) {
-        if (id < 1 || id > textures3d.size()) {
-            throw new LuaError("unknown 3D texture " + id);
-        }
-        return textures3d.get(id - 1);
-    }
-
-    private int texture3d(String path) {
-        Integer known = textureIds3d.get(path);
-        if (known != null) {
-            return known;
+    /** Картинка PNG из папки приложения: {ширина, высота, пиксели…} (кэш). */
+    private int[] displayImage(String path) {
+        int[] img = displayImages.get(path);
+        if (img != null) {
+            return img;
         }
         byte[] png = script.assets().get(path);
         if (png == null) {
             throw new LuaError("image \"" + path + "\" not found in the app folder");
         }
-        try (NativeImage image = NativeImage.read(png)) {
-            int[] argb = image.getPixels();
-            textures3d.add(new Raster3D.Tex(image.getWidth(), image.getHeight(), argb));
+        try {
+            img = new G3dHost().decodePng(png);
         } catch (Exception e) {
             throw new LuaError("image \"" + path + "\" is not a PNG");
         }
-        textureIds3d.put(path, textures3d.size());
-        return textures3d.size();
+        if (displayImages.size() > 64) {
+            displayImages.clear();
+        }
+        displayImages.put(path, img);
+        return img;
     }
 
-    /** Кадр 3D → текстура → в прямоугольник g3d.begin. */
-    private void finish3d() {
-        Minecraft mc = Minecraft.getInstance();
-        if (frame == null || frameW != raster.w || frameH != raster.h) {
-            if (frameId != null) {
-                mc.getTextureManager().release(frameId);
-            }
-            frameW = raster.w;
-            frameH = raster.h;
-            frame = new DynamicTexture(() -> "BlockPhone app 3D", frameW, frameH, false);
-            frameId = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "dynamic/app3d/" + app.id() + "_" + System.nanoTime());
-            mc.getTextureManager().register(frameId, frame);
+    /** Вписать картинку {w, h, пиксели…} в прямоугольник кадра (ближайший пиксель, прозрачность). */
+    private void blitDisplay(int[] img, int x, int y, int w, int h, int alpha) {
+        int iw = img[0], ih = img[1];
+        if (w <= 0 || h <= 0 || iw <= 0 || ih <= 0) {
+            return;
         }
-        NativeImage pixels = frame.getPixels();
-        int[] c = raster.color;
-        for (int y = 0; y < frameH; y++) {
-            int row = y * frameW;
-            for (int x = 0; x < frameW; x++) {
-                pixels.setPixel(x, y, c[row + x]);
+        int x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(displayW, x + w), y1 = Math.min(displayH, y + h);
+        for (int yy = y0; yy < y1; yy++) {
+            int sy = (int) ((yy - y) * (long) ih / h);
+            int row = yy * displayW;
+            for (int xx = x0; xx < x1; xx++) {
+                int sx = (int) ((xx - x) * (long) iw / w);
+                int c = img[2 + sy * iw + sx];
+                int a = (c >>> 24) * alpha / 255;
+                if (a >= 255) {
+                    displayFrame[row + xx] = c;
+                } else if (a > 0) {
+                    displayFrame[row + xx] = blendPixel(displayFrame[row + xx], c, a);
+                }
             }
         }
-        frame.upload();
-        g.pose().pushMatrix();
-        g.pose().translate(regionX, regionY);
-        g.pose().scale(regionW / frameW, regionH / frameH);
-        g.blit(RenderPipelines.GUI_TEXTURED, frameId, 0, 0, 0, 0, frameW, frameH, frameW, frameH, frameW, frameH);
-        g.pose().popMatrix();
+    }
+
+    private final class G3dHost implements Lua3D.Host {
+        @Override
+        public byte[] asset(String path) {
+            return script.assets().get(path);
+        }
+
+        @Override
+        public int[] decodePng(byte[] png) throws Exception {
+            dev.blockphone.fabric.client.photo.ImageOps.checkSize(png, "app image");
+            try (NativeImage image = NativeImage.read(png)) {
+                int w = image.getWidth(), h = image.getHeight();
+                int[] out = new int[w * h + 2];
+                out[0] = w;
+                out[1] = h;
+                System.arraycopy(image.getPixels(), 0, out, 2, w * h);
+                return out;
+            }
+        }
+
+        @Override
+        public double pixelScale() {
+            if (inDisplay) {
+                return 1; // кадр экрана: единица g3d.begin — пиксель кадра
+            }
+            org.joml.Matrix3x2f pose = new org.joml.Matrix3x2f(gfx().pose());
+            return Math.hypot(pose.m00(), pose.m01()) * Minecraft.getInstance().getWindow().getGuiScale();
+        }
+
+        @Override
+        public void present(int[] argb, int w, int h, float x, float y, float rw, float rh) {
+            if (inDisplay) {
+                int[] img = new int[w * h + 2];
+                img[0] = w;
+                img[1] = h;
+                System.arraycopy(argb, 0, img, 2, w * h);
+                blitDisplay(img, Math.round(x), Math.round(y), Math.round(rw), Math.round(rh), 255);
+                return;
+            }
+            GuiGraphics gg = gfx();
+            Minecraft mc = Minecraft.getInstance();
+            if (frame == null || frameW != w || frameH != h) {
+                if (frameId != null) {
+                    mc.getTextureManager().release(frameId);
+                }
+                frameW = w;
+                frameH = h;
+                frame = new DynamicTexture(() -> "BlockPhone app 3D", frameW, frameH, false);
+                frameId = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "dynamic/app3d/" + app.id() + "_" + System.nanoTime());
+                mc.getTextureManager().register(frameId, frame);
+            }
+            NativeImage pixels = frame.getPixels();
+            for (int yy = 0; yy < h; yy++) {
+                int row = yy * w;
+                for (int xx = 0; xx < w; xx++) {
+                    pixels.setPixel(xx, yy, argb[row + xx]);
+                }
+            }
+            frame.upload();
+            gg.pose().pushMatrix();
+            gg.pose().translate(x, y);
+            gg.pose().scale(rw / w, rh / h);
+            gg.blit(RenderPipelines.GUI_TEXTURED, frameId, 0, 0, 0, 0, w, h, w, h, w, h);
+            gg.pose().popMatrix();
+        }
+
+        @Override
+        public int color(LuaValue v, int fallback) {
+            return ScriptHost.color(v, fallback);
+        }
     }
 
     /** Картинка «девяткой»: углы border×border как есть, края и середина растягиваются (кнопки любого размера). */
@@ -1553,6 +2081,7 @@ final class ScriptHost {
             throw new LuaError("image \"" + path + "\" not found in the app folder");
         }
         try {
+            dev.blockphone.fabric.client.photo.ImageOps.checkSize(png, "app image " + path);
             NativeImage image = NativeImage.read(png);
             textureSizes.put(path, new int[]{image.getWidth(), image.getHeight()});
             id = Identifier.fromNamespaceAndPath(BlockPhone.MOD_ID, "dynamic/app/" + app.id() + "/" + textures.size());
@@ -1578,6 +2107,203 @@ final class ScriptHost {
 
     private org.joml.Matrix3x2f basePose = new org.joml.Matrix3x2f();
 
+    // --- Браузер (web.*, разрешение browser) ---
+
+    private final Map<Integer, dev.blockphone.fabric.client.browser.WebEngine.View> webViews = new HashMap<>();
+    private int nextWeb = 1;
+    /** Где в этом кадре нарисована вкладка: матрица (экранная), прямоугольник и размер страницы в пикселях. */
+    private record WebArea(dev.blockphone.fabric.client.browser.WebEngine.View view, org.joml.Matrix3x2f pose, float x, float y,
+                           float w, float h) {
+    }
+
+    private final List<WebArea> webAreas = new ArrayList<>();
+    /** Кнопки скрипта этого кадра в координатах приложения: нажатие по ним не уходит странице под ними. */
+    private final List<float[]> uiRects = new ArrayList<>();
+    private List<float[]> lastUiRects = List.of();
+
+    private void uiRect(float x, float y, float w, float h) {
+        if (g == null) {
+            return;
+        }
+        org.joml.Matrix3x2f toApp = new org.joml.Matrix3x2f(basePose).invert().mul(new org.joml.Matrix3x2f(g.pose()));
+        org.joml.Vector2f a = toApp.transformPosition(new org.joml.Vector2f(x, y));
+        org.joml.Vector2f b = toApp.transformPosition(new org.joml.Vector2f(x + w, y + h));
+        uiRects.add(new float[]{Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x, b.x), Math.max(a.y, b.y)});
+    }
+
+    private boolean onUi(double x, double y) {
+        for (float[] r : lastUiRects) {
+            if (x >= r[0] && x < r[2] && y >= r[1] && y < r[3]) {
+                return true;
+            }
+        }
+        return false;
+    }
+    private List<WebArea> lastWebAreas = List.of();
+    /** Вкладка, на которую нажали последней: ей идут клавиши. */
+    private dev.blockphone.fabric.client.browser.WebEngine.@Nullable View webFocus;
+    private dev.blockphone.fabric.client.browser.WebEngine.@Nullable View webPressed;
+
+    /** Точка приложения (x, y) → пиксели страницы вкладки, если она под точкой; иначе null. */
+    private int @Nullable [] webPoint(WebArea a, double x, double y) {
+        org.joml.Vector2f p = basePose.transformPosition(new org.joml.Vector2f((float) x, (float) y));
+        org.joml.Vector2f local = new org.joml.Matrix3x2f(a.pose()).invert().transformPosition(p);
+        float fx = (local.x - a.x()) / a.w();
+        float fy = (local.y - a.y()) / a.h();
+        if (fx < 0 || fy < 0 || fx >= 1 || fy >= 1) {
+            return null;
+        }
+        return new int[]{(int) (fx * a.view().pageWidth()), (int) (fy * a.view().pageHeight())};
+    }
+
+    private @Nullable WebArea webAt(double x, double y) {
+        for (int i = lastWebAreas.size() - 1; i >= 0; i--) {
+            if (webPoint(lastWebAreas.get(i), x, y) != null) {
+                return lastWebAreas.get(i);
+            }
+        }
+        return null;
+    }
+
+    private dev.blockphone.fabric.client.browser.WebEngine.View webView(LuaValue id) {
+        dev.blockphone.fabric.client.browser.WebEngine.View v = webViews.get(id.checkint());
+        if (v == null) {
+            throw new LuaError("web: no tab " + id);
+        }
+        return v;
+    }
+
+    /** Адрес этого компьютера или локальной сети (в том числе CGNAT 100.64/10 и IPv6 fc00::/7). */
+    static boolean localAddress(java.net.InetAddress a) {
+        if (a.isLoopbackAddress() || a.isSiteLocalAddress() || a.isLinkLocalAddress() || a.isAnyLocalAddress()
+                || a.isMulticastAddress()) {
+            return true;
+        }
+        byte[] b = a.getAddress();
+        if (b.length == 4) {
+            int first = b[0] & 0xFF;
+            int second = b[1] & 0xFF;
+            return first == 0 || (first == 100 && second >= 64 && second < 128) || (first == 169 && second == 254);
+        }
+        return (b[0] & 0xFE) == 0xFC;
+    }
+
+    private static String webAddress(String text) {
+        String s = text.strip();
+        if (s.isEmpty()) {
+            return "about:blank";
+        }
+        if (s.matches("(?i)^[a-z][a-z0-9+.-]*://.*") || s.startsWith("about:")) {
+            return s;
+        }
+        if (!s.contains(" ") && s.contains(".")) {
+            return "https://" + s;
+        }
+        return "https://www.google.com/search?q=" + java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private LuaTable installWeb() {
+        LuaTable web = new LuaTable();
+        web.set("status", fn(a -> {
+            need(AppPermission.BROWSER);
+            var s = dev.blockphone.fabric.client.browser.WebEngine.state();
+            return LuaValue.varargsOf(LuaValue.valueOf(s.name().toLowerCase(java.util.Locale.ROOT)),
+                    LuaValue.valueOf(dev.blockphone.fabric.client.browser.WebEngine.progress()),
+                    LuaValue.valueOf(dev.blockphone.fabric.client.browser.WebEngine.error()));
+        }));
+        web.set("start", fn(a -> {
+            need(AppPermission.BROWSER);
+            dev.blockphone.fabric.client.browser.WebEngine.start();
+            return LuaValue.NONE;
+        }));
+        web.set("open", fn(a -> {
+            need(AppPermission.BROWSER);
+            if (webViews.size() >= 4) {
+                throw new LuaError("web: at most 4 tabs");
+            }
+            int id = nextWeb++;
+            webViews.put(id, dev.blockphone.fabric.client.browser.WebEngine.open(webAddress(a.optjstring(1, "about:blank"))));
+            return LuaValue.valueOf(id);
+        }));
+        web.set("draw", fn(a -> {
+            var v = webView(a.arg(1));
+            GuiGraphics gg = gfx();
+            float x = (float) a.checkdouble(2);
+            float y = (float) a.checkdouble(3);
+            float w = (float) a.checkdouble(4);
+            float h = (float) a.checkdouble(5);
+            org.joml.Matrix3x2f pose = new org.joml.Matrix3x2f(gg.pose());
+            double scale = Math.hypot(pose.m00(), pose.m01()) * Minecraft.getInstance().getWindow().getGuiScale();
+            double zoom = Math.max(0.25, Math.min(4, a.optdouble(6, 1)));
+            v.draw(gg, x, y, w, h, (int) Math.round(w * scale / zoom), (int) Math.round(h * scale / zoom));
+            webAreas.add(new WebArea(v, pose, x, y, w, h));
+            return LuaValue.NONE;
+        }));
+        web.set("go", fn(a -> {
+            webView(a.arg(1)).load(webAddress(a.checkjstring(2)));
+            return LuaValue.NONE;
+        }));
+        web.set("back", fn(a -> {
+            webView(a.arg(1)).back();
+            return LuaValue.NONE;
+        }));
+        web.set("forward", fn(a -> {
+            webView(a.arg(1)).forward();
+            return LuaValue.NONE;
+        }));
+        web.set("reload", fn(a -> {
+            webView(a.arg(1)).reload();
+            return LuaValue.NONE;
+        }));
+        web.set("stop", fn(a -> {
+            webView(a.arg(1)).stopLoad();
+            return LuaValue.NONE;
+        }));
+        web.set("info", fn(a -> {
+            var v = webView(a.arg(1));
+            LuaTable t = new LuaTable();
+            t.set("url", LuaValue.valueOf(v.url() == null ? "" : v.url()));
+            t.set("title", LuaValue.valueOf(v.title()));
+            t.set("loading", LuaValue.valueOf(v.loading()));
+            t.set("canBack", LuaValue.valueOf(v.canBack()));
+            t.set("canForward", LuaValue.valueOf(v.canForward()));
+            t.set("ready", LuaValue.valueOf(v.ready()));
+            t.set("focused", LuaValue.valueOf(v == webFocus));
+            return t;
+        }));
+        web.set("focus", fn(a -> {
+            var v = webView(a.arg(1));
+            boolean on = a.optboolean(2, true);
+            if (on) {
+                webFocus = v;
+                inputs.values().forEach(t -> t.setFocused(false));
+            } else if (webFocus == v) {
+                webFocus = null;
+            }
+            v.setFocus(on);
+            return LuaValue.NONE;
+        }));
+        web.set("close", fn(a -> {
+            var v = webViews.remove(a.checkint(1));
+            if (v != null) {
+                if (webFocus == v) {
+                    webFocus = null;
+                }
+                v.close();
+            }
+            return LuaValue.NONE;
+        }));
+        return web;
+    }
+
+    private void closeWebViews() {
+        webViews.values().forEach(dev.blockphone.fabric.client.browser.WebEngine.View::close);
+        webViews.clear();
+        webFocus = null;
+        webPressed = null;
+        lastWebAreas = List.of();
+    }
+
     private static void line(GuiGraphics g, double x1, double y1, double x2, double y2, int thickness, int color) {
         double dx = x2 - x1;
         double dy = y2 - y1;
@@ -1592,8 +2318,12 @@ final class ScriptHost {
 
     private boolean keyDown(String name) {
         Minecraft mc = Minecraft.getInstance();
-        if (!(mc.screen instanceof PhoneScreen)) {
-            return false; // телефон не в фокусе — клавиши у игры
+        if (dev.blockphone.fabric.client.screens.AppDisplays.controls(display)
+                && dev.blockphone.fabric.client.screens.AppDisplays.debugKeys.contains(name)) {
+            return true;
+        }
+        if (!(mc.screen instanceof PhoneScreen) && !dev.blockphone.fabric.client.screens.AppDisplays.controls(display)) {
+            return false; // телефон не в фокусе (и не режим джойстика этого приложения) — клавиши у игры
         }
         if (name.equals("mouse1") || name.equals("mouse2")) {
             return GLFW.glfwGetMouseButton(mc.getWindow().handle(), name.equals("mouse1") ? 0 : 1) == GLFW.GLFW_PRESS;

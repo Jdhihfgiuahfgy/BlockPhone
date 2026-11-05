@@ -1,0 +1,75 @@
+// Замены имён для сборок под другие версии Minecraft (gradle/fabric-port.gradle). Подключается модулем версии:
+// apply from: rootProject.file('gradle/port-renames.gradle'), затем ext.portRenames = RENAMES_1_21_10 + …
+// Переименования 1.21.11 → 1.21.10 (Mojang mappings). Порядок важен: длинные — раньше.
+// Модули более старых версий берут этот список и дописывают свой.
+ext.RENAMES_1_21_10 = [
+        'net.minecraft.resources.Identifier'       : 'net.minecraft.resources.ResourceLocation',
+        'Identifier.fromNamespaceAndPath'          : 'ResourceLocation.fromNamespaceAndPath',
+        'Identifier.withDefaultNamespace'          : 'ResourceLocation.withDefaultNamespace',
+        'Identifier.parse'                         : 'ResourceLocation.parse',
+        'net.minecraft.util.Util'                  : 'net.minecraft.Util',
+        'net.minecraft.client.model.player.PlayerModel': 'net.minecraft.client.model.PlayerModel',
+        'net.minecraft.client.renderer.rendertype.RenderTypes': 'net.minecraft.client.renderer.RenderType',
+        'RenderTypes.'                             : 'RenderType.',
+        'net.minecraft.world.level.gamerules.GameRules': 'net.minecraft.world.level.GameRules',
+        '.identifier()'                            : '.location()',
+        'camera.yRot()'                            : 'camera.getYRot()',
+        'camera.xRot()'                            : 'camera.getXRot()',
+        'g.renderOutline('                         : 'g.submitOutline(',
+        'rightHandItemState'                       : 'rightHandItem',
+        'leftHandItemState'                        : 'leftHandItem',
+        'hasControlDownWithQuirk()'                : 'hasControlDown()',
+]
+
+// 1.21.11 → 26.1 (заполняется по ошибкам компиляции).
+ext.RENAMES_26_1 = [
+        // Fabric API 0.145 (26.1): сетевые пакеты
+        // типы отрисовки: «без отсечения изнанки» стал просто entityCutout
+        'RenderTypes.entityCutoutNoCull('         : 'RenderTypes.entityCutout(',
+        'PayloadTypeRegistry.playS2C()'            : 'PayloadTypeRegistry.clientboundPlay()',
+        'PayloadTypeRegistry.playC2S()'            : 'PayloadTypeRegistry.serverboundPlay()',
+        // клавиши
+        'net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper': 'net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper',
+        'KeyBindingHelper.registerKeyBinding('     : 'KeyMappingHelper.registerKeyMapping(',
+        'KeyBindingHelper.'                        : 'KeyMappingHelper.',
+        // слои модели игрока
+        'LivingEntityFeatureRendererRegistrationCallback': 'LivingEntityRenderLayerRegistrationCallback',
+        // интерфейс: GuiGraphics → GuiGraphicsExtractor (имя класса — в REGEX_26_1)
+        '.drawString('                             : '.text(',
+        '.drawCenteredString('                     : '.centeredText(',
+        '.submitSkinRenderState('                  : '.skin(',
+        'net.minecraft.client.gui.components.PlayerFaceRenderer': 'net.minecraft.client.gui.components.PlayerFaceExtractor',
+        'PlayerFaceRenderer.draw('                 : 'PlayerFaceExtractor.extractRenderState(',
+        // время суток: в 26.1 — часы измерения
+        '.getDayTime()'                            : '.getDefaultClockTime()',
+        // ввод: у CharacterEvent больше нет модификаторов
+        'CharacterEvent(codepoint, 0)'             : 'CharacterEvent(codepoint)',
+]
+
+// 1.21.11 → 26.1 по регулярным выражениям (отдельные слова).
+ext.REGEX_26_1 = [
+        /\bGuiGraphics\b/                         : 'GuiGraphicsExtractor',
+        // переопределения методов игры (помечены в общем коде «// mc:render»): Screen и Toast
+        /void renderBackground\((.*\/\/ mc:render)/ : 'void extractBackground($1',
+        /void render\((.*\/\/ mc:render)/          : 'void extractRenderState($1',
+        /\.render\((.*\/\/ mc:render-call)/        : '.extractRenderState($1',
+        // миксины HUD и всплывающих окон (GuiMixin, ToastManagerMixin): render → extractRenderState
+        /method = "render"/                        : 'method = "extractRenderState"',
+]
+
+// 1.21.11 → 26.2: всё, что для 26.1, и своё.
+ext.RENAMES_26_2 = RENAMES_26_1 + [
+        // экран, уведомления, камера, кадр — из Minecraft переехали в Gui и GameRenderer
+        '.getToastManager()'                       : '.gui.toastManager()',
+        '.getMainRenderTarget()'                   : '.gameRenderer.mainRenderTarget()',
+        'gameRenderer.getMainCamera()'             : 'gameRenderer.mainCamera()',
+        '.options.hideGui'                         : '.gui.hud.isHidden()',
+]
+ext.REGEX_26_2 = REGEX_26_1 + [
+        /(?<![.\w])(mc|client|minecraft)\.screen\b(?!\()/  : '$1.gui.screen()',
+        /getInstance\(\)\.screen\b(?!\()/                   : 'getInstance().gui.screen()',
+        /(?<![.\w])(mc|client|minecraft)\.setScreen\(/     : '$1.gui.setScreen(',
+        /getInstance\(\)\.setScreen\(/                     : 'getInstance().gui.setScreen(',
+        // фигура игрока на аватаре: skin() принимает простую модель (Model.Simple) из частей модели игрока
+        /\.skin\(model, /                          : '.skin(new net.minecraft.client.model.Model.Simple(model.root(), model.renderType()), ',
+]

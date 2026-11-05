@@ -123,7 +123,7 @@ public final class ImageUploads {
         return upload;
     }
 
-    private static byte[] png(Picture picture) throws IOException {
+    public static byte[] png(Picture picture) throws IOException {
         BufferedImage image = new BufferedImage(picture.width(), picture.height(), BufferedImage.TYPE_INT_ARGB);
         image.setRGB(0, 0, picture.width(), picture.height(), picture.argb(), 0, picture.width());
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -186,7 +186,7 @@ public final class ImageUploads {
      * JPEG не больше maxBytes: качество снижается от 0.88 до 0.45, затем картинка уменьшается.
      * null — не удалось уложиться.
      */
-    static byte @Nullable [] encode(Picture picture, int maxBytes) throws IOException {
+    public static byte @Nullable [] encode(Picture picture, int maxBytes) throws IOException {
         Picture current = picture;
         for (int attempt = 0; attempt < 4; attempt++) {
             BufferedImage image = new BufferedImage(current.width(), current.height(), BufferedImage.TYPE_INT_RGB);

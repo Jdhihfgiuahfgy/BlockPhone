@@ -13,6 +13,20 @@ public final class ClientCompat {
         screen.init(width, height);
     }
 
+    /** Настройки тестового мира DevShots (творческий, мирный, с читами). */
+    public static net.minecraft.world.level.LevelSettings devLevelSettings(String name) {
+        return new net.minecraft.world.level.LevelSettings(name, net.minecraft.world.level.GameType.CREATIVE, false,
+                net.minecraft.world.Difficulty.PEACEFUL, true,
+                new net.minecraft.world.level.gamerules.GameRules(net.minecraft.world.level.WorldDataConfiguration.DEFAULT.enabledFeatures()),
+                net.minecraft.world.level.WorldDataConfiguration.DEFAULT);
+    }
+
+    /** Системное всплывающее окно (будильник): заголовок и текст в несколько строк. */
+    public static void systemToast(Minecraft mc, net.minecraft.network.chat.Component title, net.minecraft.network.chat.Component text) {
+        mc.getToastManager().addToast(net.minecraft.client.gui.components.toasts.SystemToast.multiline(mc,
+                net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, text));
+    }
+
     private ClientCompat() {
     }
 }

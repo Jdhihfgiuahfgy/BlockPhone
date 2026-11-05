@@ -79,6 +79,8 @@ public final class MessengerService {
         switch (packet) {
             case MessengerPackets.RequestHistory p -> history(player, p);
             case MessengerPackets.SendMessage p -> sendMessage(player, p);
+            case MessengerPackets.ForwardMessage p -> forward(player, p);
+            case MessengerPackets.SharePost p -> sharePost(player, p);
             case MessengerPackets.EditMessage p -> editMessage(player, p);
             case MessengerPackets.DeleteMessage p -> deleteMessage(player, p);
             case MessengerPackets.MarkRead p -> {
@@ -113,6 +115,12 @@ public final class MessengerService {
         send(player, new MessengerPackets.History(p.chatId(), messageInfos(ordered), p.beforeId() > 0, hasMore));
     }
 
+    /** Место для автомодерации: личный чат или группа. */
+    private ContentFilter.Context messageContext(long chatId) throws SQLException {
+        ChatRow chat = repo.chat(chatId);
+        return chat != null && chat.type() == ChatType.GROUP ? ContentFilter.Context.GROUP_MESSAGE : ContentFilter.Context.MESSAGE;
+    }
+
     private void sendMessage(UUID player, MessengerPackets.SendMessage p) throws SQLException {
         String text = p.text().strip();
         if (p.stickerId() > 0) {
@@ -125,7 +133,7 @@ public final class MessengerService {
         if (filterMuted(player)) {
             return;
         }
-        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.MESSAGE, text);
+        ContentFilter.Verdict verdict = backend.filter(player, messageContext(p.chatId()), text);
         if (verdict.blocked()) {
             fail(player, verdict.reason());
             return;
@@ -170,11 +178,13 @@ public final class MessengerService {
         repo.markRead(p.chatId(), player, id);
         MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), text, image, voice, now, 0,
                 false);
-        for (UUID member : repo.members(p.chatId())) {
+        List<UUID> members = repo.members(p.chatId());
+        for (UUID member : members) {
             if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
             }
         }
+        backend.moderation().logMessage(repo.chat(p.chatId()), player, members, text, image != null, voice != null, false);
     }
 
     private void editMessage(UUID player, MessengerPackets.EditMessage p) throws SQLException {
@@ -190,7 +200,7 @@ public final class MessengerService {
         if (filterMuted(player)) {
             return;
         }
-        ContentFilter.Verdict verdict = backend.filter(player, ContentFilter.Context.MESSAGE, text);
+        ContentFilter.Verdict verdict = backend.filter(player, messageContext(row.chatId()), text);
         if (verdict.blocked()) {
             fail(player, verdict.reason());
             return;
@@ -439,7 +449,7 @@ public final class MessengerService {
         }
     }
 
-    private ChatInfo chatInfo(ChatRow row, UUID viewer) throws SQLException {
+    ChatInfo chatInfo(ChatRow row, UUID viewer) throws SQLException {
         List<UUID> memberIds = repo.members(row.id());
         MessageRow last = repo.lastMessage(row.id());
         Map<UUID, String> names = names(memberIds);
@@ -454,12 +464,15 @@ public final class MessengerService {
     }
 
     /** Сообщения для пакетов: ники отправителей и размеры фото одним запросом. */
-    private List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
+    List<MessageInfo> messageInfos(List<MessageRow> rows) throws SQLException {
         Map<UUID, String> names = names(rows.stream().map(MessageRow::sender).toList());
         Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(MessageRow::imageId).toList());
         Map<Long, VoiceRef> voices = backend.voices().repo().refs(rows.stream().map(MessageRow::voiceId).toList());
         Map<Long, Long> stickerIds = repo.stickerIds(rows.stream().map(MessageRow::id).toList());
         Map<Long, Long> stickerPacks = backend.stickers().packsOf(stickerIds.values());
+        Map<Long, MessengerRepository.Extra> extras = repo.extras(rows.stream().map(MessageRow::id).toList());
+        Map<Long, MessengerData.PostShare> posts = backend.social().sharePreviews(
+                extras.values().stream().map(MessengerRepository.Extra::postId).filter(id -> id > 0).toList());
         List<MessageInfo> result = new ArrayList<>(rows.size());
         for (MessageRow row : rows) {
             ImageRef image = images.get(row.imageId());
@@ -467,8 +480,10 @@ public final class MessengerService {
             dev.blockphone.common.protocol.data.StickerData.StickerRef sticker = stickerId != null && image != null && !row.deleted()
                     ? new dev.blockphone.common.protocol.data.StickerData.StickerRef(stickerId, stickerPacks.getOrDefault(stickerId, 0L), image)
                     : null;
+            MessengerRepository.Extra extra = extras.get(row.id());
             result.add(new MessageInfo(row.id(), row.chatId(), backend.user(row.sender(), names.get(row.sender())), row.text(),
-                    image, voices.get(row.voiceId()), row.sentAt(), row.editedAt(), row.deleted(), sticker));
+                    image, voices.get(row.voiceId()), row.sentAt(), row.editedAt(), row.deleted(), sticker,
+                    extra != null ? extra.forwardedFrom() : "", extra != null && !row.deleted() ? posts.get(extra.postId()) : null));
         }
         return result;
     }
@@ -509,15 +524,111 @@ public final class MessengerService {
         repo.markRead(p.chatId(), player, id);
         MessageInfo message = new MessageInfo(id, p.chatId(), backend.user(player, online().get(player)), "", sticker.image(), null, now, 0,
                 false, sticker);
-        for (UUID member : repo.members(p.chatId())) {
+        List<UUID> members = repo.members(p.chatId());
+        for (UUID member : members) {
             if (backend.isOnline(member)) {
                 send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? p.nonce() : ""));
             }
         }
+        backend.moderation().logMessage(repo.chat(p.chatId()), player, members, "", false, false, true);
     }
 
-    /** Автомьют фильтра: сообщить игроку, сколько ещё минут, и не пропустить сообщение. */
-    private boolean filterMuted(UUID player) {
+    /**
+     * Переслать сообщение: копия текста, фото и голосового (свои строки в images/voices, привязанные к новому чату), стикер —
+     * тот же; «Переслано от» — автор оригинала (у пересланного дальше — первый автор). Проверки — как у обычной отправки.
+     */
+    private void forward(UUID player, MessengerPackets.ForwardMessage p) throws SQLException {
+        MessageRow row = repo.message(p.messageId());
+        if (row == null || row.deleted() || !repo.isMember(row.chatId(), player)) {
+            fail(player, "not_found");
+            return;
+        }
+        if (!repo.isMember(p.toChatId(), player)) {
+            fail(player, "not_member");
+            return;
+        }
+        if (filterMuted(player)) {
+            return;
+        }
+        Long stickerId = repo.stickerIds(List.of(row.id())).get(row.id());
+        boolean photo = row.imageId() > 0;
+        if (!directAllowed(player, p.toChatId(), Kind.MESSAGES, "privacy_messages")
+                || (photo && !directAllowed(player, p.toChatId(), Kind.PHOTOS, "privacy_photos"))
+                || (row.voiceId() > 0 && !directAllowed(player, p.toChatId(), Kind.VOICE, "privacy_voice"))) {
+            return;
+        }
+        if (!sendLimit.allow(player)) {
+            fail(player, "rate_limit");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long image = 0;
+        if (photo) {
+            image = stickerId != null ? row.imageId() : backend.imageRepo().copy(row.imageId(), player, ImageRepository.KIND_MESSAGE, p.toChatId(), now);
+        }
+        long voice = row.voiceId() > 0 ? backend.voices().repo().copy(row.voiceId(), player, p.toChatId(), now) : 0;
+        MessengerRepository.Extra extra = repo.extras(List.of(row.id())).get(row.id());
+        String from = extra != null && !extra.forwardedFrom().isEmpty() ? extra.forwardedFrom()
+                : names(List.of(row.sender())).getOrDefault(row.sender(), "?");
+        long id = repo.insertMessage(p.toChatId(), player, row.text(), image, voice, now);
+        if (stickerId != null) {
+            repo.setSticker(id, stickerId);
+        }
+        repo.setExtra(id, from, extra != null ? extra.postId() : 0);
+        deliver(player, p.toChatId(), id, p.nonce(), row.text(), photo && stickerId == null, voice > 0, stickerId != null);
+    }
+
+    /** Поделиться постом ленты в чате: сообщение с превью поста (и своим комментарием). */
+    private void sharePost(UUID player, MessengerPackets.SharePost p) throws SQLException {
+        if (!repo.isMember(p.toChatId(), player)) {
+            fail(player, "not_member");
+            return;
+        }
+        MessengerData.PostShare preview = backend.social().sharePreviews(List.of(p.postId())).get(p.postId());
+        if (preview == null || preview.deleted()) {
+            send(player, new MessengerPackets.Failure("social.error.post_not_found", ""));
+            return;
+        }
+        if (filterMuted(player) || !directAllowed(player, p.toChatId(), Kind.MESSAGES, "privacy_messages")) {
+            return;
+        }
+        ContentFilter.Verdict verdict = backend.filter(player, messageContext(p.toChatId()), p.comment().strip());
+        if (verdict.blocked()) {
+            fail(player, verdict.reason());
+            return;
+        }
+        if (!sendLimit.allow(player)) {
+            fail(player, "rate_limit");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long id = repo.insertMessage(p.toChatId(), player, verdict.text(), 0, 0, now);
+        repo.setExtra(id, "", p.postId());
+        deliver(player, p.toChatId(), id, p.nonce(), verdict.text(), false, false, false);
+    }
+
+    /** Разослать участникам только что записанное сообщение (полные сведения — как в истории) и записать в лог. */
+    private void deliver(UUID player, long chatId, long id, String nonce, String text, boolean photo, boolean voice, boolean sticker)
+            throws SQLException {
+        repo.markRead(chatId, player, id);
+        MessageInfo message = messageInfos(List.of(repo.message(id))).get(0);
+        List<UUID> members = repo.members(chatId);
+        for (UUID member : members) {
+            if (backend.isOnline(member)) {
+                send(member, new MessengerPackets.NewMessage(message, member.equals(player) ? nonce : ""));
+            }
+        }
+        backend.moderation().logMessage(repo.chat(chatId), player, members, text, photo, voice, sticker);
+    }
+
+    /** Мут модератора или автомьют фильтра: сообщить игроку, до какого времени, и не пропустить сообщение. */
+    private boolean filterMuted(UUID player) throws SQLException {
+        long muted = backend.moderation().mutedUntil(player);
+        if (muted > 0) {
+            send(player, new MessengerPackets.Failure("messenger.error.muted",
+                    muted == dev.blockphone.common.protocol.data.ModerationData.FOREVER ? "" : String.valueOf(muted)));
+            return true;
+        }
         long until = backend.filterMutedUntil(player);
         if (until <= 0) {
             return false;

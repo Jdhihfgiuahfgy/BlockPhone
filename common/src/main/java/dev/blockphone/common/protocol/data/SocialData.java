@@ -33,8 +33,12 @@ public final class SocialData {
         public static final int VOICE = 1 << 7;
         /** Звонки. */
         public static final int CALL = 1 << 8;
+        /** Блокировать игроков в телефоне (бан). */
+        public static final int MOD_BAN = 1 << 9;
+        /** Читать личные и групповые чаты игроков. */
+        public static final int MOD_CHATS = 1 << 10;
         /** Любое модераторское право. */
-        public static final int ANY_MOD = MOD_POSTS | MOD_PUBLICS | MOD_MUTE | MOD_REPORTS;
+        public static final int ANY_MOD = MOD_POSTS | MOD_PUBLICS | MOD_MUTE | MOD_REPORTS | MOD_BAN | MOD_CHATS;
 
         public static boolean has(int mask, int right) {
             return (mask & right) != 0;
@@ -63,13 +67,14 @@ public final class SocialData {
     public enum NoticeType { LIKE, COMMENT, FOLLOW, NEW_POST, REPORT }
 
     /** Краткая ссылка на паблик (в посте). */
-    public record PublicRef(long id, String title, int color) {
+    /** Ссылка на паблик в посте; avatar — своё фото паблика или null (тогда — цветной квадрат с буквой). */
+    public record PublicRef(long id, String title, int color, ImageRef avatar) {
         public static PublicRef read(PacketReader r) {
-            return new PublicRef(r.readLong(), r.readString(MAX_PUBLIC_TITLE * 2), r.readInt());
+            return new PublicRef(r.readLong(), r.readString(MAX_PUBLIC_TITLE * 2), r.readInt(), r.readNullable(ImageRef::read));
         }
 
         public static void write(PacketWriter w, PublicRef p) {
-            w.writeLong(p.id).writeString(p.title).writeInt(p.color);
+            w.writeLong(p.id).writeString(p.title).writeInt(p.color).writeNullable(p.avatar, ImageRef::write);
         }
     }
 
@@ -145,30 +150,33 @@ public final class SocialData {
     /**
      * Оформление личной страницы. avatarType: {@link #AVATAR_HEAD} — голова, {@link #AVATAR_BODY} — фигура из скина в позе
      * {@code pose} (0..{@link #POSES}-1); background — фон аватара (0..{@link #BACKGROUNDS}-1); bannerStyle — градиент баннера
-     * (0..{@link #BANNERS}-1); bannerImage — фото баннера (важнее градиента) или null.
+     * (0..{@link #BANNERS}-1); bannerImage — фото баннера (важнее градиента) или null; avatarImage — своё фото-аватар
+     * (для {@link #AVATAR_PHOTO}) или null.
      */
-    public record ProfileLook(int avatarType, int pose, int background, int bannerStyle, ImageRef bannerImage) {
+    public record ProfileLook(int avatarType, int pose, int background, int bannerStyle, ImageRef bannerImage, ImageRef avatarImage) {
         public static final int AVATAR_HEAD = 0;
         public static final int AVATAR_BODY = 1;
+        public static final int AVATAR_PHOTO = 2;
         public static final int POSES = 8;
         public static final int BACKGROUNDS = 12;
         public static final int BANNERS = 10;
-        public static final ProfileLook DEFAULT = new ProfileLook(AVATAR_HEAD, 0, 0, 0, null);
+        public static final ProfileLook DEFAULT = new ProfileLook(AVATAR_HEAD, 0, 0, 0, null, null);
 
         public ProfileLook {
-            avatarType = Math.floorMod(avatarType, 2);
+            avatarType = Math.floorMod(avatarType, 3);
             pose = Math.floorMod(pose, POSES);
             background = Math.floorMod(background, BACKGROUNDS);
             bannerStyle = Math.floorMod(bannerStyle, BANNERS);
         }
 
         public static ProfileLook read(PacketReader r) {
-            return new ProfileLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readNullable(ImageRef::read));
+            return new ProfileLook(r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readVarInt(), r.readNullable(ImageRef::read),
+                    r.readNullable(ImageRef::read));
         }
 
         public static void write(PacketWriter w, ProfileLook l) {
             w.writeVarInt(l.avatarType).writeVarInt(l.pose).writeVarInt(l.background).writeVarInt(l.bannerStyle)
-                    .writeNullable(l.bannerImage, ImageRef::write);
+                    .writeNullable(l.bannerImage, ImageRef::write).writeNullable(l.avatarImage, ImageRef::write);
         }
     }
 
@@ -176,22 +184,22 @@ public final class SocialData {
      * Паблик (сообщество). role — роль получателя пакета; admins — администраторы (без владельца).
      */
     public record PublicInfo(long id, String title, String description, int color, UserInfo owner, List<UserInfo> admins,
-                             int subscribers, int posts, boolean subscribed, Role role, long createdAt) {
+                             int subscribers, int posts, boolean subscribed, Role role, long createdAt, ImageRef avatar) {
         public static PublicInfo read(PacketReader r) {
             return new PublicInfo(r.readLong(), r.readString(MAX_PUBLIC_TITLE * 2), r.readString(MAX_PUBLIC_DESCRIPTION * 2), r.readInt(),
                     UserInfo.read(r), r.readList(MAX_PUBLIC_ADMINS + 1, UserInfo::read), r.readVarInt(), r.readVarInt(),
-                    r.readBoolean(), r.readEnum(Role.values()), r.readLong());
+                    r.readBoolean(), r.readEnum(Role.values()), r.readLong(), r.readNullable(ImageRef::read));
         }
 
         public static void write(PacketWriter w, PublicInfo p) {
             w.writeLong(p.id).writeString(p.title).writeString(p.description).writeInt(p.color);
             UserInfo.write(w, p.owner);
             w.writeList(p.admins, UserInfo::write).writeVarInt(p.subscribers).writeVarInt(p.posts).writeBoolean(p.subscribed)
-                    .writeEnum(p.role).writeLong(p.createdAt);
+                    .writeEnum(p.role).writeLong(p.createdAt).writeNullable(p.avatar, ImageRef::write);
         }
 
         public PublicRef ref() {
-            return new PublicRef(id, title, color);
+            return new PublicRef(id, title, color, avatar);
         }
 
         public boolean canPost() {

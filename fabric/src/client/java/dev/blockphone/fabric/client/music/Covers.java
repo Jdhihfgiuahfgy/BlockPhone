@@ -71,7 +71,7 @@ public final class Covers {
             Picture picture = null;
             try {
                 byte[] bytes = loader.load();
-                BufferedImage image = bytes != null ? ImageIO.read(new ByteArrayInputStream(bytes)) : null;
+                BufferedImage image = bytes != null ? dev.blockphone.fabric.client.photo.ImageOps.readImage(bytes, "cover") : null;
                 if (image != null) {
                     int w = image.getWidth();
                     int h = image.getHeight();

@@ -115,7 +115,7 @@ class PrivacyServiceTest {
 
     @Test
     void profileLookIsSavedAndShown() throws Exception {
-        send(ALEX, new SocialPackets.UpdateLook(1, 3, 5, 2, 0));
+        send(ALEX, new SocialPackets.UpdateLook(1, 3, 5, 2, 0, 0));
         SocialPackets.Profile profile = platform.last(ALEX, SocialPackets.Profile.class);
         assertEquals(1, profile.profile().look().avatarType());
         assertEquals(3, profile.profile().look().pose());

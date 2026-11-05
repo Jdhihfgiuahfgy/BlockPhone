@@ -12,27 +12,41 @@ import java.util.UUID;
  */
 public final class PhoneUsePackets {
 
-    /** Клиент → сервер: я пользуюсь телефоном (или перестал). */
-    public record InUse(boolean using) implements Packet {
+    /**
+     * Клиент → сервер: я пользуюсь телефоном (или перестал); sideways — держу набок двумя руками (приложение набок, игра на
+     * экране). sideways — необязательный байт в конце: старые сервера его не читают, от старых клиентов — false.
+     */
+    public record InUse(boolean using, boolean sideways) implements Packet {
+        public InUse(boolean using) {
+            this(using, false);
+        }
+
         public static InUse read(PacketReader r) {
-            return new InUse(r.readBoolean());
+            boolean using = r.readBoolean();
+            return new InUse(using, r.remaining() > 0 && r.readBoolean());
         }
 
         @Override
         public void write(PacketWriter w) {
-            w.writeBoolean(using);
+            w.writeBoolean(using).writeBoolean(sideways);
         }
     }
 
-    /** Сервер → клиент: игрок пользуется телефоном (или перестал). */
-    public record State(UUID player, boolean using) implements Packet {
+    /** Сервер → клиент: игрок пользуется телефоном (или перестал), sideways — набок (необязательный байт в конце). */
+    public record State(UUID player, boolean using, boolean sideways) implements Packet {
+        public State(UUID player, boolean using) {
+            this(player, using, false);
+        }
+
         public static State read(PacketReader r) {
-            return new State(r.readUuid(), r.readBoolean());
+            UUID player = r.readUuid();
+            boolean using = r.readBoolean();
+            return new State(player, using, r.remaining() > 0 && r.readBoolean());
         }
 
         @Override
         public void write(PacketWriter w) {
-            w.writeUuid(player).writeBoolean(using);
+            w.writeUuid(player).writeBoolean(using).writeBoolean(sideways);
         }
     }
 

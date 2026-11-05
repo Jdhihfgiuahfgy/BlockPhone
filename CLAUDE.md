@@ -1,7 +1,7 @@
 # BlockPhone — заметки для разработки
 
 Мод-«смартфон» для Minecraft: телефон открывается поверх игры как интерфейс (не предмет).
-Клиент — Fabric 1.21.11 и 1.21.10 (две сборки из общих исходников); сервер — тот же Fabric-мод **или** Paper-плагин
+Клиент — Fabric 1.21.11, 1.21.10, 1.21.9, 26.1–26.1.2 и 26.2 (пять сборок из общих исходников); сервер — тот же Fabric-мод **или** Paper-плагин
 (один файл для 1.21.10 и 1.21.11); сеть серверов — плагин Velocity или BungeeCord.
 Дизайн — **свой стиль** (по образцу скриншота мода-плеера от пользователя): тёмно-синие панели с тонкой рамкой,
 скругление 4, плоские кнопки, акцентный цвет (игрок выбирает сам), тёмная основа по умолчанию + светлая.
@@ -14,7 +14,7 @@
 
 | Команда | Что делает |
 |---|---|
-| `./gradlew build` | Собирает всё. Jar-ы: `fabric/build/libs/BlockPhone-fabric-<версия>+mc1.21.11.jar`, `fabric-1.21.10/build/libs/BlockPhone-fabric-<версия>+mc1.21.10.jar`, `paper/build/libs/BlockPhone-paper-*.jar` |
+| `./gradlew build` | Собирает всё. Jar-ы: `fabric/build/libs/BlockPhone-fabric-<версия>+mc1.21.11.jar`, `fabric-<версия MC>/build/libs/BlockPhone-fabric-<версия>+mc<версия MC>.jar` (1.21.10, 1.21.9, 26.1, 26.2), `paper/build/libs/BlockPhone-paper-*.jar` |
 | `./gradlew :fabric-1.21.10:runClient` | Клиент Minecraft **1.21.10** с модом (папка `fabric-1.21.10/run/`; DevShots работают так же) |
 | `./gradlew :fabric:runClient` | Клиент Minecraft с модом (папка игры — `fabric/run/`) |
 | `./gradlew :fabric:runServer` | Выделенный Fabric-сервер с модом |
@@ -22,13 +22,22 @@
 | `./gradlew :velocity:build` | Плагин Velocity: `velocity/build/libs/BlockPhone-velocity-*.jar` |
 | `./gradlew :bungee:build` | Плагин BungeeCord/Waterfall: `bungee/build/libs/BlockPhone-bungee-*.jar` |
 | `./gradlew :common:test` | Тесты сервера: мессенджер, лента, фото, модерация, голосовые и звонки (заглушка SVC) — протокол + логика + SQL на H2 |
-| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса и Spotify, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
+| `./gradlew :fabric:test` | Тесты клиента без игры: теги MP3/OGG, ответы Яндекса, названия плееров Windows, декодер OGG, кодек ADPCM, запуск TDLib (Windows), кодирование «кружочка», WEBP, OGG Opus, кадры MP4, дорожка Opus в MP4 |
 | `./gradlew :fabric:genSources` | Декомпилирует Minecraft (имена Mojang) — для сверки API |
 | `python tools/gen_icons.py` | Символы приложений (белые маски `textures/gui/glyph/`), погода, шум камеры, иконка мода |
+| `python tools/gen_mod_icon.py [block\|minimal\|pixel] [--preview <папка>]` | Иконка мода `assets/blockphone/icon.png` (выбрана «block»: телефон с блоком травы на тёмной плитке) |
 | `python tools/make_catalog.py <приложения> <каталог> ["имя"]` | Каталог для «Магазина»: zip каждого приложения, иконки, catalog.json с sha256 (docs/APP_STORE.md) |
 | `python tools/gen_doom.py` | Текстуры примера DOOM (`docs/examples/scripts/doom/textures`) |
-| `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, палитра 3D-оружия `vm_palette`, radar из maps.lua, icon) |
-| `python tools/gen_strike_sounds.py` | Звуки Block Strike (`sounds/*.wav`, синтез numpy) + `sounds.lua` (длительности) |
+| `python tools/gen_strike.py` | Графика примера Block Strike (`docs/examples/scripts/blockstrike`: textures, иконки магазина из 3D-моделей guns.lua, radar из maps.lua и levels/, icon) |
+| `python tools/gen_strike_kit.py` | Атлас материалов 3D-оружия Block Strike (`textures/kit_atlas.png` + `kitmats.lua`) |
+| `python tools/gen_strike_skins.py` | HD-скины агентов Block Strike (256×256, второй слой; вызывается и из gen_strike.py) |
+| `python tools/gen_strike_city.py` | Городские текстуры Block Strike (`textures/city/*`: фасады, окна, двери, дороги, интерьеры по темам; вызывается и из gen_strike.py) |
+| `python tools/gen_strike_maps.py` | Многоуровневые карты Block Strike (`mapdata.lua`: rows/levels/roofs) и их радары; проверка достижимости |
+| `python tools/gen_strike_sounds.py` | Звуки Block Strike (~205 файлов `sounds/*.wav`, синтез numpy; выстрелы и взрывы — `tools/strike_audio.py` (причинные фильтры, волна давления), фон и события — `tools/strike_ambience.py` (+ `ambience.lua`), музыка — `tools/strike_music.py`) + `sounds.lua` (длительности) |
+| `python tools/gen_racing.py` | «Блочные гонки» (`docs/examples/scripts/racing`): текстуры земли трасс, мини-карты, tracks.lua, иконка (~7 мин) + звуки |
+| `python tools/gen_racing_sounds.py` | Только звуки «Блочных гонок» (`racing/sounds/*.wav`: мотор, шины, трава, удар, отсчёт, круг, финиш) |
+| `python tools/gen_clan_icon.py` | Иконка приложения клана `clan-app/icon.png` |
+| `wrangler dev --port 8799 --var OWNER_KEY:testownerkey` (в `clan-server/`) | Сервер клана локально (выкладка — `wrangler deploy`, см. `clan-server/README.md`) |
 | `python tools/gen_filters.py` | Генерирует постэффекты фильтров камеры `post_effect/filter_*.json` (параметры фильтров — только здесь) |
 
 - Gradle **9.8.0** (wrapper). Loom 1.19 требует **Java 25 для демона Gradle** — он скачивается автоматически
@@ -51,7 +60,7 @@
   профили (Стив — фигура «машет»), «Оформление» (`profile_look`), своя страница после сохранения
   (`profile_self_look`), «Приватность» (`privacy`), паблики, модерация, фото в чате, тёмная тема. Dev-игрок каждый запуск новый (случайный ник).
   Сценарий музыки: `BLOCKPHONE_DEV_SCENARIO=music` — копирует 3 трека Minecraft (из ресурсов игры) в `blockphone/music`,
-  играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/Spotify, тёмную тему и виджет на HUD;
+  играет их на громкости 5% (звук будет!), снимает список, плеер, перемотку, вкладки Яндекс/«На ПК», тёмную тему и виджет на HUD;
   в лог пишет позицию воспроизведения. Пишет рядом с треками придуманный тестовый `.lrc` и снимает текст в телефоне
   (`music_lyrics`), в мире (`music_lyrics_world`) и «перед глазами» (`music_lyrics_view`); поиск в сети на время выключен.
   Затем пять оформлений виджета в разных местах (`hud_<стиль>`) и страница настроек виджета (`settings_hud`).
@@ -67,18 +76,23 @@
   Telegram дополнительно: `telegram_list`, `telegram_viewer`, `telegram_profile`.
   Сценарий `store` — только магазин (каталог-пример, полоса хода, выдуманные отзывы `AppStore.debugFakeReviews`).
   Сценарий `strike`: копирует пример `blockstrike`, заставка → «Игра с ботами» → покупка → бой → пауза (`strike_*`);
-  кладёт в копию `dev.lua` (клавиша «0» выдаёт оружие по очереди) — снимки 3D-оружия `strike_w_<оружие>`, `strike_reload`.
+  кладёт в копию `dev.lua` (клавиша «0» выдаёт оружие по очереди, «6» — бросок молотова и ложной, «7» — вкладки настроек, «8» — гибель своего
+  игрока, «9» — следующая карта по ключу) — снимки
+  3D-оружия `strike_w_<оружие>`, `strike_reload`, наблюдение `strike_spectate`, карты `strike_map_<ключ>`.
   Логику Block Strike можно гонять без игры: LuaJ-jar из кэша Gradle, `java -cp luaj-jse.jar lua <скрипт>` в папке примера
   (`require("sim")` — матч ботов; main.lua — только с заглушками gfx/g3d/ui/net).
   Сценарий дизайна: `BLOCKPHONE_DEV_SCENARIO=design` — все приложения в тёмной (RU) и светлой (EN) теме, другой акцент
   (оранжевый), страницы «Акцентный цвет» и «Обои», без загрузки мира.
+  Сценарий `app` — любое своё приложение из `fabric/run/blockphone/apps`: `BLOCKPHONE_DEV_APP=<id>`,
+  `BLOCKPHONE_DEV_APP_STEPS="shot:имя;click:x,y;rclick:x,y;submit:поле=текст;type:…;key:…;wait:тики;back;lang:ru_ru"`.
 - `BLOCKPHONE_DEV_MESSENGER=1` — включить серверную часть (мессенджер + лента) в одиночной игре (только для разработки;
   база в `fabric/run/blockphone/`). Dev-игрок в мире с читами — оператор, поэтому у него права модератора.
 - **Данные игрока** (dev: `fabric/run/`): настройки `config/blockphone/settings.json`; заметки `blockphone/notes.json`;
   галерея `blockphone/gallery/IMG_*.png` + `IMG_*.json` (сведения о снимке, `PhotoMeta`); свои обои `blockphone/wallpapers/`;
   кэш фото с серверов `blockphone/cache/<id сервера>/<id>.img`; своя музыка `blockphone/music/` (MP3/OGG/WAV, подпапки),
-  кэш треков Яндекса `blockphone/cache/music/` (последние 40); входы в сервисы `config/blockphone/accounts.json` (секреты!);
-  Telegram: база и файлы TDLib `blockphone/telegram/db`, `/files`, записанные «кружочки» `blockphone/telegram/videonotes/`.
+  кэш треков Яндекса `blockphone/cache/music/` (последние 40); входы в сервисы `config/blockphone/accounts.dat` (секреты,
+  зашифрованы ключом Windows — `storage/SecretBox`; не на Windows — `accounts.json`);
+  Telegram: база и файлы TDLib `blockphone/telegram/db` (зашифрована ключом из `telegram/db.key`, сам ключ — SecretBox), `/files`, записанные «кружочки» `blockphone/telegram/videonotes/`.
 - Длинные heredoc в Bash-инструменте иногда ломаются, а `\n` внутри heredoc превращается в настоящий перевод строки —
   правки больших текстов делать скриптом, записанным через Write, или Edit.
 - Папки `PhoneMod/` и `PhoneModPlugin/` — старые шаблоны IntelliJ, в сборку не входят (в .gitignore).
@@ -93,10 +107,35 @@ paper/     плагин Paper
 velocity/  плагин Velocity (мессенджер и лента на прокси для всей сети)
 bungee/    плагин BungeeCord/Waterfall (то же, что velocity)
 tools/     скрипты (генерация иконок и фильтров)
+clan-server/  сервер мессенджера клана Astrum Mortis (Cloudflare Worker + Durable Object; не часть сборки)
+clan-app/     приложение клана для «Магазина» (Lua, id astrum_mortis; мод не меняется)
+listen-server/  комнаты «Слушать вместе» (Cloudflare Worker + Durable Object `Room`, WebSocket; не часть сборки)
+relay-server/   комнаты сетевых игр своих приложений без плагина (Worker + Durable Object `RelayRoom`, WebSocket)
 ```
+
+### Мессенджер клана (`clan-server/`, `clan-app/`)
+Отдельно от мода и игрового сервера: приложение ходит https-запросами (`http.post`, свой счётчик ≤ 50/мин) на
+`clan-server/worker.js` (адрес — `clan.lua` `DEFAULT_URL` + `hosts` в app.json). Сервер: один Durable Object `ClanHub`
+(SQLite: users по нику, invites (for_name — «вернуть вход»), chats (main — общий чат клана, direct_key), members(last_read),
+messages (reply_to, forwarded_from, sticker), events (на участника, 3 суток), meta). Все запросы — POST JSON,
+`Authorization: Bearer <токен>` (в базе sha256), `/join` без токена. Новое — `/sync {since}`: ждёт до 10 с (waiters),
+события `msg`/`upd`/`chat`/`gone`/`typing`/`role`; «в сети» — спрашивал < 25 с назад. Ник не проверить (Mojang не
+отвечает Cloudflare) — вход только по коду. Приложение: `clan.lua` (данные, sync в `onTick`, работает в фоне),
+`ui.lua` (нажатия через записанные при рисовании области `U.hit`, меню, диалог, время по поясу из `time.date`, перенос
+с кэшем), `main.lua` (экраны join/chats/clan/chat/info/new/pick; поля не своего экрана уводятся за край — `parkInputs`).
+Вложения: `/upload` (тело — JPEG/OGG, заголовки X-Width/X-Height/X-Duration-Ms) → таблица files (BLOB, chat_id 0 —
+не отправлено, удаляется через сутки), раздача `GET /f/<id>` без входа; messages.image/voice — id файла. Право
+приглашать — users.can_invite (`member` invite_on/off). Стикеры — PNG в приложении `stickers/<набор>/<имя>.png` + `stickerlist.lua`
+(`tools/gen_clan_stickers.py`), на сервере — строка «набор/имя»; свои стикерпаки игроков — packs/pack_stickers/pack_installs
+(PNG через `/upload`, в сообщении «c<номер>» + stickerUrl/pack; приложение: экраны stickers/pack/editor, `photos.sticker`).
+Реакции — таблица reactions (одна на игрока, `react`), картинки `clan-app/reactions/`; меню с полосой реакций — `U.openMenu(…, strip)`.
+Громкость голосовых — `audio.volume` (C.volume, storage voiceVolume). Приложение: разрешения background/notifications/photos/microphone.
+Lua 5.2 (LuaJ): без `&`/`|` — `bit32`. Проверка без игры: LuaJ + заглушки API и настоящий http к `wrangler dev`
+(`java --add-opens java.net.http/jdk.internal.net.http=ALL-UNNAMED -cp luaj-jse.jar lua стенд.lua` из `clan-app`).
 Классы `common` копируются внутрь jar-ов fabric, paper, velocity и bungee (`jar { from(project(':common')...) }`).
 JDBC-драйверы H2 и MariaDB: в Fabric — jar-in-jar (`include`, без транзитивных), в Velocity и BungeeCord — встраиваются (`shade`),
 Paper скачивает их сам по `libraries:` в plugin.yml. Версии — в `gradle.properties` (`h2_version`, `mariadb_version`).
+Apache commons (lang3/io/codec/compress) в jar **не класть**: они есть в самой игре, своя старая копия роняла 26.2.
 Декодер MP3 JLayer (`javazoom:jlayer`, LGPL) — jar-in-jar в Fabric (`jlayer_version`); OGG — stb_vorbis из LWJGL (есть в игре).
 Тестовый source set `fabric/test` видит клиентский код (настроено в `fabric/build.gradle`).
 Telegram: TDLight (`it.tdlight:tdlight-java` + `tdlight-api` + `tdlight-natives:windows_amd64`, репозиторий mvn.mchv.eu, LGPL-3.0;
@@ -159,7 +198,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `protocol/data/StickerData` — StickerRef, PackInfo (own, installed), Limits (enabled, maxBytes, maxSide, maxPacks, maxPerPack).
 - `protocol/data/PrivacyData` — `Audience` (EVERYONE, FOLLOWING — на кого подписан владелец, MUTUAL, NOBODY), `Kind` (MESSAGES,
   VOICE, PHOTOS, INVITES, CALLS), `Privacy` (по Audience на каждый Kind; `with`, `get`), MAX_LIST 200.
-  `SocialData.ProfileLook` — avatarType (0 — голова, 1 — фигура), pose (0..7), background (0..11), bannerStyle (0..9), bannerImage.
+  `SocialData.ProfileLook` — avatarType (0 — голова, 1 — фигура, 2 — фото avatarImage), pose (0..7), background (0..11),
+    bannerStyle (0..9), bannerImage. Аватар паблика — `PublicInfo/PublicRef.avatar`, C→S `SetPublicAvatar` (id 112).
 - `protocol/data/VoiceData` — `VoiceRef` (id, длительность), `CallInfo`, кодек `CODEC_ADPCM16` (IMA ADPCM 16 кГц моно, ~8 КБ/с).
 - `protocol/data/ImageRef` — фото на сервере (id, ширина, высота), `PhotoPolicy` (ANY/SERVER/NONE), `Purpose` (POST/CHAT), CHUNK.
 - `protocol/data/SocialData` — PostInfo, CommentInfo, ProfileInfo, PublicInfo (role получателя), PublicRef, ReportInfo, перечисления
@@ -177,8 +217,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   - `AppScript` (AppDefinition.script, null — без скрипта): app.json `"script"` (главный .lua), все `*.lua` и `*.png` папки
     (пределы MAX_*), `orientation` (landscape), `fullscreen`, `hosts` (`hostAllowed`, «*.домен»); sha256 приложения со скриптом
     включает код. Разрешения `INTERNET` (нужны hosts) и `MULTIPLAYER`. `AppLoader.parse(text, icon, id, folder)`.
-  - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки id или «sha256:…»; `allowed(...)` — общая для
-    клиента и сервера. `AppResult` — итог функции (toast, error, navigate).
+  - `AppsSettings` — политика сервера: mode blacklist|whitelist|none, списки «uid:…» (уникальный id приложения из
+    app.json `uid` — создаётся при первой публикации, `AppDefinition.newUid`), id («id:…» или просто) или «sha256:…»;
+    `allowed(...)` — общая для клиента и сервера. `AppDefinition.category` — категория магазина (`CATEGORIES`). `AppResult` — итог функции (toast, error, navigate).
 - `server/` — серверная логика для всех платформ:
   - `BlockPhoneServer` — фасад: `onChannelReady(uuid)` → ServerHello; `onMessage(uuid, name, bytes)` (ClientHello → `Backend.onJoin`,
     остальное → `Backend.handle`); `onQuit`. Платформа реализует `ServerPlatform` (name, send(uuid, bytes) — потокобезопасно,
@@ -205,10 +246,14 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     заголовку — `ImageHeader`, без ImageIO), `claim` (прикрепить), выдача кусками с проверкой доступа (пост — всем, сообщение — участникам).
   - `VoiceService` + `VoiceRepository` (таблица voices, chat_id = 0 — не отправлено, удаляется через сутки) — приём голосовых
     (право VOICE, длительность ≤ maxSeconds, размер), `claim` к чату, выдача только участникам чата.
-  - `CallService` — звонки: звонящий создаёт скрытую группу SVC (через `VoiceBridge`) и входит в неё, остальным участникам чата онлайн
-    приходит вызов; принявшие входят в группу; не ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён.
-    Тик каждые 5 с (планировщик бэкенда). Вышел из группы через меню SVC — `leftGroup`.
-  - `RateLimiter` — «не больше N за окно» по игроку.
+  - `CallService` — свои звонки (без SVC): звонящий сразу в звонке, остальным участникам чата онлайн приходит вызов; не
+    ответили за 45 с — вызов снят; остался один и никто не ждёт — звонок завершён (тик 5 с). Звук: C→S `CallAudio`
+    (кадры Opus 16 кГц с длиной-байтом) → S→C `CallAudioFrom(from, at, codec)` остальным участникам; `CallControl` — свой
+    микрофон выключен (звук не пересылается) / громкая связь: игрокам с модом в `voice.speakerRadius` от участника — его
+    звонок (`at` = участник), а голоса из SVC (`VoiceBridges` микрофон-слушатель, `CODEC_SVC_OPUS48`) рядом с ним — в
+    звонок. Позиции — `ServerPlatform.positions()` снимком раз в 0,5 с. Лимит 80 пакетов / 2 с.
+  - `RateLimiter` — «не больше N за окно» по игроку (только поток Backend). `FloodGuard` — общий предел 200 пакетов / 10 с
+    на игрока в `BlockPhoneServer.onMessage` (кроме UploadChunk и CallAudio) и лог не чаще раза в минуту (испорченные пакеты).
   - `AppService` (в `BlockPhoneServer`, без базы) — серверные части из папки apps (`setAppsDirectory` до start; проверка папки
     каждые 5 с, README.txt + CUSTOM_APPS.md при создании) и из `BlockPhoneApps`; политика `settings.apps()`; переменные и
     функции — в главном потоке (`platform.runOnMain`), лимит 12 вызовов / 6 с, команды пишутся в лог `[apps]`.
@@ -226,6 +271,15 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     ADD (отказавшиеся пропускаются, ошибка `privacy_invites` с числом), звонок в личном чате (`call.error.privacy`).
     Оформление страницы — колонки profiles.avatar_type/avatar_pose/avatar_bg/banner_style/banner_image (`SocialRepository.look/setLook`),
     фото баннера — images.kind 3 (KIND_BANNER, видно всем); старое фото баннера отвязывается и удаляется через сутки.
+  - `ModerationService` + `ModerationRepository` (таблицы mutes, bans, modlog) — панель модерации (`ModerationPackets` id 98–108:
+    поиск игроков, наказанные, Punish MUTE/UNMUTE/BAN/UNBAN с минутами (-1 — навсегда) и причиной, журнал, чаты игрока и
+    переписка только для чтения — право MOD_CHATS, пишется в журнал); бан в телефоне — `Backend.handle` проверяет каждый
+    пакет (кроме Refresh/LeaveCall; кэш 30 с) и отвечает *.error.banned; мут — и в мессенджере (`messenger.error.muted`).
+    `ModerationSettings` (`moderation` в настройках): `chatLog` (лог сообщений в чат игры игрокам с правом CHAT_LOG,
+    формат с &-цветами, `ModerationSettings.colors`), `banCommand`/`unbanCommand` (через `ServerPlatform.runConsoleCommand`). `announce` — объявления о MUTE/UNMUTE/BAN/UNBAN/WARN в чат
+    игры (всем или staff, личное сообщение наказанному); WARN — только журнал (`ModerationRepository.warnings`).
+    `ServerPlatform.onlinePlayers/sendChat` — для лога. Клиент: `social/ModerationClient`, экраны `apps/social/ModerationView`
+    (разделы Жалобы/Игроки/Наказ./Журнал), `PlayerModView`, `ModChatsView`, `ModChatView`.
   - `filter/FilterSettings` (POJO для Gson; Paper заполняет из `filter.*` в config.yml; `fixNulls()`) и `filter/ContentFilter` —
     автомодерация: слова (чёрный/белый список; «слово», «слово*», «*слово», «*слово*», «regex:…»; сравнение по «скелету»:
     похожие буквы/цифры сведены, повторы схлопнуты, буквы через разделители склеены; censor → звёздочки или block) и ссылки
@@ -234,10 +288,15 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     mode allow|block). Автомьют: N нарушений за окно → мьют (в ленте — обычный мьют от UUID 0, в мессенджере — в памяти).
     `Backend.filter(player, Context, text)` (право `blockphone.filter.bypass`, лог `[filter]`) вызывают MessengerService
     (сообщение, правка, название группы) и SocialService (пост, комментарий, «о себе», паблик). Ошибки: `*.error.filter_words`,
-    `filter_links`, `messenger.error.filter_muted` (минуты).
+    `filter_links`, `messenger.error.filter_muted` (минуты). Места: `Context.place` (messages, group_messages, group_names,
+    posts, comments, profiles, publics) — `words.where`, `links.where`, `rules[]` (words, where, action); `check(text, context)`.
 - `voice/` — Simple Voice Chat: `VoiceBridge` (интерфейс: connected, createGroup, join, leave, removeGroup), `VoiceBridges` (текущий мост,
   главный поток сервера, слушатель выхода из группы — без типов SVC), `SvcBridge` (реализация на `VoicechatServerApi`: скрытые
   непостоянные группы с паролем, тип normal/isolated), `SvcPlugin` (плагин SVC: события старта/остановки сервера SVC и выхода из группы).
+
+**Перезагрузка настроек:** `BlockPhoneServer.restart(old, platform, settings)` (останавливает старое ядро, запускает новое,
+заново здоровается с игроками с модом); команды — Paper/Fabric `/blockphone reload`, Velocity `/bpv reload`, Bungee
+`/bpb reload`, право `BlockPhoneServer.RELOAD_PERMISSION` (`blockphone.admin.reload`, операторы/консоль).
 
 **Как добавить пакет:** record в `protocol/packet` → `register(<следующий id>, …)` в `Packets` →
 обработка на клиенте (`ClientNetwork.handle` → `MessengerClient`/`SocialClient`/…) и на сервере (`Backend.handle` → сервис;
@@ -261,7 +320,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   (камера сразу), `compactKey` («на ходу», J), `cursorKey` (курсор «на ходу», левый Alt) и музыка `musicPlayKey/musicNextKey/musicPrevKey` (плеер телефона, а если он пуст —
   Spotify; не назначены); `passMovementThrough` — в режиме «на ходу» клавиши ходьбы/прыжка/приседа/бега передаются игроку
   (`KeyMapping.setDown` по состоянию клавиатуры), пока приложение не ждёт текст;
-  каждый тик `MusicPlayer.tick()` и `Spotify.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
+  каждый тик `MusicPlayer.tick()` и `WindowsMedia.tick()`; `CameraMode.init()`, `MusicHud.init()`; при закрытии игры музыка останавливается.
 - `network/ClientNetwork` — приём пакетов (Session → `ClientSession`, SocialPackets → `SocialClient`, фото → `ImageUploads`/
   `RemoteImages`, остальное → `MessengerClient`); `serverHello()`, `messengerAvailable()`, `socialAvailable()`; при выходе с сервера
   (в потоке рендера!) сбрасывает всё серверное состояние. `send` шлёт и без объявленного канала, если сервер поздоровался (прокси).
@@ -276,7 +335,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `config/PhoneSettings` — `config/blockphone/settings.json` (Gson, публичные поля: language, wallpaper, customWallpaper,
   darkTheme (по умолчанию true), accentColor, clock24h, gameTimeClock, animations, musicVolume, musicHud, lockScreen, compactPhone,
   hudStyle, hudAnchor, hudOffsetX/Y, hudScale, hudOpacity, hudColor, hudShowCover/Artist/Progress/Time/Lyrics/Paused,
-  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..30, lyricsScatter, lyricsAccentWord, lyricsOutline, lyricsUnsynced, lyricsOffsetMs, lyricsOnline).
+  lyricsWorld, lyricsMode (world|view), lyricsSize 1..4, lyricsDistance 3..30, lyricsScatter, lyricsAccentWord, lyricsOutline, lyricsUnsynced, lyricsOffsetMs, lyricsOnline, musicStopOnLeave — остановить музыку при выходе из мира).
 - `i18n/PhoneLang` — `tr(key, args...)`: свой выбор языка (настройка телефона: auto/ru_ru/en_us), читает `assets/blockphone/lang/*.json`.
   **Новые строки добавлять в оба файла: `ru_ru.json` и `en_us.json`.**
 - `phone/` — каркас телефона:
@@ -300,6 +359,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     левый Alt) — тот же экран открыт как `Screen` (курсор), отпустил — `setScreen(null)` с флагом `hiding` (приложения не
     закрываются, `removed()` пропускается); пока поле ввода в фокусе или открыт диалог — курсор остаётся. Вкл/выкл — `compactKey`
     (по умолчанию J), «назад» с рабочего стола / клавиша телефона — снять. `PhoneScreen.compact()` = прикреплён.
+    Набок — `rotateKey` (K) / `PhoneSettings.compactLandscape` (`applyOrientation` кладёт любое приложение набок).
+    Без рамки — `framelessKey` (O) / `PhoneSettings.frameless` (только экран, без корпуса; и в обычном режиме).
+    Курсор после отпускания клавиши держит `PhoneApp.holdsCursor` (ввод текста; браузер — только поле ввода на странице).
+    Размер `compactSize` (%), место `compactX/compactY` (доли свободного места) — перетаскивание за рамку корпуса.
     Размер экрана задаётся `ClientCompat.initScreen` (1.21.11 `init(w, h)`, 1.21.10 `init(mc, w, h)`).
   - Уведомления — `phone/NotifyPrefs`: `allowed/toast/center/ring` по настройкам `notifyAll`, `notifyToasts`, `notifyCenter`,
     `notifySound`, `notifyMuted` (messenger, feed, telegram, calls); проверяют `MessengerNotifications`, `SocialNotifications`,
@@ -329,7 +392,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Экраны ленты: `ProfileView` (баннер, аватар, «Оформление», «Приватность», «Личка закрыта», меню «Заблокировать»),
   `ProfileLookView` (предпросмотр, голова/фигура, поза, фон, баннер, фото из галереи), `PrivacyView` (5 настроек — ЛКМ/ПКМ,
   списки «Всегда можно»/«Заблокированы» через `UserPickView`). `SocialView.hitDir` — клик с направлением (ЛКМ +1, ПКМ −1).
-- `ui/PhotoPicker` (выбор фото из галереи поверх приложения; неподходящие под политику — затемнены), `ui/ImageViewer`
+- `ui/PhotoPicker` (выбор фото из галереи поверх приложения; неподходящие под политику — затемнены; «С компьютера» —
+  `storage/FileChooser` (tinyfd, свой поток) импортирует картинку в галерею, если политика сервера `any` или это Telegram), `ui/ImageViewer`
   (просмотр фото на весь экран), `ui/Images` (фото с сервера: `draw` с обрезкой, `drawFit`, `height`), `ui/PopupMenu` (меню-пункты).
 - `ui/Scrollbar` — общий ползунок прокрутки: приложение во время отрисовки вызывает `Scrollbar.report(top, bottom, scroll, max,
   inverted, setter)` (обычно из своего clampScroll; вне отрисовки — ничего), `PhoneScreen` рисует полосу у правого края
@@ -337,18 +401,75 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
 - `ui/TextArea` — поле ввода (одно-/многострочное), **само рисует подложку** (`PhoneDraw.field`) по своим границам:
   перенос слов, курсор, выделение мышью и Shift, Ctrl+A/C/X/V, прокрутка, placeholder.
   Использовать для любого ввода текста (заметки, позже — мессенджер). Пока поле в фокусе, приложение возвращает `capturesKeyboard() = true`.
+- `sound/AppMixer` — микшер звуков своих приложений (`PhoneSounds.playApp`, вызывает `ScriptHost.playOwnSound`): один
+  стерео-выход 48 кГц, свой поток, PCM в памяти (кэш 96 МБ), голоса с громкостью/панорамой/глухостью/высотой тона/повтором,
+  остановка с затуханием 15 мс, `Handle.tune` — громкость/тон на ходу (Lua `sound.tune`), ограничитель на выходе, до 48 голосов (у приложения — до 32), линия закрывается через 10 с тишины.
 - `sound/PhoneSounds` — звуки телефона мимо игры (javax.sound, свой поток, `Handle.stop()`): `Kind` NOTIFY/RINGTONE/ALARM/TIMER,
   выбор `PhoneSettings.sounds` («builtin:имя» — синтез `sound/Tones`, «file:имя» — `blockphone/sounds`, MP3/OGG/WAV через
   `music/audio/Decoders`), громкость `soundVolume` × общая; `NotifyPrefs.sound(app)` — звук уведомления; `playFile` — звуки
   своих приложений (`ScriptHost.playOwnSound`, кэш `cache/appsounds`). Страница настроек SOUND (родитель NOTIFY).
+- `apps/feedback/FeedbackApp` — «Отзывы»: вид, текст, до 4 скриншотов → `PUBLISH_URL/feedback` → приёмник коммитит
+  `feedback/<дата>/<время>-<ник>-<вид>/` в `FEEDBACK_REPO` (или репозиторий каталога). DevShots `clock`: `feedback_app`,
+  `telegram_beta_warning`.
+- `browser/WebEngine` + `org.cef.browser.BlockPhoneBrowser` — браузер Chromium (JCEF через jcefmaven: Chromium скачивается
+  при первом `start()` в `blockphone/browser/jcef`, профиль `browser/profile`); вкладка `View` (draw → текстура по реальным
+  пикселям, ввод мыши/клавиш → AWT-события). Lua `web.*` (разрешение `AppPermission.BROWSER`) в `ScriptHost.installWeb`,
+  ввод по странице — `webAreas`/`webFocus`. Пример `docs/examples/scripts/browser`, DevShots `browser`. DRM и H.264 нет.
+- `screens/` — экраны и колонки в мире (приложение `apps/screens/ScreensApp`, id `screens`): `ScreenData` (Screen: углы,
+  face/up, url, on, paused/pos/at — позиция по часам владельца, phone — звук «с телефона», radius 4..100, volume, loop;
+  Speaker: блок + id экрана; пределы 8/32, 32×32), `ScreenStore` (свои, `blockphone/screens/<server-хэш|world-папка>.json`),
+  `ScreenSync` (рассылка «state» сжатым JSON раз в 5 с / при изменении и «hello»; через плагин — `AppPackets.Relay` с app
+  `blockphone-screens` (ClientNetwork перехватывает Relayed), без плагина — `CloudRelay.system()` (комната s<хэш>); чужие —
+  `remotes()`, skew часов; владелец пропал 16 с / нет в списке игроков — убрать), `Screens` (все видимые `Live`, до 4 ближних
+  работают, рисование через `WorldRenderHook` — `submitCustomGeometry` с `RenderTypes.text`, полная яркость;
+  `textures/misc/white.png` — заливка), `ScreenPlayer` (вкладка Chromium `WebEngine.open(url, true)` — отдельный профиль,
+  скрипт SCRIPT: видео на весь вид, `__bpSet`, перехват звука AudioWorklet (`WORKLET` с адреса `bpcap://w/cap.js` —
+  `WebEngine.putCode`, своя схема в обход CSP; запасной — ScriptProcessor) → «__bpscr:a<base64 PCM>» в
+  `setDirectConsoleListener`; подгонка позиции; источники звука), `ScreenAudio` (кольцо 4 с, читатели моно/стерео, куски
+  40 мс, запас страницы 0,3 с; часы по настоящей скорости писателя `measureRate` → AL_PITCH колонок; `stats()` в журнал), `StreamSound` (FabricSoundInstance + свой Sound stream с радиусом; без позиции — relative),
+  `ScreenPicker` (выбор углов/колонки: ClientPreAttackCallback, луч 64 блока, подсказка на HUD, предпросмотр через
+  `order(1)`). 1.21.9 — экраны недоступны. DevShots `screens`.
+  `PhoneSpeakers` — колонки телефона (Speaker.screen = `ScreenData.PHONE`, настройки `Set.phone`): `Playback` → `feed` (моно
+  48 кГц, громкость телефона) → свой `ScreenAudio` + Opus пачками по 10 кадров → `ScreenSync.sendAudio` («pa»); приём —
+  `onAudio` → буфер владельца (запас 0,3 с); `muteLocal` — проигрыватель молчит «в ушах»; работает и на 1.21.9.
+  Режим экрана своих приложений: `Screen.app/appTitle`; `AppDisplays` (привязка `Source` ↔ ключ экрана «владелец/id»,
+  ведущий — владелец; кадр `Source.frame` (скрипт: onDisplay) ≤ 30/с → DynamicTexture, `Screens.fitted` по пропорциям;
+  подписи `display.text` — `submitText` на плоскости экрана; без привязки — заставка; `invite` → скрипту
+  `onDisplayInvite`; `toggleControl` (клавиша `gameKey` G) / `control` → `GamepadScreen` (`PhoneHolders.gamepad`;
+  `debugKeys` для DevShots)). Скрипт: `ScriptHost.installDisplay`, `DisplaySource`, `inDisplay` (g3d `pixelScale` 1,
+  `present` → кадр). Пример — приложение «Блочные гонки» `docs/examples/scripts/racing` (sim.lua — логика, view.lua — 3D,
+  main.lua — меню/лобби/сеть, audio.lua — звук через `sound.tune`; мир 3D: Z = H − y; `tools/gen_racing.py`; проверка логики — LuaJ `java -cp luaj-jse.jar lua тест.lua` в папке
+  примера). DevShots `BLOCKPHONE_DEV_SCREENS=game` (копия примера + dev.lua — подставной второй игрок).
+  `PhoneMirror` — трансляция телефона (Screen.mirror): `PhoneScreen.shownScreenRect()` → `Screenshot.takeScreenshot` раз
+  в 0,25 с (плагин — 1,5 с) → вырезать, уменьшить до 200 px → своя текстура + JPEG ≤ 11 КБ кусками по 6 КБ («pm» через
+  `ScreenSync.sendAudio`); `onFrame` собирает куски; `Screens.mirror` рисует кадр с сохранением пропорций (`order(1)`).
+  Колонка (`Speaker`): name, on, volume, channel (`ScreenAudio.Pick`: mix/L/R/C/LFE/SL/SR — объёмный звук; `ScreenAudio`
+  хранит до 6 каналов, из стерео недостающие собираются), pulse (качание от басов: `ScreenAudio.bassNow`, `Screens.renderPulse`
+  — копия блока через `submitBlock` с масштабом), screen — источник (id экрана, PHONE или `g:<id>` — объединённая группа
+  экранов); группы `ScreenData.Group` (вкл/громкость/sync; объединённые экраны — одна вкладка `Live.unitKey`, общее —
+  `Set.propagate`); подсветка колонок — `Screens.showSpeakers` (кубики и подписи сквозь стены); видеосайты —
+  `ScreenUrls.forScreen` (embed-плееры), скрипт во всех iframe + автоприём cookies, `Screen.fit`, «Управлять страницей»
+  (`ScreensApp.pageMode`, ввод в `WebEngine.View`; действия записываются в `Screen.actions` и повторяются у всех —
+  `ScreenPlayer.record/replay`, текст не пишется; `Screen.rev` — перезагрузить у всех); скрипт и в `onLoadStart` (ранний
+  перехват звука), `StreamSound.fade` — нарастание звука после запуска/ссылки/подвисания; страница колонки в `ScreensApp`
+  (`openSpeaker`). Звук — `StreamSound`: **свой источник OpenAL** (у игры на потоковое всего 8 каналов), поток «BlockPhone
+  Speakers» раз в 10 мс подкладывает куски по 40 мс (очередь 4) по общим часам звука `ScreenAudio.clockFrame` + то, что в
+  очереди (`AL_SAMPLE_OFFSET`) — колонки одного звука синхронны; громкость × «Блоки», линейное затухание до радиуса;
+  после перезапуска звука игры источник заводится заново. `SoundPhysicsCompat.process` — раз в секунду
+  `SoundPhysics.processSound(source, …, BLOCKS, blockphone:stream)`. Синхронность видео: skew — минимум по сообщениям,
+  подгонка скоростью видео ±5 % (`ScreenPlayer.rate`), перемотка — при расхождении > 2 с. Проверка с модом: временно
+  `modLocalRuntime files('<jar Sound Physics>')` в fabric-1.21.10/build.gradle + `debug_logging=true` в
+  run/config/sound_physics_remastered/soundphysics.properties, DevShots `BLOCKPHONE_DEV_SCREENS=spr`.
 - `storage/ClientFiles` — пути к данным (`root()`, `gallery()`, `notesFile()`) и фоновый поток `IO` для файлов/картинок.
 - «Магазин» (id `store`): `store/AppStore` (источники — `PhoneSettings.storeSources`, ссылки https на catalog.json;
-  `refresh`, `parseCatalog` (ссылки относительно каталога), `install` — скачать zip (≤ 30 МБ), сверить sha256, распаковать
-  во временную папку (только .json/.lua/.png/.obj/.txt/.md, без «../», ≤ 400 файлов, ≤ 40 МБ), проверить app.json
+  `refresh`, `parseCatalog` (ссылки относительно каталога), `install` — скачать zip (≤ 64 МБ), сверить sha256, распаковать
+  во временную папку (только .json/.lua/.png/.obj/.txt/.md, без «../», ≤ 1200 файлов, ≤ 64 МБ; публикация ≤ 25 МБ), проверить app.json
   (`AppLoader.parse`, id = id каталога), заменить `blockphone/apps/<id>`; `uninstall`; `installed` — версия; иконки — кэш
   `blockphone/cache/store/`; `allowFiles` — file: только для DevShots).
   Ход установки — `progress(id)` (0..1, 1 — распаковка), `formatSize`. Оценки и отзывы (только `OFFICIAL`, `reviewable`):
-  `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
+  Каталог: `uid`, `category`, `changelog`/`updated` («В последнем обновлении»; при публикации — страница чейнджлога,
+  заголовки `X-App-Uid`, `X-Changelog` (base64) → приёмник пишет `changelogs/<id>.json` → build_catalog.py); в каталоге —
+  фильтр по категории и сортировка (`StoreApp.category/sort`). `rating(id)` (reviews/summary.json, грузится в refresh), `reviews(id)` (reviews/<id>.json, raw с меткой ?t= мимо кэша),
   `sendReview` → POST `PUBLISH_URL/review` (app, stars, text, player, version); приёмник: один отзыв на приложение с ника
   и с подсети (IPv4 /24, IPv6 /64, в файле — HMAC), пишет в main; сводку собирает `build_catalog.py` (Actions на reviews/**).
   Проверка Mojang невозможна: Mojang отвечает 403 на запросы с Cloudflare. Выкладка приёмника — `wrangler deploy` в
@@ -375,7 +496,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   Фото в чате: «+» слева от поля → `PhotoPicker` → загрузка сразу (полоска над полем) → отправка с imageId; клик по фото — просмотр.
 - `voice/` — голос на клиенте: `Adpcm` (кодек и пересэмплирование), `VoiceRecorder` (микрофон по умолчанию через javax.sound,
   16/48/44,1 кГц → 16 кГц, уровень, предел длины), `VoiceMessages` (сжатие и загрузка, скачивание, проигрывание по одному — музыка на
-  паузе), `CallClient` (звонки: свой, входящий, «рингтон» — колокольчик нотного блока, тосты). `phone/CallOverlay` — входящий звонок
+  паузе), `CallClient` (звонки: свой, входящий, рингтон, тосты, микрофон/громкая связь/звук), `CallAudio` (звук звонка:
+  поток микрофона → Opus 16 кГц, порог тишины; приём — декодер и очередь на голос, буфер 3–15 кадров, поток-микшер
+  16 кГц; голоса из мира тише с расстоянием). Меню звонка — `apps/messenger/CallView`. `phone/CallOverlay` — входящий звонок
   поверх любого приложения телефона. Полоска звонка на HUD — в `MusicHud` (под виджетом музыки).
 - Голос в `ChatView`: пустое поле → справа микрофон (запись → «➤» отправить / «×» отмена), пузыри голосовых («волна», проигрывание),
   трубка в строке статуса (позвонить), зелёная полоса идущего звонка (Войти/Ответить/Отклонить/Выйти).
@@ -393,6 +516,10 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   JCodec FrameGrab → до 8 с по 15 к/с, уменьшенные кадры-текстуры, своя очередь «BlockPhone Animation decoder»; `poster` —
   первый кадр для панели; не декодируется — обложка). Стикеры: `stickerImage` (WEBP — сам файл, TGS/WEBM — обложка),
   `loadStickerPanel` (наборы, недавние, сохранённые GIF), `stickerSet`, `sendSticker/sendAnimation/sendVoice`.
+- `telegram/TelegramProxy` — прокси (MTProto/SOCKS5/HTTP) для TDLib: режимы auto/custom/off (`PhoneSettings.telegramProxy`),
+  свои ссылки `telegramProxies`, общий список `LIST_URL` (proxies.json каталога, кэш `cache/telegram_proxies.json`);
+  подбор — AddProxy + PingProxy для всех, EnableProxy самого быстрого; запросы — через отражение по именам полей
+  (у версий TDLib разный состав). docs/TELEGRAM_PROXY.md.
 - `apps/telegram/` — приложение в стиле официального клиента: гладкий шрифт DejaVu Sans (`assets/blockphone/font/smooth.json`,
   `PhoneDraw.smoothText` — включает только `TelegramApp` на время отрисовки и ввода; остальной телефон — шрифтом игры),
   цвета `TgTheme` (Night/Classic по теме телефона), своя шапка `TelegramApp.HEADER` («‹», круглый аватар, название, статус —
@@ -412,18 +539,23 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   листать), пустое поле — микрофон (запись голосового до 5 мин: «×»/«➤», Enter — отправить); стикер — без пузыря (80 px),
   голосовое — ▶ + «волна», GIF и «кружочки» — анимацией). Значки 8 быстрых реакций — свои цветные `textures/gui/reaction/*.png` (gen_icons.py), прочие эмодзи —
   шрифтом игры. `Telegram.debugInject` — поддельный чат для DevShots (сценарий telegram: `telegram_chat`, `_menu`, `_reply`). Ошибки TDLib → ключи `telegram.error.<сообщение в нижнем регистре>`.
-- `apps/social/` — приложение «Лента» (id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
+- `apps/hub/HubApp` — приложение «Мессенджер» (id `messenger`): общее для чатов и ленты, внизу вкладки Лента/Чаты/Профиль;
+  внутри — `SocialApp` (`embed(openChat, openStickers)`: без своей панели вкладок; паблики и модерация — кнопками в своём
+  профиле) и `MessengerApp` (`setReservedBottom` под панель на корне). `HubApp.get()`, `openChat`, `showFeed`,
+  `showModeration`; уведомления открывают его. Отдельного приложения `feed` на рабочем столе больше нет.
+- `apps/social/` — лента (внутри хаба; раньше — приложение «Лента», id `feed`): `SocialApp` (вкладки Лента/Паблики/Профиль/Модерация внизу, стек `SocialView`,
   общий `ImageViewer`, сообщения сервера), `SocialView` (клики через `hit()`, записываемые при отрисовке; `beginList/endList` —
   прокручиваемая область с обрезкой кликов; `showMenu`), `PostCard` (карточка поста, меню «⋯», жалоба), `FeedView`, `PostView`
   (комментарии), `ComposeView` (от себя/от паблика, текст, фото), `ProfileView` («о себе», подписчики, подписка, «Написать»,
   заглушение), `UserListView`, `UserPickView`, `PublicsView` (поиск, мои/подписки/популярные), `PublicView`, `CreatePublicView`,
   `PublicManageView` (название, админы, удаление), `ModerationView` (жалобы), `Rows`. `debug*`-методы — для DevShots.
-- `apps/` — приложения: `home/HomeApp` (рабочий стол), `lock/LockApp` (экран блокировки: часы, дата, карточка музыки
+- `apps/` — приложения: `home/HomeApp` (рабочий стол: экраны со свайпом, папки, режим правки с перетаскиванием;
+  порядок и папки — `home/HomeLayout` по `PhoneSettings.homeOrder/homeFolders`, размер — `homeIconScale`), `lock/LockApp` (экран блокировки: часы, дата, карточка музыки
   (обложка, название, перемотка перетаскиванием, назад/пауза/вперёд), уведомления;
   нажатие на уведомление — открыть, в другом месте — разблокировать),
   `calculator/` (`Calculator` — логика на BigDecimal, `CalculatorApp` — UI), `weather/WeatherApp`,
   `settings/SettingsApp` (MAIN — меню разделов-плиток (`categories()`: значок, название, кратко — что выбрано);
-  разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
+  числовые настройки — ползунки `slider(key, value, min, max, step, get, set)`; разделы GENERAL / LOOK / NOTIFY / MUSIC / LYRICS / TELEGRAM / APPS / ABOUT (`pageSections`); вложенные ACCENT — готовые
   цвета + HEX / WALLPAPER — градиенты + свои картинки (родитель LOOK) / HUD — виджет музыки: предпросмотр «экрана игры» 16:9
   (родитель MUSIC); «назад» — `parent(page)`; `openPage(name)`; ЛКМ по строке — вперёд, ПКМ — назад),
   `clock/ClockApp` («Часы»: вкладки Будильник/Секундомер/Таймер; работа в фоне — `clock/ClockService.tick()` из
@@ -433,7 +565,8 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `camera/CameraApp` (иконка: закрывает телефон и включает `CameraMode`),
   `gallery/` (`GalleryApp` — режимы GRID/VIEWER/EDITOR, клики через список `Hit`, записываемый при отрисовке;
   `PhotoEdit` — правки: поворот → отражение → кадр → фильтр → яркость/контраст/насыщенность).
-- `photo/` — фото: `Picture` (ARGB-пиксели), `ImageOps` (фильтр, экспозиция в линейном пространстве, шум, поворот, кадр,
+- `photo/` — фото: `Picture` (ARGB-пиксели), `ImageOps` (`readImage`/`checkSize` — размер по заголовку до раскодирования,
+  ≤ 8192 по стороне и 40 млн пикселей: картинки извне только через них; фильтр, экспозиция в линейном пространстве, шум, поворот, кадр,
   уменьшение, чтение/запись PNG через ImageIO, `toNativeImage`), `CameraFilter` (enum; параметры читаются из `post_effect/filter_<id>.json`),
   `PhotoMeta` (сведения о снимке), `PhotoStore` (список/сохранение/удаление; `version()` растёт при изменениях),
   `PhotoTextures` (миниатюры и превью как `DynamicTexture` с линейной фильтрацией, LRU на 120, `invalidate`),
@@ -452,6 +585,13 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     обложки APIC/METADATA_BLOCK_PICTURE).
   - `LocalLibrary` (сканирование `blockphone/music`, кэш по времени изменения; «Исполнитель - Название» из имени файла),
     `Covers` (обложки из тегов или по адресу → текстуры, LRU 40), `Accounts` (accounts.json), `Http` (HttpURLConnection).
+  - `yandex/YandexCatalog` — волна на сессиях (`/rotor/session/*`; старые station-запросы Яндекс отключает), настройки
+    волны (`/rotor/wave/settings`, seeds «settingDiversity:…», занятия «activity:workout», «track:id», «artist:id»),
+    главная `/landing3`, чарт, книги и подкасты `/non-music/catalogue` (+ «Продолжить слушать»), альбом `with-tracks`
+    (+ streamProgress — место глав), артист `brief-info`, поиск `type=all`, лайки альбомов. `YandexBrowse` — состояние и
+    свои потоки; `YandexBooks` — место в книгах (аккаунт + `blockphone/yandex_books.json`, отчёт `/plays`).
+    Экраны: `YandexView` (Главная/Коллекция/Книги + поиск), `YandexAlbumView`, `YandexArtistView`, `YandexWaveSettingsView`,
+    `YandexTracksView`, `YandexRows`; ПКМ по треку — `MusicApp.trackMenu`. Проверка API входом игрока — DevShots `yprobe`.
   - `yandex/YandexApi` — неофициальный API (заголовок `Authorization: OAuth`): account/status, likes, tracks, search,
     rotor «Моя волна» (продолжение по `queue=<последний трек>`), лайки, download-info → XML → ссылка
     `https://host/get-mp3/md5(соль + path[1:] + s)/ts + path`. Заголовки: OAuth, X-Yandex-Music-Client, User-Agent «Yandex-Music-API»
@@ -462,9 +602,12 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     trackFinished/skip — `YandexMusic.tick` по смене трека), без них станция повторяет одну пачку; подгрузка отбрасывает уже
     бывшие треки и пробует от другого трека (до 3 раз). `yandex/YandexMusic` — состояние, вход вставкой адреса
     со страницы OAuth (`access_token=...`), кэш треков.
-  - `spotify/Spotify` — пульт через Web API: вход OAuth PKCE (Client ID игрока, свой мини-сервер на 127.0.0.1:43219/callback,
-    браузер — `Util.getPlatform().openUri`), токены с обновлением, опрос `/me/player` раз в 2,5 с, пока смотрят UI или HUD,
-    команды play/pause/next/previous/seek/volume/shuffle/repeat (нужен Premium).
+  - `media/WindowsMedia` — пульт плеера компьютера через системные медиа Windows (SMTC; вместо Spotify Web API — Spotify,
+    Яндекс Музыка, браузеры, без входа и Premium): процесс PowerShell со скриптом `assets/blockphone/scripts/media.ps1`
+    (копируется в `blockphone/cache/media.ps1`) раз в 0,4 с пишет JSON (название, исполнитель, обложка base64 — один раз на
+    трек → `cache/media/*.img`, позиция, длительность, пауза, перемешивание, повтор, что поддерживает приложение), читает
+    команды (toggle/next/prev/seek/shuffle/repeat). Запускается по `watch()` (вкладка «На ПК», HUD при `hudWindowsMedia`,
+    клавиши музыки при пустом плеере телефона), закрывается через 30 с без `watch`. Только Windows.
   - `lyrics/Lyrics` — разбор текста: LRC (`[мм:сс.хх]`, несколько меток, `[offset:]`), расширенный LRC (`<мм:сс.хх>` у слов),
     обычный текст (строки равномерно по треку); слова без времени — пропорционально длине (к 75 % строки); строка не дольше 8 с;
     `lineAt(ms)`. `lyrics/LyricsService` — текст текущего трека (смена трека в тике): `<трек>.lrc` рядом → тег USLT/LYRICS
@@ -492,9 +635,18 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
     масштаб 50–200 %, что показывать (обложка, исполнитель, полоска, время, строка текста песни, показ на паузе). `current()` →
     `Info`, `measure()`/`draw()` рисуют в точке (0, 0) — их же использует предпросмотр в настройках (страница `HUD`).
     Полоска звонка — всегда слева сверху (под виджетом, если он там). Было: слева сверху (`HudElementRegistry`, перед чатом); прячется при F1, F3, в камере и с телефоном.
-- `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«Spotify», мини-плеер, стек `MusicView`),
+- `music/soundcloud/SoundCloudWeb` — вкладка «SoundCloud» (`apps/music/SoundCloudView`): сайт SoundCloud во встроенном
+  браузере (API — только с платной подпиской), одна вкладка на игру, живёт в фоне (`View.keepAlive`); раз в секунду
+  скрипт на странице (`View.eval` + `setConsoleListener`, метка «__bpsc:») сообщает, что играет → `MusicHud`, клавиши
+  музыки (кнопки плеера сайта). DevShots `soundcloud`.
+- `music/together/` — «Слушать вместе» без плагина: `ListenTogether` (комната на `listen-server`: POST /create → код + ключ
+  ведущего, WebSocket /ws/<код>; ведущий шлёт состояние телефона или ПК (`hostState`), гость синхронизирует Яндекс в телефоне
+  (`syncYandex`: id или поиск `best`, перемотка при расхождении > 2 с) или Spotify на ПК (`syncSpotify`: `spotify:search:`,
+  потом WindowsMedia); `PhoneSettings.togetherVia`; адрес — `BLOCKPHONE_LISTEN_URL` для проверки), `TogetherInvites`
+  (приглашение — `/msg` с «BlockPhone … BP-XXXXXX», распознавание в ClientReceiveMessageEvents CHAT/GAME). DevShots `together`.
+- `apps/music/` — приложение «Музыка»: `MusicApp` (вкладки «Моя музыка»/«Яндекс»/«На ПК»/«Вместе» (`TogetherView`), мини-плеер, стек `MusicView`),
   `MusicView` (клики `hit()`, ползунки `slider()`, `iconButton`, `bar`), `TrackRows`, `LocalView`, `YandexView` (вход, «Моя волна»,
-  поиск, «Мне нравится»), `SpotifyView` (подключение по шагам, пульт), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
+  поиск, «Мне нравится»), `MediaView` (вкладка «На ПК»: пульт плеера компьютера), `PlayerView` (обложка, перемотка, кнопки, громкость, лайк),
   `QueueView`, `YandexPlaylistView` (треки плейлиста, «Играть»; в `YandexView` переключатель «Мне нравится»/«Мои плейлисты»,
   `YandexApi.playlists/playlistTracks`, `YandexMusic.loadPlaylists/loadPlaylist`), `LyricsView` (текст в телефоне, текущая
   строка по центру, длинные — в два ряда, нажатие — перемотка к строке; в заголовке — «В мире: вкл/выкл»; `MusicApp.openLyrics()`).
@@ -511,7 +663,7 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `GuiMixin` (HUD → видоискатель), `GameRendererMixin` (FOV/зум, без руки, без обводки блока), `GameRendererAccessor`
   (`setPostEffect`), `MinecraftMixin` (отключает `handleKeybinds`), `KeyboardHandlerMixin` (клавиши камеры),
   `MouseHandlerMixin` (колесо = зум, чувствительность делится на зум), `ToastManagerMixin` (без тостов).
-- Телефон в руке: `phone/PhoneHolders` (свой — экран телефона или камера, шлётся серверу при изменении; чужие — из `State`),
+- Телефон в руке: `phone/PhoneHolders` (свой — экран телефона или камера, шлётся серверу при изменении; чужие — из `State`; `sideways` — набок двумя руками: телефон повёрнут или режим джойстика),
   `phone/PhoneInHandLayer` (слой игрока через `LivingEntityFeatureRendererRegistrationCallback`; флаг в состоянии отрисовки —
   `RenderStateDataKey`; модель-коробка 3×6×0,5 пикс., текстура `textures/entity/phone_in_hand.png` из gen_icons.py),
   миксины `AvatarRendererMixin` (флаг, предмет главной руки не рисуется) и `HumanoidModelMixin` (рука поднята) — действуют всегда.
@@ -519,25 +671,59 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   в 2 с; политика сервера; иконки как DynamicTexture; id на телефоне `app.<id>`), `CustomApp` (страницы и элементы: text, title,
   card, row, button, buttons, input, list, progress, divider, spacer; "if"/"unless"; действия open/back/refresh/close/toast/
   confirm/then, set/add (хранилище), copy, url и command — всегда с подтверждением, command не чаще 1/с, server → Call),
-  `AppStorage` (`blockphone/appdata/<id>.json`, 200 значений, 64 КБ). Скрипт — `ScriptHost` (если у приложения `script`;
+  `AppStorage` (`blockphone/appdata/<id>.json`, 200 значений, 64 КБ; скрипт — `putScript` до 16 КБ на значение, запись на
+  диск через секунду / при сворачивании / `CustomApps.saveAll` при выходе). Новые возможности скриптов — `ScriptMedia`
+  (photos (+ sticker/drawSticker — стикер из фото, `StickerMaker`)/gfx.urlImage/images/mic/audio (+ volume — усиление,
+  `VoiceMessages.togglePcm(key, pcm, boost)` с мягким ограничителем)/http.upload) и `AppNotifications` (notify); разрешение background — `CustomApps.tickBackground`
+  каждый такт, `PhoneApp.keepOnReset` (не закрывать при выходе из мира). Скрипт — `ScriptHost` (если у приложения `script`;
   CustomApp передаёт ему всё): песочница LuaJ (Base без load/dofile/loadfile/collectgarbage, Package/Debug — только при
   загрузке и потом убраны, String без dump, rep ≤ 1 МБ, Table, Math, Bit32; без io/os/coroutine/luajava; свой `require` из
   файлов приложения); лимит инструкций через `debug.sethook` (счётчик каждые 1000, бюджет 3 млн на вызов, 20 млн на
-  загрузку) — превышение бросает `Error` (`Timeout`), который `pcall` не ловит; ошибка → экран «Приложение остановлено» +
+  загрузку) — превышение бросает `Error` (`Timeout`), который `pcall` не ловит; `string.find/match/gmatch/gsub` —
+  `LuaPatterns` (копия LuaJ со счётчиком шагов: 16 шагов = 1 инструкция); http — без адресов локальной сети
+  (`localAddress`), браузер — только http(s) (`WebEngine.safeUrl`); там же `checkMemory` (рост > 512 МБ за вызов
+  или < 8 % свободной памяти после сборки мусора → `MemoryLimit`); ошибка → экран «Приложение остановлено» +
   «Перезапустить». API: app, gfx (только в onDraw; image — PNG из папки, DynamicTexture без сглаживания), ui (button —
   immediate-mode по кликам кадра, input — TextArea по id), theme, screen (landscape/fullscreen/title/captureKeys/close),
   input.down (GLFW, только когда телефон в фокусе), time, timer, json, storage, toast, sound (белый список), clipboard,
   openUrl/runCommand (подтверждение), http (java.net.http, только hosts, без редиректов, 60/мин, 1 МБ), net
-  (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление), server (Call/RequestVariables
-  со страницей "script"), g3d — `Raster3D` (программная растеризация на Java: текстура с перспективной
-  коррекцией, буфер глубины 1/z, свет граней, туман, отсечение по ближней плоскости, спрайты, буфер id для `pick`; кадр —
-  DynamicTexture по реальным пикселям, до 360 тыс.; модели — box/plane/mesh/obj, 2000 шт., 400 тыс. вершин; `g3d.free`), захват мыши
+  (Relay/Players; входящие при закрытом приложении — очередь `ScriptHost.queue` + уведомление; без плагина — `CloudRelay`:
+  WebSocket к `relay-server` (или к своему серверу приложения — app.json `"relay"`, `AppScript.relay`; по подключению на
+  адрес, `CloudRelay.forApp`), комната `s<sha256 адреса сервера>` или `c<код>` (`net.newCode/joinCode/leaveCode/code/mode`),
+  ключ сессии против чужого ника, `BLOCKPHONE_RELAY_URL` для проверки; шаблон сервера для авторов —
+  `blockphone/apps/relay-server-template/` из jar (common/build.gradle: relay-server/worker.js + docs/relay-template)), server (Call/RequestVariables
+  со страницей "script"), g3d — пакет `apps/custom/g3d` **без Minecraft** (собирается и проверяется javac + LuaJ):
+  `Lua3D` (таблица g3d; от игры — `Lua3D.Host`: файлы, PNG, масштаб, показ кадра — `ScriptHost.G3dHost`),
+  `Engine3D` (программная растеризация на всех ядрах: очередь треугольников → полосы по 16 строк, свой поток на полосу,
+  порядок в полосе сохраняется; `flush` перед `pick` и в конце; перспективная коррекция, мипмапы (уровень раз в 8
+  пикселей), билинейная фильтрация по желанию, цветной свет по граням/нормалям, до 16 точечных источников попиксельно,
+  смешивание alpha/add, туман, небо-градиент с солнцем, буфер id для `pick`; кадр до 640 тыс. пикселей), `Texture`,
+  `Mesh` (box/plane/obj с vn/matrix), `Scene` (статическая сцена: куски 8×8 м с отсечением; запекание света в фоне —
+  плоские куски по плоскостям, атлас с двумя сторонами каждой грани, лучи: солнце, окружающий свет с неба + bounce,
+  лампы; «внутри стены» → заполняется соседями; `probe` — множитель света для подвижных моделей), `Bvh` (лучи,
+  поиск треугольников), `Collide` (скользящий эллипсоид Fauerby + ступеньки). Пределы: 2000 моделей, 400 тыс. вершин,
+  300 тыс. треугольников в сцене. Стенд без игры: Block Strike/DOOM на LuaJ + Lua3D → PNG и замер кадра (скрипты
+  в scratchpad, не в репозитории; LuaJ — с Maven Central)), захват мыши
   (`input.lockMouse`: GLFW CURSOR_DISABLED, дельты по glfwGetCursorPos, `PhoneApp.capturesMouse` — клики в центр;
   Esc/закрытие — отпустить), `gfx.nine`/`ui.imageButton` (свои картинки, «девятка»). Координаты мыши для ui — относительно
   базовой матрицы кадра (`basePose`). Обратные вызовы (+ onMouseMove, onMouseUnlock): onStart/onShow/onHide/onDraw/onTick/onClick/onRelease/onDrag/onScroll/onKey/
   onChar/onSubmit/onBack/onMessage. Примеры — `docs/examples/scripts/` (snake, tictactoe, weather-web, doom — текстуры `tools/gen_doom.py`;
-  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud/viewmodel.lua, хост считает игру и ботов; оружие от
-  первого лица — 3D-модели из деталей рядом с глазом (масштаб 0,25 — не уходят в стены), рисуются после выстрелов-pick;
+  blockstrike — шутер по сети: data/maps/sim/bots/netcode/render/hud/viewmodel/city.lua, хост считает игру и ботов; на
+  движке 2.0 карта — город (`city.lua`: столбики твёрдого по клеткам, участки-дома с высотой и темой THEMES, фасады с
+  окнами/дверями/балконами, интерьеры у крыш, тротуары, горизонт; сборка по частям `City.step`; клетка `W` — окно-проём);
+  цельные карты (первые в списке, `M.LEVELS`): `levels/<ключ>.lua` описывает план строителем `levelgen.lua` (floor, stairs,
+  room с дверями/окнами, wall, prop — ящики/машины/бочки… `LG.PROPS`, site, spawn), логическая сетка мельче (`m.cs` = 0,5;
+  `m.top` — верх твёрдого, `m.see` — простреливаемое), вид — `levelview.lua` (фасады, полы, крыши, декор) + `props.lua`
+  (модели предметов); проверка достижимости и радар — `tools/strike_level_dump.lua` (через gen_strike.py);
+  43 вида оружия CS2 (data.lua: `kind`, `D.buyItems(cat, team)` — магазин по команде, `D.NADE_FIELD`, огонь молотова в sim.lua);
+  оружие — `guns.lua` на `kit.lua` (детали с нормалями, атлас `kit_atlas.png` из `tools/gen_strike_kit.py`), иконки
+  магазина — из этих моделей (`tools/strike_models.lua`); агенты блочные, скины 256×256 со вторым слоем
+  (`tools/gen_strike_skins.py`); при наблюдении — руки и прицел наблюдаемого (`G.specMe`); настройки — вкладки
+  Управление/Звук/Прицел (громкость по видам звука `soundCat`, прицел `H.drawCross`: стиль, цвет, длина, толщина, зазор…);
+  закрытый сервер — пароль у хоста (`G.hostPw`, сообщения deny/kick, «Игроки» → «Выгнать»); музыка (`playMusic`) и
+  случайные события фона (`ambientEvents`, ambience.lua); один «голос» выстрела на стрелка (`shotSfx`); оружие от
+  первого лица — 3D-модели из деталей рядом с глазом (масштаб 0,25 — не уходят в стены; свой узкий угол обзора рук
+  `VM.FOVK`, сдвиги `VM.TUNE`/`VM.KIND`; руки — блочные бруски со скином агента `blockArm`), рисуются после выстрелов-pick;
   звуки — свои WAV через `sound.play`, не больше 7 сразу; графика `tools/gen_strike.py`, звуки `tools/gen_strike_sounds.py`); DevShots `apps`
   снимает их и приложение с бесконечным циклом (`apps_script_timeout`). Защита: приложению видны только свои страницы,
   хранилище, ответы своей серверной части и {player}, {lang}, {time}, {date} — ни мира, ни файлов, ни аккаунтов/мессенджера/
@@ -571,25 +757,43 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
   `moderators`; обычные — у всех (у BungeeCord нет «не задано»). Звонков нет. API `net.md-5:bungeecord-api` (+ репозиторий
   libraries.minecraft.net для brigadier). Не проверено на живом прокси.
 
-## Две версии Minecraft (1.21.11 и 1.21.10)
+## Версии Minecraft (1.21.11 — основная; 1.21.10, 1.21.9, 26.1–26.1.2, 26.2 — переносом)
 
-- Пишем код только в `fabric/` (под 1.21.11). Модуль `fabric-1.21.10` при сборке копирует исходники `fabric/src/{main,client}/java`
-  в `fabric-1.21.10/build/ported/` и заменяет имена, которые в 1.21.11 переименовали (список `LEGACY_RENAMES` в
-  `fabric-1.21.10/build.gradle`: Identifier→ResourceLocation, `net.minecraft.util.Util`→`net.minecraft.Util`,
-  `model.player.PlayerModel`→`model.PlayerModel`, `RenderTypes`→`RenderType`, `.identifier()`→`.location()`,
-  `camera.yRot()`→`getYRot()`, `renderOutline`→`submitOutline` (не использовать: в 1.21.10 рисуется без матрицы — только
-  `PhoneDraw.outline`), `rightHandItemState`→`rightHandItem`,
-  `hasControlDownWithQuirk`→`hasControlDown`, пакет gamerules). Ресурсы — общие (fabric.mod.json: minecraft 1.21.10).
-- Если различие не сводится к переименованию — маленький класс-«переходник» в `fabric/`, а его вариант для 1.21.10 — по тому
-  же пути в `fabric-1.21.10/src/` (подменяет общий при сборке): `fabric/compat/Compat` (оператор: `permissions()` /
-  `hasPermissions(2)`), `client/photo/SmoothTexture` (линейный фильтр: `sampler` / `setFilter(true, false)`), `client/compat/ClientCompat`
-  (`initScreen`).
-- После правок в `fabric/` проверять обе: `./gradlew :fabric:compileClientJava :fabric-1.21.10:compileClientJava`. Миксины
-  проверяются только запуском (`:fabric-1.21.10:runClient`, сценарий DevShots `hand` — быстрый).
-- Сверка имён 1.21.10: `javap -cp <minecraft-clientOnly-…1.21.10…jar>;<minecraft-common-…jar> <класс>` (jar-ы — в
-  `.gradle/loom-cache/minecraftMaven/net/minecraft/`).
-- Paper: компиляция против API 1.21.10, `api-version: '1.21.10'` — один jar работает на 1.21.10 и 1.21.11. Velocity и
-  BungeeCord от версии Minecraft не зависят. Версии — `legacy_minecraft_version`, `legacy_fabric_version`, `paper_api_version`.
+- Пишем код только в `fabric/` (под 1.21.11). Модули `fabric-1.21.10`, `fabric-1.21.9`, `fabric-26.1`, `fabric-26.2` — по
+  несколько строк: задают версию и подключают общий скрипт **`gradle/fabric-port.gradle`**. Он копирует `fabric/src/{main,client}/java`
+  в `<модуль>/build/ported/` и применяет замены из **`gradle/port-renames.gradle`**: `RENAMES_1_21_10` (Identifier→ResourceLocation,
+  `net.minecraft.util.Util`→`net.minecraft.Util`, `RenderTypes`→`RenderType`, `.identifier()`→`.location()`, `camera.yRot()`→`getYRot()`,
+  `renderOutline`→`submitOutline` (не использовать: в 1.21.10 рисуется без матрицы — только `PhoneDraw.outline`) …),
+  `RENAMES_26_1`/`REGEX_26_1` (GuiGraphics→GuiGraphicsExtractor, `drawString`→`text`, `drawCenteredString`→`centeredText`,
+  `submitSkinRenderState`→`skin`, PlayerFaceRenderer→PlayerFaceExtractor, `getDayTime()`→`getDefaultClockTime()`,
+  KeyBindingHelper→KeyMappingHelper, `PayloadTypeRegistry.playS2C/C2S`→`clientboundPlay/serverboundPlay`,
+  LivingEntityFeatureRendererRegistrationCallback→LivingEntityRenderLayerRegistrationCallback), `RENAMES_26_2`/`REGEX_26_2`
+  (`mc.screen`/`setScreen`→`mc.gui.screen()/setScreen`, `getToastManager()`→`gui.toastManager()`, `options.hideGui`→`gui.hud.isHidden()`,
+  `getMainRenderTarget()`/`getMainCamera()`→`gameRenderer.mainRenderTarget()/mainCamera()`, `skin(Model.Simple …)`).
+  Список замен — вход задачи переноса (изменили — исходники переносятся заново). Ресурсы — общие, `depends.minecraft` — `portMinecraftDep`.
+- **Пометки в общем коде:** строки, где переопределяется метод игры `render`/`renderBackground` у Screen и Toast, кончаются
+  комментарием `// mc:render` (в 26.x переименовываются в `extractRenderState`/`extractBackground`); вызов `PhoneScreen.render` из
+  `PhonePin` — `// mc:render-call`. Новое переопределение `render` у Screen/Toast — тоже с такой пометкой. `method = "render"` в
+  миксинах → `"extractRenderState"` в 26.x.
+- 26.x: игра без обфускации и на Java 25 — `ext.portUnobfuscated = true` (плагин `net.fabricmc.fabric-loom`, без `mappings`,
+  `implementation` вместо `mod*`, release 25). Fabric API 26.1 — `0.145.1+26.1`, 26.2 — `0.161.0+26.2`; Fabric Loader везде 0.19.5 (мод требует ≥ 0.19.5).
+  Jar для 26.1 собран против 26.1 и объявлен для `>=26.1 <26.2` (на 26.1.1/26.1.2 не запускался).
+- Если различие не сводится к переименованию — маленький класс-«переходник» в `fabric/`, его варианты — по тому же пути в
+  `<модуль>/src/` (`ext.portOverlays` — чьи ещё src брать: 1.21.9 берёт 1.21.10, 26.2 берёт 26.1): `fabric/compat/Compat`
+  (оператор), `client/photo/SmoothTexture` (линейный фильтр), `client/compat/ClientCompat` (`initScreen`, `devLevelSettings` —
+  мир DevShots, `systemToast`), `client/compat/WorldRenderHook` (рисование в мире: 1.21.10+ — WorldRenderEvents, 26.x —
+  LevelRenderEvents.COLLECT_SUBMITS, **1.21.9 — нет событий в Fabric API, текст песни в мире недоступен**),
+  `client/compat/BlockPulse` (копия блока для «качания» колонок: 1.21.x — `submitBlock` со светом соседей, 26.1 —
+  `submitMovingBlock` с `MovingBlockRenderState`, 26.2 — то же + цвет обводки), миксины
+  `FovMixin` (1.21.x — GameRenderer.getFov, 26.x — Camera.getFov) и `GuiMixin` (26.2 — класс Hud).
+- После правок в `fabric/` проверять все: `./gradlew :fabric:compileClientJava :fabric-1.21.10:compileClientJava
+  :fabric-1.21.9:compileClientJava :fabric-26.1:compileClientJava :fabric-26.2:compileClientJava`. Миксины проверяются только
+  запуском (`:<модуль>:runClient`, сценарий DevShots `hand` — быстрый, снимок `world_phone_in_hand` проверяет руку).
+- Сверка имён: `javap -cp <minecraft-clientOnly-…<версия>…jar>;<minecraft-common-…jar> <класс>` (jar-ы — в
+  `.gradle/loom-cache/minecraftMaven/net/minecraft/`; пути Git Bash в списке — через `cygpath -w`). Fabric API — модули в
+  `~/.gradle/caches/modules-2/files-2.1/net.fabricmc.fabric-api/`, версии модулей — в pom `fabric-api`.
+- Paper: компиляция против API 1.21.10, `api-version: '1.21.10'` — один jar для 1.21.10 и 1.21.11 (на 26.x не проверялся).
+  Velocity и BungeeCord от версии Minecraft не зависят.
 
 ## Особенности API Minecraft 1.21.11 (Mojang mappings)
 - `ResourceLocation` переименован в **`Identifier`** (`Identifier.fromNamespaceAndPath(ns, path)`); у `ResourceKey` — `identifier()`.
@@ -625,9 +829,9 @@ API Simple Voice Chat (`de.maxhenkel.voicechat:voicechat-api`, репозито�
    админа (только снятые на этом сервере / любые / никакие); жалобы, модерация, заглушение, права (LuckPerms / fabric-permissions-api).
    Не сделано: редактирование постов, упоминания, проверка «снято на этом сервере» опирается на честный клиент.
 5. ✅ Музыка: свои файлы (MP3/OGG/WAV), плеер с очередью, виджет на HUD, клавиши; Яндекс Музыка (неоф. API: Моя волна,
-   Мне нравится, поиск, лайки); пульт Spotify (Web API, PKCE). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
+   Мне нравится, поиск, лайки); пульт плеера компьютера (системные медиа Windows; был Spotify Web API). Не сделано: FLAC, плейлисты Яндекса, эквалайзер.
 6. ✅ Голос: голосовые сообщения (свой захват микрофона и ADPCM — работают без других модов) и звонки в личных и групповых чатах
-   через скрытые группы Simple Voice Chat (Fabric/Paper с SVC). Не сделано: звонки через Velocity, выбор микрофона (берётся по умолчанию).
+   (с 0.10.0 — свой голос через сервер/прокси, Opus; громкая связь; SVC не нужен). Не сделано: выбор микрофона (берётся по умолчанию).
 7. ✅ Telegram через TDLib (TDLight, только Windows x64): вход, чаты, переписка, фото, альбомы, ответы, реакции, правка/удаление,
    стикеры и GIF (показ и отправка), голосовые (проигрывание и запись, Opus), «кружочки» из кадров игры со звуком (микрофон + музыка).
    Не сделано: звук у присланных видео и «кружочков» (там AAC), анимация TGS/WEBM-стикеров (показывается обложка), видео целиком.

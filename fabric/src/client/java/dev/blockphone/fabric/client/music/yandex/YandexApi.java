@@ -96,8 +96,42 @@ public final class YandexApi {
         }
     }
 
+    /** Для проверки API (DevShots yprobe): сырой запрос, ответ — код и тело. body — JSON или null. */
+    public Http.Response raw(String method, String path, @Nullable String body) throws IOException {
+        return body == null ? Http.request(method, API + path, headers(), null)
+                : Http.request(method, API + path, headers(), body, "application/json");
+    }
+
+    public Http.Response rawForm(String path, String form) throws IOException {
+        return Http.request("POST", API + path, headers(), form, "application/x-www-form-urlencoded");
+    }
+
     private JsonObject get(String path) throws IOException {
         return check(Http.request("GET", API + path, headers(), null));
+    }
+
+    JsonObject getJson(String path) throws IOException {
+        return get(path);
+    }
+
+    JsonObject postJson(String path, String json) throws IOException {
+        return check(Http.request("POST", API + path, headers(), json, "application/json"));
+    }
+
+    JsonObject postForm(String path, Map<String, String> form) throws IOException {
+        return post(path, form);
+    }
+
+    /** Первый исполнитель трека (id и имя) по ключу трека — для «К артисту» и «Волна по артисту». */
+    private static final Map<String, String[]> ARTISTS = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(256, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, String[]> eldest) {
+            return size() > 2000;
+        }
+    });
+
+    public static String @Nullable [] artistOf(Track track) {
+        return ARTISTS.get(track.key());
     }
 
     private JsonObject post(String path, Map<String, String> form) throws IOException {
@@ -296,6 +330,38 @@ public final class YandexApi {
         return new WaveBatch(list, batchId);
     }
 
+    /**
+     * Отчёт о прослушивании (POST /plays, как у приложения Яндекс Музыки): попадает в историю аккаунта — книга или
+     * подкаст поднимается в «Продолжить слушать». Само место главы (streamProgress) Яндекс так не меняет — проверено;
+     * его хранит {@link YandexBooks}. Времена — в секундах.
+     */
+    public void reportPlay(String trackId, String albumId, String playId, double lengthSec, double playedSec, double endSec)
+            throws IOException {
+        String now = java.time.Instant.now().toString();
+        JsonObject play = new JsonObject();
+        play.addProperty("trackId", trackId);
+        if (!albumId.isEmpty()) {
+            play.addProperty("albumId", albumId);
+            play.addProperty("context", "album");
+            play.addProperty("contextItem", albumId);
+        }
+        play.addProperty("from", "mobile-own_album-album-default");
+        play.addProperty("playId", playId);
+        play.addProperty("timestamp", now);
+        play.addProperty("addTracksToPlayerTime", now);
+        play.addProperty("trackLengthSeconds", lengthSec);
+        play.addProperty("totalPlayedSeconds", playedSec);
+        play.addProperty("endPositionSeconds", endSec);
+        JsonArray plays = new JsonArray();
+        plays.add(play);
+        JsonObject body = new JsonObject();
+        body.add("plays", plays);
+        Http.Response r = Http.request("POST", API + "/plays", headers(), body.toString(), "application/json");
+        if (!r.ok()) {
+            throw new IOException("plays HTTP " + r.code());
+        }
+    }
+
     public void like(String uid, String trackId, boolean like) throws IOException {
         post("/users/" + uid + "/likes/tracks/" + (like ? "add-multiple" : "remove"), Map.of("track-ids", trackId));
     }
@@ -397,9 +463,13 @@ public final class YandexApi {
             title = title + " (" + version + ")";
         }
         List<String> artists = new ArrayList<>();
+        String firstArtistId = "";
         if (o.has("artists")) {
             for (JsonElement a : o.getAsJsonArray("artists")) {
                 artists.add(str(a.getAsJsonObject(), "name"));
+                if (firstArtistId.isEmpty()) {
+                    firstArtistId = str(a.getAsJsonObject(), "id");
+                }
             }
         }
         String album = "";
@@ -413,11 +483,14 @@ public final class YandexApi {
         String coverUrl = cover.isEmpty() ? null : "https://" + cover.replace("%%", "200x200");
         long duration = o.has("durationMs") ? o.get("durationMs").getAsLong() : 0;
         String remote = albumId.isEmpty() ? id : id + ":" + albumId;
+        if (!firstArtistId.isEmpty()) {
+            ARTISTS.put("yandex:" + id, new String[]{firstArtistId, artists.get(0)});
+        }
         return new Track("yandex:" + id, Track.Source.YANDEX, title, String.join(", ", artists), album, duration, null, coverUrl, remote);
     }
 
     private static String str(JsonObject o, String key) {
         JsonElement e = o.get(key);
-        return e == null || e.isJsonNull() ? "" : e.getAsString();
+        return e == null || e.isJsonNull() || !e.isJsonPrimitive() ? "" : e.getAsString();
     }
 }

@@ -31,6 +31,10 @@ public final class SocialApp extends PhoneApp {
     public enum Tab { FEED, PUBLICS, PROFILE, MODERATION }
 
     private final Deque<SocialView> stack = new ArrayDeque<>();
+    /** Внутри общего приложения «Мессенджер» (HubApp): свою панель вкладок не рисует, «Написать» — через хозяина. */
+    private boolean embedded;
+    private java.util.function.Consumer<UUID> openChat;
+    private Runnable openStickers;
     private final ImageViewer viewer = new ImageViewer();
     private Tab tab = Tab.FEED;
 
@@ -43,6 +47,38 @@ public final class SocialApp extends PhoneApp {
         return stack.peek();
     }
 
+    /** Вложить в общее приложение: openChat — открыть личный чат с игроком во вкладке «Чаты», openStickers — «Мои стикеры». */
+    public void embed(java.util.function.Consumer<UUID> openChat, Runnable openStickers) {
+        this.embedded = true;
+        this.openChat = openChat;
+        this.openStickers = openStickers;
+    }
+
+    /** «Поделиться постом в чате» (общее приложение «Мессенджер»; null — нельзя). */
+    private java.util.function.LongConsumer sharePost;
+
+    public void setSharePost(java.util.function.LongConsumer share) {
+        sharePost = share;
+    }
+
+    java.util.function.LongConsumer sharePost() {
+        return embedded ? sharePost : null;
+    }
+
+    /** «Мои стикеры» (есть только во вложенном режиме, null — нет). */
+    Runnable stickers() {
+        return embedded ? openStickers : null;
+    }
+
+    public boolean atRoot() {
+        return stack.size() == 1 && view().root();
+    }
+
+    /** Значок у кнопки «Модерация» (необработанные жалобы). */
+    public static int moderationBadge() {
+        return ClientSession.openReports();
+    }
+
     ImageViewer viewer() {
         return viewer;
     }
@@ -53,7 +89,7 @@ public final class SocialApp extends PhoneApp {
 
     List<Tab> tabs() {
         List<Tab> tabs = new ArrayList<>(List.of(Tab.FEED, Tab.PUBLICS, Tab.PROFILE));
-        if (ClientSession.has(Rights.MOD_REPORTS)) {
+        if (ClientSession.moderator()) {
             tabs.add(Tab.MODERATION);
         }
         return tabs;
@@ -161,10 +197,18 @@ public final class SocialApp extends PhoneApp {
 
     /** Открыть личный чат с игроком в мессенджере. */
     void openMessenger(UUID uuid) {
+        if (embedded && openChat != null && ClientNetwork.messengerAvailable()) {
+            openChat.accept(uuid);
+            return;
+        }
         if (phone != null && ClientNetwork.messengerAvailable()) {
             ClientNetwork.send(new dev.blockphone.common.protocol.packet.MessengerPackets.OpenDirect(uuid));
             phone.openApp("messenger");
         }
+    }
+
+    boolean embedded() {
+        return embedded;
     }
 
     int viewHeight(SocialView view) {
@@ -203,7 +247,7 @@ public final class SocialApp extends PhoneApp {
 
     @Override
     public void tick() {
-        if (tab == Tab.MODERATION && !ClientSession.has(Rights.MOD_REPORTS)) {
+        if (tab == Tab.MODERATION && !ClientSession.moderator()) {
             switchTab(Tab.FEED);
         }
         view().tick();
@@ -217,7 +261,7 @@ public final class SocialApp extends PhoneApp {
         g.enableScissor(0, 0, contentWidth(), vh);
         view.renderView(g, overlay ? -1000 : mouseX, overlay ? -1000 : (mouseY < vh ? mouseY : -1000));
         g.disableScissor();
-        if (view.root()) {
+        if (view.root() && !embedded) {
             renderTabs(g, mouseX, mouseY);
         }
         String message = SocialClient.recentMessage();
@@ -277,8 +321,13 @@ public final class SocialApp extends PhoneApp {
             pop();
             return true;
         }
-        if (tab != Tab.FEED) {
+        if (tab != Tab.FEED && !embedded) {
             switchTab(Tab.FEED);
+            return true;
+        }
+        if (embedded && (tab == Tab.PUBLICS || tab == Tab.MODERATION)) {
+            // Паблики и модерация открываются из профиля — «назад» возвращает туда.
+            switchTab(Tab.PROFILE);
             return true;
         }
         return false;
@@ -295,7 +344,7 @@ public final class SocialApp extends PhoneApp {
             return true;
         }
         SocialView view = view();
-        if (view.root() && y >= contentHeight() - TAB_H) {
+        if (view.root() && !embedded && y >= contentHeight() - TAB_H) {
             List<Tab> tabs = tabs();
             int index = (int) (x / (contentWidth() / tabs.size()));
             if (index >= 0 && index < tabs.size()) {

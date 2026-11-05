@@ -40,8 +40,18 @@ public final class MessengerData {
      * deleted — удалено (текст пустой).
      */
     /** sticker — сообщение-стикер (картинка без пузыря), null — обычное. */
+    /**
+     * Сообщение. forwardedFrom — ник автора пересланного сообщения («» — не пересланное); post — пост ленты, которым
+     * поделились (null — нет).
+     */
     public record MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
-                              long sentAt, long editedAt, boolean deleted, StickerData.StickerRef sticker) {
+                              long sentAt, long editedAt, boolean deleted, StickerData.StickerRef sticker, String forwardedFrom,
+                              PostShare post) {
+        public MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
+                           long sentAt, long editedAt, boolean deleted, StickerData.StickerRef sticker) {
+            this(id, chatId, sender, text, image, voice, sentAt, editedAt, deleted, sticker, "", null);
+        }
+
         public MessageInfo(long id, long chatId, UserInfo sender, String text, ImageRef image, VoiceData.VoiceRef voice,
                            long sentAt, long editedAt, boolean deleted) {
             this(id, chatId, sender, text, image, voice, sentAt, editedAt, deleted, null);
@@ -50,14 +60,31 @@ public final class MessengerData {
         public static MessageInfo read(PacketReader r) {
             return new MessageInfo(r.readLong(), r.readLong(), UserInfo.read(r), r.readString(MAX_MESSAGE_LENGTH * 2),
                     r.readNullable(ImageRef::read), r.readNullable(VoiceData.VoiceRef::read), r.readLong(), r.readLong(),
-                    r.readBoolean(), r.readNullable(StickerData.StickerRef::read));
+                    r.readBoolean(), r.readNullable(StickerData.StickerRef::read), r.readString(64), r.readNullable(PostShare::read));
         }
 
         public static void write(PacketWriter w, MessageInfo m) {
             w.writeLong(m.id).writeLong(m.chatId);
             UserInfo.write(w, m.sender);
             w.writeString(m.text).writeNullable(m.image, ImageRef::write).writeNullable(m.voice, VoiceData.VoiceRef::write)
-                    .writeLong(m.sentAt).writeLong(m.editedAt).writeBoolean(m.deleted).writeNullable(m.sticker, StickerData.StickerRef::write);
+                    .writeLong(m.sentAt).writeLong(m.editedAt).writeBoolean(m.deleted).writeNullable(m.sticker, StickerData.StickerRef::write)
+                    .writeString(m.forwardedFrom == null ? "" : m.forwardedFrom).writeNullable(m.post, PostShare::write);
+        }
+    }
+
+    /**
+     * Пост ленты в сообщении («Поделиться»): автор (ник игрока или название паблика), начало текста, фото. deleted — пост
+     * удалён (показывается «Пост удалён»).
+     */
+    public record PostShare(long postId, String author, String text, ImageRef image, boolean deleted) {
+        public static final int MAX_TEXT = 300;
+
+        public static PostShare read(PacketReader r) {
+            return new PostShare(r.readLong(), r.readString(128), r.readString(MAX_TEXT * 2), r.readNullable(ImageRef::read), r.readBoolean());
+        }
+
+        public static void write(PacketWriter w, PostShare p) {
+            w.writeLong(p.postId).writeString(p.author).writeString(p.text).writeNullable(p.image, ImageRef::write).writeBoolean(p.deleted);
         }
     }
 

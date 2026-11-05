@@ -3,6 +3,7 @@ package dev.blockphone.fabric.client.music;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import dev.blockphone.fabric.BlockPhoneFabric;
+import dev.blockphone.fabric.client.storage.SecretBox;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.Reader;
@@ -13,8 +14,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Входы в сервисы (музыка, Telegram): {@code config/blockphone/accounts.json} (отдельно от настроек — там секреты,
- * этот файл никому не отправлять). Только поток рендера и потоки, которым поля переданы копией.
+ * Входы в сервисы (музыка, Telegram): под Windows — {@code config/blockphone/accounts.dat}, зашифрован ключом Windows
+ * ({@link SecretBox}: на другом компьютере не читается); иначе — {@code accounts.json}. Старый открытый accounts.json
+ * при первом запуске переносится в зашифрованный и удаляется. Только поток рендера и потоки, которым поля переданы копией.
  */
 public final class Accounts {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -36,6 +38,10 @@ public final class Accounts {
         return FabricLoader.getInstance().getConfigDir().resolve("blockphone").resolve("accounts.json");
     }
 
+    private static Path secureFile() {
+        return file().resolveSibling("accounts.dat");
+    }
+
     public static synchronized Accounts get() {
         if (instance == null) {
             instance = load();
@@ -44,11 +50,31 @@ public final class Accounts {
     }
 
     private static Accounts load() {
+        if (SecretBox.available()) {
+            SecretBox.Read read = SecretBox.read(secureFile());
+            if (read.data() != null) {
+                try {
+                    Accounts loaded = GSON.fromJson(new String(read.data(), StandardCharsets.UTF_8), Accounts.class);
+                    if (loaded != null) {
+                        return loaded;
+                    }
+                } catch (Exception e) {
+                    BlockPhoneFabric.LOGGER.warn("Failed to parse {}", secureFile(), e);
+                }
+            } else if (read.unreadable()) {
+                // Файл с другого компьютера или другого пользователя Windows: входить заново.
+                SecretBox.moveAside(secureFile());
+            }
+        }
         Path file = file();
         if (Files.exists(file)) {
             try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                 Accounts loaded = GSON.fromJson(reader, Accounts.class);
                 if (loaded != null) {
+                    if (SecretBox.available()) {
+                        instance = loaded;
+                        save(); // перенести в зашифрованный файл, открытый удалить
+                    }
                     return loaded;
                 }
             } catch (Exception e) {
@@ -60,6 +86,15 @@ public final class Accounts {
 
     public static synchronized void save() {
         Path file = file();
+        if (SecretBox.available()) {
+            try {
+                SecretBox.write(secureFile(), GSON.toJson(get()).getBytes(StandardCharsets.UTF_8));
+                Files.deleteIfExists(file);
+            } catch (Exception e) {
+                BlockPhoneFabric.LOGGER.warn("Failed to write {}", secureFile(), e);
+            }
+            return;
+        }
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling("accounts.json.tmp");

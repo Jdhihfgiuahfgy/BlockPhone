@@ -50,9 +50,13 @@ public final class ProfileLooks {
     public static void drawAvatar(GuiGraphics g, UserInfo user, ProfileLook look, int x, int y, int size) {
         int[] bg = BACKGROUNDS[Math.floorMod(look.background(), BACKGROUNDS.length)];
         int r = Math.max(2, size / 6);
-        PhoneDraw.rawRoundedRect(g, x, y, x + size, y + size, r, bg[1]);
-        g.fillGradient(x + r / 2, y + r / 2, x + size - r / 2, y + size - r / 2, bg[0], bg[1]);
-        if (look.avatarType() == ProfileLook.AVATAR_HEAD) {
+        if (look.avatarType() == ProfileLook.AVATAR_PHOTO && look.avatarImage() != null) {
+            // Своё фото — на всю аватарку, со скруглёнными углами (фон не нужен).
+            Images.drawRounded(g, look.avatarImage(), x, y, size, size, r, Images.THUMB);
+            return;
+        }
+        PhoneDraw.roundedGradient(g, x, y, x + size, y + size, r, bg[0], bg[1]);
+        if (look.avatarType() != ProfileLook.AVATAR_BODY) {
             int face = Math.round(size * 0.7f);
             Avatars.drawUser(g, user, x + (size - face) / 2, y + (size - face) / 2, face);
             return;

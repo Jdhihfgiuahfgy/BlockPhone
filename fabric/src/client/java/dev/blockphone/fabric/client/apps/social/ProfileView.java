@@ -141,7 +141,7 @@ final class ProfileView extends SocialView {
     }
 
     private int headerHeight(ProfileInfo profile, int w) {
-        int h = BANNER + 34 + bioHeight(profile, w) + 6 + 24 + 6 + 20 + (self() ? 20 : 0);
+        int h = BANNER + 34 + bioHeight(profile, w) + 6 + 24 + 6 + 20 + (self() ? 20 + (app.embedded() ? 20 : 0) : 0);
         if (profile.mutedUntil() > 0) {
             h += 12;
         }
@@ -216,8 +216,30 @@ final class ProfileView extends SocialView {
             button(g, 12 + half, y, half, 16, tr("profile.look"), mx, my, PhoneDraw.ButtonStyle.PRIMARY,
                     () -> app.push(new ProfileLookView(app, uuid)));
             y += 20;
-            button(g, 8, y, w - 16, 16, tr("privacy.title"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
-                    () -> app.push(new PrivacyView(app)));
+            if (app.embedded()) {
+                // В общем приложении «Мессенджер» паблики, модерация и стикеры открываются отсюда.
+                Runnable stickers = ClientNetwork.messengerAvailable() ? app.stickers() : null;
+                button(g, 8, y, half, 16, tr("privacy.title"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                        () -> app.push(new PrivacyView(app)));
+                if (stickers != null) {
+                    button(g, 12 + half, y, half, 16, tr("hub.stickers"), mx, my, PhoneDraw.ButtonStyle.NORMAL, stickers);
+                }
+                y += 20;
+                boolean mod = ClientSession.moderator();
+                int bw = mod ? half : w - 16;
+                button(g, 8, y, bw, 16, tr("social.tab.publics"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                        () -> app.switchTab(SocialApp.Tab.PUBLICS));
+                if (mod) {
+                    int reports = SocialApp.moderationBadge();
+                    String label = tr("social.tab.moderation") + (reports > 0 ? " (" + reports + ")" : "");
+                    button(g, 12 + half, y, half, 16, label, mx, my,
+                            reports > 0 ? PhoneDraw.ButtonStyle.DANGER : PhoneDraw.ButtonStyle.NORMAL,
+                            () -> app.switchTab(SocialApp.Tab.MODERATION));
+                }
+            } else {
+                button(g, 8, y, w - 16, 16, tr("privacy.title"), mx, my, PhoneDraw.ButtonStyle.NORMAL,
+                        () -> app.push(new PrivacyView(app)));
+            }
         } else {
             boolean messenger = ClientNetwork.messengerAvailable();
             int bw = messenger ? (w - 20) / 2 : w - 16;
@@ -268,6 +290,9 @@ final class ProfileView extends SocialView {
             }
         }
         m.add(tr("social.report"), () -> showMenu(PostCard.reportMenu(ReportTarget.USER, 0, uuid), width() - 10, 40));
+        if (ClientSession.moderator()) {
+            m.add(tr("moderation.open_player"), () -> app.push(new PlayerModView(app, uuid, profile.user().name())));
+        }
         if (ClientSession.has(Rights.MOD_MUTE)) {
             if (profile.mutedUntil() > 0) {
                 m.add(tr("social.unmute"), () -> SocialClient.send(new SocialPackets.Mute(uuid, 0)));

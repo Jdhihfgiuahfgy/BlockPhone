@@ -38,7 +38,7 @@ import java.util.UUID;
  * Права — через LuckPerms для Velocity; без него модераторы задаются списком moderators в config.json.
  * На серверах сети BlockPhone ставить не обязательно (для будущих функций в мире — можно, мессенджер там выключить).
  */
-@Plugin(id = "blockphone", name = "BlockPhone", version = "0.9.16",
+@Plugin(id = "blockphone", name = "BlockPhone", version = "0.17.4",
         description = "Network-wide messenger and feed for the BlockPhone mod", authors = {"Jdhihfgiuahfgy"})
 public final class BlockPhoneVelocity implements ServerPlatform {
     private static final MinecraftChannelIdentifier CHANNEL =
@@ -48,7 +48,7 @@ public final class BlockPhoneVelocity implements ServerPlatform {
     private final ProxyServer proxy;
     private final Logger logger;
     private final Path dataDir;
-    private BlockPhoneServer core;
+    private volatile BlockPhoneServer core;
 
     @Inject
     public BlockPhoneVelocity(ProxyServer proxy, Logger logger, @DataDirectory Path dataDir) {
@@ -71,17 +71,21 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
         /** Стикеры и квота загрузок игрока. */
         dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+        /** Модерация: лог сообщений в чат (chatLog), команды прокси при бане (banCommand, unbanCommand). */
+        dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
         Storage storage = new Storage();
 
         static final class Voice {
             boolean messages = true;
             int maxSeconds = 60;
+            /** Звонки в чатах сети (голос идёт через прокси). */
+            boolean calls = true;
         }
 
         static final class Social {
             boolean enabled = true;
             /** "any" — любые фото, "server" — только снятые в этой сети, "none" — без фото. */
-            String photos = "server";
+            String photos = "any";
             int maxPhotoKb = 600;
             int maxPhotoSide = 1280;
             int maxPublicsPerPlayer = 3;
@@ -100,6 +104,42 @@ public final class BlockPhoneVelocity implements ServerPlatform {
 
     @Subscribe
     public void onInit(ProxyInitializeEvent event) {
+        core = new BlockPhoneServer(this, readSettings());
+        core.setAppsDirectory(dataDir.resolve("apps"));
+        core.start();
+        proxy.getChannelRegistrar().register(CHANNEL);
+        // /bpv reload (своё имя: /blockphone может быть занято плагином BlockPhone на сервере сети).
+        proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("bpv").aliases("blockphonevelocity").plugin(this).build(),
+                new com.velocitypowered.api.command.SimpleCommand() {
+                    @Override
+                    public void execute(Invocation invocation) {
+                        var source = invocation.source();
+                        String[] args = invocation.arguments();
+                        if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+                            source.sendMessage(net.kyori.adventure.text.Component.text("/bpv reload"));
+                            return;
+                        }
+                        if (!source.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+                            source.sendMessage(net.kyori.adventure.text.Component.text("No permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")"));
+                            return;
+                        }
+                        try {
+                            core = BlockPhoneServer.restart(core, BlockPhoneVelocity.this, readSettings());
+                            source.sendMessage(net.kyori.adventure.text.Component.text("BlockPhone: config reloaded"));
+                        } catch (RuntimeException e) {
+                            logger.warn("BlockPhone reload failed", e);
+                            source.sendMessage(net.kyori.adventure.text.Component.text("BlockPhone: reload failed — " + e.getMessage()));
+                        }
+                    }
+
+                    @Override
+                    public List<String> suggest(Invocation invocation) {
+                        return List.of("reload");
+                    }
+                });
+    }
+
+    private ServerSettings readSettings() {
         Config config = loadConfig();
         ServerSettings.Storage storage = new ServerSettings.Storage(config.storage.type, dataDir.resolve("messenger"),
                 config.storage.host, config.storage.port, config.storage.database, config.storage.user,
@@ -107,12 +147,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
         ServerSettings.Social social = new ServerSettings.Social(config.social.enabled,
                 ImageRef.PhotoPolicy.parse(config.social.photos), config.social.maxPhotoKb * 1024, config.social.maxPhotoSide,
                 config.social.maxPublicsPerPlayer);
-        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, false, "normal");
-        core = new BlockPhoneServer(this, new ServerSettings(config.messengerEnabled, true, storage, social,
-                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads));
-        core.setAppsDirectory(dataDir.resolve("apps"));
-        core.start();
-        proxy.getChannelRegistrar().register(CHANNEL);
+        // Звонки через прокси работают (голос пересылает сам BlockPhone); громкой связи нет — прокси не знает, кто где стоит.
+        ServerSettings.Voice voice = new ServerSettings.Voice(config.voice.messages, config.voice.maxSeconds, config.voice.calls, "normal", 0);
+        return new ServerSettings(config.messengerEnabled, true, storage, social,
+                List.copyOf(config.moderators), voice, config.filter, config.apps, config.uploads, config.moderation);
     }
 
     @Subscribe
@@ -185,6 +223,10 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             config.uploads = new dev.blockphone.common.server.UploadSettings();
         }
         config.uploads.fixNulls();
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
+        }
+        config.moderation.fixNulls();
         try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
             GSON.toJson(config, writer);
         } catch (Exception e) {
@@ -229,6 +271,27 @@ public final class BlockPhoneVelocity implements ServerPlatform {
             proxy.getCommandManager().executeAsync(console ? proxy.getConsoleCommandSource() : p, command);
             return true;
         }).orElse(false);
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new ArrayList<>();
+        for (Player player : proxy.getAllPlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public void sendChat(UUID player, String text) {
+        proxy.getPlayer(player).ifPresent(p -> p.sendMessage(
+                net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection().deserialize(text)));
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        proxy.getCommandManager().executeAsync(proxy.getConsoleCommandSource(), command);
+        return true;
     }
 
     @Override

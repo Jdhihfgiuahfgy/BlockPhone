@@ -43,7 +43,8 @@ class AppServiceTest {
                    "transfer": {"inputs": {"to": {"kind": "player", "required": true},
                                            "amount": {"kind": "number", "min": 1, "required": true}},
                                 "command": "pay {to} {amount}", "toast": "Sent {amount}", "then": "main"},
-                   "broken": {"command": "fail now", "error": "Nope"}
+                   "broken": {"command": "fail now", "error": "Nope"},
+                   "reward": {"as": "console", "command": "give {player} diamond {count}"}
                  }}""");
         Files.writeString(apps.resolve("secret.json"), "{\"id\": \"secret\", \"permission\": \"test.denied\", \"variables\": {\"x\": \"1\"}}");
         AppsSettings policy = new AppsSettings();
@@ -73,6 +74,17 @@ class AppServiceTest {
         assertEquals("blacklist", policy.mode());
         assertEquals(List.of("blocked"), policy.blacklist());
         assertTrue(policy.serverApps().contains("bank"));
+    }
+
+    /** От консоли подставляются только описанные поля: недописанное «count» телефон подменить не может. */
+    @Test
+    void consoleIgnoresUndeclaredInputs() {
+        platform.allowedWarnings.add("[apps] bank.reward");
+        server.onMessage(STEVE, "Steve", Packets.encode(new AppPackets.Call("bank", "reward", "main",
+                Map.of("count", "64\nop Steve"))));
+        assertTrue(platform.commands.isEmpty(), platform.commands.toString());
+        assertTrue(platform.last(STEVE, AppPackets.CallResult.class).error());
+        assertEquals(1, platform.warnings.size());
     }
 
     @Test

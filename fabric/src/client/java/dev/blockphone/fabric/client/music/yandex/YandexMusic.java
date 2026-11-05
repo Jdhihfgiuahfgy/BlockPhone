@@ -100,6 +100,7 @@ public final class YandexMusic {
     }
 
     public static void logout() {
+        YandexBrowse.reset();
         playlists = null;
         PLAYLIST_TRACKS.clear();
         Accounts.get().yandexToken = "";
@@ -254,30 +255,54 @@ public final class YandexMusic {
         });
     }
 
-    /** Идущая «Моя волна»: загрузчик (по нему узнаём, что играет именно она), batchId, трек для отзывов. */
+    /** Идущая волна (сессия): загрузчик (по нему узнаём, что играет именно она), сессия, seeds, трек для отзывов. */
     private static @Nullable java.util.function.Supplier<List<Track>> waveLoader;
+    private static volatile String sessionId = "";
     private static volatile String waveBatch = "";
+    private static volatile List<String> sessionSeeds = List.of();
     private static @Nullable Track waveTrack;
     private static long waveTrackPos;
+    private static String waveName = "";
 
-    /** Запустить «Мою волну»: очередь сама подгружается, когда треки заканчиваются. */
+    /** Seeds «Моей волны» с настройками игрока (характер, настроение, язык — «Настройки волны»). */
+    public static List<String> waveSeeds() {
+        List<String> seeds = new ArrayList<>();
+        seeds.add(YandexApi.WAVE);
+        dev.blockphone.fabric.client.config.PhoneSettings s = dev.blockphone.fabric.client.config.PhoneSettings.get();
+        for (String seed : new String[]{s.yandexWaveDiversity, s.yandexWaveMood, s.yandexWaveLanguage}) {
+            if (seed != null && !seed.isBlank()) {
+                seeds.add(seed);
+            }
+        }
+        return seeds;
+    }
+
+    /** Запустить «Мою волну» (с настройками): очередь сама подгружается, когда треки заканчиваются. */
     public static void playWave() {
+        playStation(waveSeeds(), PhoneLang.tr("music.my_wave"));
+    }
+
+    /** Волна по seeds: занятие («activity:workout»), трек («track:id»), артист («artist:id») или «Моя волна». */
+    public static void playStation(List<String> seeds, String name) {
         if (startingWave) {
             return;
         }
         startingWave = true;
-        YandexApi api = api();
+        YandexCatalog catalog = new YandexCatalog(api());
         ClientFiles.IO.execute(() -> {
             try {
-                YandexApi.WaveBatch batch = api.waveBatch(null);
-                waveBatch = batch.batchId();
-                feedback(api, "radioStarted", null, 0);
+                YandexCatalog.Session session = catalog.sessionNew(seeds);
+                sessionId = session.id();
+                waveBatch = session.batchId();
+                sessionSeeds = List.copyOf(seeds);
+                feedback(catalog, "radioStarted", null, 0);
                 Minecraft.getInstance().execute(() -> {
                     startingWave = false;
-                    if (!batch.tracks().isEmpty()) {
-                        waveLoader = waveLoader(api);
+                    if (!session.tracks().isEmpty()) {
+                        waveLoader = waveLoader(catalog);
                         waveTrack = null;
-                        MusicPlayer.play(batch.tracks(), 0, waveLoader, PhoneLang.tr("music.my_wave"));
+                        waveName = name;
+                        MusicPlayer.play(session.tracks(), 0, waveLoader, name);
                     }
                 });
             } catch (IOException e) {
@@ -286,42 +311,54 @@ public final class YandexMusic {
         });
     }
 
+    /** Играет волна (любая станция) — для подписи и перезапуска после смены настроек. */
+    public static boolean wavePlaying() {
+        return waveLoader != null && MusicPlayer.loader() == waveLoader;
+    }
+
     /**
-     * Продолжение волны (в фоне, плеером): после последнего трека очереди. Если пачка повторяет уже сыгранное —
-     * ещё раз от другого трека (до 3 попыток), чтобы волна не крутила одно и то же.
+     * Продолжение волны (в фоне, плеером): следующая пачка сессии с очередью уже полученных треков. Устаревшая сессия —
+     * новая с теми же seeds. Повторы отбрасываются.
      */
-    private static java.util.function.Supplier<List<Track>> waveLoader(YandexApi api) {
+    private static java.util.function.Supplier<List<Track>> waveLoader(YandexCatalog catalog) {
         return () -> {
             List<Track> queue = new ArrayList<>(MusicPlayer.queue());
             java.util.Set<String> known = new java.util.HashSet<>();
             queue.forEach(t -> known.add(t.key()));
-            List<Track> fresh = new ArrayList<>();
-            for (int attempt = 0; attempt < 3 && fresh.isEmpty(); attempt++) {
-                int from = queue.size() - 1 - attempt * 3;
-                String after = from >= 0 ? queue.get(from).remoteId() : null;
-                try {
-                    YandexApi.WaveBatch batch = api.waveBatch(after);
-                    if (!batch.batchId().isEmpty()) {
-                        waveBatch = batch.batchId();
-                    }
-                    for (Track t : batch.tracks()) {
-                        if (known.add(t.key())) {
-                            fresh.add(t);
-                        }
-                    }
-                } catch (IOException e) {
-                    return List.of();
+            List<String> ids = new ArrayList<>();
+            for (int i = Math.max(0, queue.size() - 30); i < queue.size(); i++) {
+                String remote = queue.get(i).remoteId();
+                if (remote != null) {
+                    ids.add(remote.split(":")[0]);
                 }
+            }
+            List<Track> fresh = new ArrayList<>();
+            try {
+                YandexCatalog.Session next = catalog.sessionTracks(sessionId, ids);
+                if (next.unknown() || next.tracks().isEmpty()) {
+                    next = catalog.sessionNew(sessionSeeds);
+                    sessionId = next.id();
+                }
+                if (!next.batchId().isEmpty()) {
+                    waveBatch = next.batchId();
+                }
+                for (Track t : next.tracks()) {
+                    if (known.add(t.key())) {
+                        fresh.add(t);
+                    }
+                }
+            } catch (IOException e) {
+                return List.of();
             }
             return fresh;
         };
     }
 
-    /** Каждый такт: смена трека «Моей волны» → отзывы Яндексу (дослушан или пропущен, начат следующий). */
+    /** Каждый такт: смена трека волны → отзывы Яндексу (дослушан или пропущен, начат следующий); место в книгах. */
     public static void tick() {
+        YandexBooks.tick();
         Track current = MusicPlayer.current();
-        boolean wave = waveLoader != null && MusicPlayer.loader() == waveLoader;
-        if (!wave) {
+        if (!wavePlaying()) {
             waveTrack = null;
             return;
         }
@@ -329,7 +366,7 @@ public final class YandexMusic {
             waveTrackPos = Math.max(waveTrackPos, MusicPlayer.positionMs());
             return;
         }
-        YandexApi api = api();
+        YandexCatalog catalog = new YandexCatalog(api());
         Track previous = waveTrack;
         long played = waveTrackPos;
         waveTrack = current;
@@ -337,20 +374,31 @@ public final class YandexMusic {
         ClientFiles.IO.execute(() -> {
             if (previous != null && previous.remoteId() != null) {
                 boolean finished = previous.durationMs() > 0 && played >= previous.durationMs() - 15_000;
-                feedback(api, finished ? "trackFinished" : "skip", previous.remoteId(), played / 1000.0);
+                feedback(catalog, finished ? "trackFinished" : "skip", previous.remoteId().split(":")[0], played / 1000.0);
             }
             if (current != null && current.remoteId() != null) {
-                feedback(api, "trackStarted", current.remoteId(), 0);
+                feedback(catalog, "trackStarted", current.remoteId().split(":")[0], 0);
             }
         });
     }
 
-    private static void feedback(YandexApi api, String type, @Nullable String trackId, double seconds) {
+    private static void feedback(YandexCatalog catalog, String type, @Nullable String trackId, double seconds) {
+        if (sessionId.isEmpty()) {
+            return;
+        }
         try {
-            api.waveFeedback(type, trackId, seconds, waveBatch);
+            catalog.sessionFeedback(sessionId, waveBatch, type, trackId, seconds);
         } catch (IOException e) {
             BlockPhoneFabric.LOGGER.info("Yandex wave feedback {} failed: {}", type, e.toString());
         }
+    }
+
+    static YandexApi currentApi() {
+        return api();
+    }
+
+    static void report(IOException e) {
+        fail(e);
     }
 
     public static void toggleLike(Track track) {

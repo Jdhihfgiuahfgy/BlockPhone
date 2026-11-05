@@ -35,6 +35,8 @@ public final class FabricServerConfig {
     public dev.blockphone.common.apps.AppsSettings apps = new dev.blockphone.common.apps.AppsSettings();
     /** Стикеры и квота загрузок игрока. */
     public dev.blockphone.common.server.UploadSettings uploads = new dev.blockphone.common.server.UploadSettings();
+    /** Модерация: лог сообщений в чат игры (chatLog), команды при бане (banCommand, unbanCommand). */
+    public dev.blockphone.common.server.ModerationSettings moderation = new dev.blockphone.common.server.ModerationSettings();
     /** Хранилище переписки, ленты и фото. */
     public Storage storage = new Storage();
 
@@ -44,12 +46,14 @@ public final class FabricServerConfig {
         public boolean calls = true;
         /** "normal" — в звонке слышно и тех, кто рядом; "isolated" — только участников звонка. */
         public String callGroupType = "normal";
+        /** Громкая связь: радиус (блоков), в котором слышно звонок; 0 — выключена. */
+        public int speakerRadius = 8;
     }
 
     public static final class Social {
         public boolean enabled = true;
         /** Фото в ленте и чатах: "any" — любые, "server" — только снятые на этом сервере, "none" — без фото. */
-        public String photos = "server";
+        public String photos = "any";
         public int maxPhotoKb = 600;
         public int maxPhotoSide = 1280;
         public int maxPublicsPerPlayer = 3;
@@ -76,8 +80,10 @@ public final class FabricServerConfig {
                 storage.user, storage.password, storage.tablePrefix);
         ServerSettings.Social feed = new ServerSettings.Social(social.enabled, ImageRef.PhotoPolicy.parse(social.photos),
                 social.maxPhotoKb * 1024, social.maxPhotoSide, social.maxPublicsPerPlayer);
-        ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType);
-        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps, uploads);
+        ServerSettings.Voice v = new ServerSettings.Voice(voice.messages, voice.maxSeconds, voice.calls, voice.callGroupType,
+                voice.speakerRadius);
+        return new ServerSettings(messengerEnabled, phoneInHandVisible, s, feed, List.copyOf(moderators), v, filter, apps, uploads,
+                moderation);
     }
 
     public static FabricServerConfig load() {
@@ -112,6 +118,9 @@ public final class FabricServerConfig {
         config.apps.fixNulls();
         if (config.uploads == null) {
             config.uploads = new dev.blockphone.common.server.UploadSettings();
+        }
+        if (config.moderation == null) {
+            config.moderation = new dev.blockphone.common.server.ModerationSettings();
         }
         config.uploads.fixNulls();
         if (config.moderators == null) {

@@ -108,12 +108,27 @@ public final class VoiceMessages {
 
     /** Проиграть готовый звук (моно 16 кГц) под своим ключом (голосовые Telegram); тот же ключ — пауза/продолжить. */
     public static void togglePcm(long key, short[] audio) {
+        togglePcm(key, audio, 1f);
+    }
+
+    /** То же с усилением boost (1 — как есть; громче 1 — тихие записи, пики сглаживает ограничитель). */
+    public static void togglePcm(long key, short[] audio, float boost) {
         if (playingId == key && player != null) {
             player.paused = !player.paused;
+            player.boost = boost;
             return;
         }
         stop();
         play(key, audio);
+        player.boost = boost;
+    }
+
+    /** Поменять усиление уже играющего звука с этим ключом (ползунок громкости во время проигрывания). */
+    public static void setBoost(long key, float boost) {
+        Player p = player;
+        if (playingId == key && p != null) {
+            p.boost = boost;
+        }
     }
 
     public static void onChunk(VoicePackets.VoiceChunk chunk) {
@@ -124,6 +139,11 @@ public final class VoiceMessages {
             return;
         }
         byte[] buffer = DOWNLOADS.get(id);
+        // Размер объявляет сервер: не больше 16 МБ (~30 минут ADPCM) и не больше 8 загрузок сразу.
+        if (buffer == null && (chunk.total() > 16 * 1024 * 1024 || DOWNLOADS.size() >= 8)) {
+            FAILED.add(id);
+            return;
+        }
         if (buffer == null) {
             buffer = new byte[chunk.total()];
             DOWNLOADS.put(id, buffer);
@@ -232,6 +252,7 @@ public final class VoiceMessages {
         volatile boolean stopped;
         volatile boolean done;
         volatile int position;
+        volatile float boost = 1f;
 
         Player(short[] audio) {
             this.audio = audio;
@@ -253,11 +274,10 @@ public final class VoiceMessages {
                     if (!line.isRunning()) {
                         line.start();
                     }
-                    float volume = PhoneSettings.get().musicVolume;
-                    float gain = Math.max(0.25f, volume) * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.MASTER);
+                    float gain = mediaGain() * boost * 1.4f / 32768f;
                     int n = Math.min(1600, audio.length - position);
                     for (int i = 0; i < n; i++) {
-                        int v = Math.max(-32768, Math.min(32767, Math.round(audio[position + i] * gain * 1.4f)));
+                        int v = Math.round(limit(audio[position + i] * gain) * 32767f);
                         bytes[i * 2] = (byte) v;
                         bytes[i * 2 + 1] = (byte) (v >> 8);
                     }
@@ -276,5 +296,27 @@ public final class VoiceMessages {
     }
 
     private VoiceMessages() {
+    }
+
+    /** Мягкий ограничитель: до 0,6 — без изменений, выше — плавно к 1 (громкие записи не хрипят при усилении). */
+    static float limit(float s) {
+        float a = Math.abs(s);
+        if (a <= 0.6f) {
+            return s;
+        }
+        float out = 0.6f + 0.4f * (float) Math.tanh((a - 0.6f) / 0.4f);
+        return s < 0 ? -out : out;
+    }
+
+    /** Множитель громкости голосовых и видео: своя настройка (0..300 %) × общая громкость игры. */
+    public static float mediaGain() {
+        return PhoneSettings.get().mediaVolume / 100f * Minecraft.getInstance().options.getSoundSourceVolume(SoundSource.MASTER);
+    }
+
+    /** Изменить громкость голосовых и видео на delta процентов (0..300) и сохранить. */
+    public static void changeMediaVolume(int delta) {
+        PhoneSettings s = PhoneSettings.get();
+        s.mediaVolume = Math.max(0, Math.min(300, s.mediaVolume + delta));
+        s.save();
     }
 }

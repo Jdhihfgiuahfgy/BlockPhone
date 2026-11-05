@@ -36,9 +36,10 @@ public final class MessengerNotifications {
         long chatId = chat.id();
         dev.blockphone.fabric.client.phone.PhoneNotifications.add("messenger:" + chatId, "messenger", title,
                 MessengerClient.previewText(message), message.sender().uuid(), phone -> {
-                    phone.openApp("messenger");
-                    if (PhoneState.app("messenger") instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
-                        app.openChat(chatId);
+                    phone.openApp(dev.blockphone.fabric.client.apps.hub.HubApp.ID);
+                    dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+                    if (hub != null) {
+                        hub.openChat(chatId);
                     }
                 });
     }
@@ -70,7 +71,7 @@ public final class MessengerNotifications {
         }
 
         @Override
-        public void render(GuiGraphics g, Font font, long time) {
+        public void render(GuiGraphics g, Font font, long time) { // mc:render — в 26.1 extractRenderState/extractBackground
             PhoneDraw.rawRoundedRect(g, 0, 0, width(), height(), 4, PhoneTheme.bodyEdge());
             PhoneDraw.rawRoundedRect(g, 1, 1, width() - 1, height() - 1, 3, 0xF0111725);
             g.fill(1, 1, 3, height() - 1, PhoneTheme.accent());

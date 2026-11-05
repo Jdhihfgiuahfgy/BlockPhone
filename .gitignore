@@ -12,3 +12,8 @@ PhoneModPlugin/
 
 # Кэш wrangler (выкладка приёмника)
 .wrangler/
+__pycache__/
+
+# Логи игры из папок запуска
+logs/
+*.log.gz

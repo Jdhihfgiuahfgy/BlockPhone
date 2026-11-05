@@ -4,11 +4,11 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.music.MusicPlayer;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import dev.blockphone.fabric.client.compat.WorldRenderHook;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
@@ -55,10 +55,10 @@ public final class LyricsWorld {
     }
 
     public static void init() {
-        WorldRenderEvents.BEFORE_ENTITIES.register(LyricsWorld::render);
+        WorldRenderHook.beforeEntities(LyricsWorld::render);
     }
 
-    private static void render(WorldRenderContext context) {
+    private static void render(PoseStack pose, SubmitNodeCollector queue) {
         Minecraft mc = Minecraft.getInstance();
         PhoneSettings settings = PhoneSettings.get();
         Lyrics lyrics = LyricsService.current();
@@ -98,19 +98,18 @@ public final class LyricsWorld {
             placedAt = now;
         }
 
-        PoseStack pose = context.matrices();
         Vec3 cam = camera.position();
         if (fadingLine >= 0 && fadingLine < lyrics.lines().size()) {
             float t = (now - fadingSince) / (float) FADE_MS;
             if (t >= 1) {
                 fadingLine = -1;
             } else {
-                drawLine(context, pose, font, cam, fadingAnchor.add(0, t * 0.6, 0), fadingDist, lyrics.lines().get(fadingLine),
+                drawLine(queue, pose, font, cam, fadingAnchor.add(0, t * 0.6, 0), fadingDist, lyrics.lines().get(fadingLine),
                         fadingLine, Long.MAX_VALUE, 1 - t, settings);
             }
         }
         if (shownLine >= 0) {
-            drawLine(context, pose, font, cam, anchor, anchorDist, lyrics.lines().get(shownLine), shownLine, pos, 1, settings);
+            drawLine(queue, pose, font, cam, anchor, anchorDist, lyrics.lines().get(shownLine), shownLine, pos, 1, settings);
         }
     }
 
@@ -261,7 +260,7 @@ public final class LyricsWorld {
         return hit.getType() == HitResult.Type.MISS;
     }
 
-    private static void drawLine(WorldRenderContext context, PoseStack pose, Font font, Vec3 cam, Vec3 at, float distance,
+    private static void drawLine(SubmitNodeCollector queue, PoseStack pose, Font font, Vec3 cam, Vec3 at, float distance,
                                  Lyrics.Line line, int index, long pos, float alpha, PhoneSettings settings) {
         List<Lyrics.Word> words = line.words();
         Layout layout = layout(font, line, index, settings.lyricsScatter);
@@ -302,7 +301,7 @@ public final class LyricsWorld {
                 pose.scale(s, s, s);
                 FormattedCharSequence text = FormattedCharSequence.forward(word.text(), Style.EMPTY);
                 float half = font.width(word.text()) / 2f;
-                context.commandQueue().submitText(pose, -half, -font.lineHeight / 2f, text, false, Font.DisplayMode.NORMAL,
+                queue.submitText(pose, -half, -font.lineHeight / 2f, text, false, Font.DisplayMode.NORMAL,
                         FULL_BRIGHT, alphaBits | rgb, 0, settings.lyricsOutline && a > 0.95f ? 0xFF101018 : 0);
                 pose.popPose();
             }

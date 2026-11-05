@@ -299,6 +299,30 @@ public final class MessengerPackets {
         }
     }
 
+    /** C→S: переслать сообщение (из чата, где игрок участник) в другой свой чат. */
+    public record ForwardMessage(long messageId, long toChatId, String nonce) implements Packet {
+        public static ForwardMessage read(PacketReader r) {
+            return new ForwardMessage(r.readLong(), r.readLong(), r.readString(64));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(messageId).writeLong(toChatId).writeString(nonce);
+        }
+    }
+
+    /** C→S: поделиться постом ленты в чате (comment — свой текст к нему, может быть пустым). */
+    public record SharePost(long postId, long toChatId, String nonce, String comment) implements Packet {
+        public static SharePost read(PacketReader r) {
+            return new SharePost(r.readLong(), r.readLong(), r.readString(64), r.readString(MAX_MESSAGE_LENGTH));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(postId).writeLong(toChatId).writeString(nonce).writeString(comment);
+        }
+    }
+
     private MessengerPackets() {
     }
 }

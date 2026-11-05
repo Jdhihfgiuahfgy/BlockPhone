@@ -13,6 +13,9 @@ public final class VoiceBridges {
     private static volatile Executor mainThread = Runnable::run;
     private static volatile BiConsumer<UUID, UUID> leaveListener = (player, group) -> {
     };
+    /** Голос игрока из Simple Voice Chat (кадр Opus 48 кГц): для громкой связи в звонках BlockPhone. */
+    private static volatile BiConsumer<UUID, byte[]> microphoneListener = (player, opus) -> {
+    };
 
     /** Текущий мост или null (SVC не установлен или его сервер ещё не запущен). */
     public static VoiceBridge current() {
@@ -39,6 +42,15 @@ public final class VoiceBridges {
 
     static void playerLeft(UUID player, UUID group) {
         leaveListener.accept(player, group);
+    }
+
+    public static void setMicrophoneListener(BiConsumer<UUID, byte[]> listener) {
+        microphoneListener = listener;
+    }
+
+    /** Игрок говорит в Simple Voice Chat (поток SVC). */
+    static void microphone(UUID player, byte[] opus) {
+        microphoneListener.accept(player, opus);
     }
 
     private VoiceBridges() {

@@ -69,9 +69,7 @@ final class ImageService {
         if (!backend.has(player, Permission.PHOTO)) {
             return "photo.error.no_permission";
         }
-        if (purpose == ImageRef.Purpose.POST && backend.social() != null && backend.social().mutedUntil(player) > 0) {
-            return "social.error.muted";
-        }
+        // Мут проверяется при отправке поста/сообщения, а не при загрузке: фото для аватарки и баннера — можно.
         return null;
     }
 

@@ -19,7 +19,7 @@ import java.util.function.Consumer;
  * (перемотка, громкость) — через {@link #slider}: нажатие и перетаскивание меняют значение.
  */
 abstract class MusicView {
-    private record Hit(int x, int y, int w, int h, Runnable action) {
+    private record Hit(int x, int y, int w, int h, Runnable action, Runnable right) {
     }
 
     private record Slider(int x, int y, int w, int h, Consumer<Float> onChange) {
@@ -66,10 +66,15 @@ abstract class MusicView {
     abstract void render(GuiGraphics g, int mouseX, int mouseY);
 
     protected void hit(int x, int y, int w, int h, Runnable action) {
+        hit(x, y, w, h, action, null);
+    }
+
+    /** Область нажатия: action — левая кнопка, right — правая (меню; null — как левая не срабатывает). */
+    protected void hit(int x, int y, int w, int h, Runnable action, Runnable right) {
         int top = Math.max(y, clipTop);
         int bottom = Math.min(y + h, clipBottom);
         if (bottom > top) {
-            hits.add(new Hit(x, top, w, bottom - top, action));
+            hits.add(new Hit(x, top, w, bottom - top, action, right));
         }
     }
 
@@ -91,6 +96,16 @@ abstract class MusicView {
     }
 
     boolean mouseClicked(double x, double y, int button) {
+        if (button == 1) {
+            for (int i = hits.size() - 1; i >= 0; i--) {
+                Hit hit = hits.get(i);
+                if (hit.right() != null && PhoneDraw.inside(x, y, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    hit.right().run();
+                    return true;
+                }
+            }
+            return false;
+        }
         if (button != 0) {
             return false;
         }
@@ -137,7 +152,7 @@ abstract class MusicView {
 
     protected void clampScroll(int total, int viewport) {
         scroll = Math.max(0, Math.min(Math.max(0, total - viewport), scroll));
-        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v);
+        Scrollbar.report(height() - viewport, height(), scroll, Math.max(0, total - viewport), false, v -> scroll = v, () -> scroll);
     }
 
     boolean keyPressed(KeyEvent event) {

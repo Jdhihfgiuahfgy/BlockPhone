@@ -143,6 +143,11 @@ public final class MessengerClient {
     }
 
     /** Забрать запрос «открыть чат» (после ответа сервера на «написать»/«создать группу»). */
+    /** Сервер прислал «открыть чат», и его ещё не открыли. */
+    public static boolean hasPendingOpen() {
+        return pendingOpen != null;
+    }
+
     public static @Nullable Long takePendingOpen() {
         Long id = pendingOpen;
         pendingOpen = null;
@@ -198,9 +203,22 @@ public final class MessengerClient {
                 voice != null ? voice.id() : 0));
     }
 
-    /** Текст сообщения для превью и уведомлений: «[Фото] подпись», «[Голосовое 0:07]». */
+    /** Переслать сообщение в другой чат (ответ — обычное NewMessage). */
+    public static void forward(long messageId, long toChatId) {
+        ClientNetwork.send(new MessengerPackets.ForwardMessage(messageId, toChatId, "f" + (++nonceCounter) + "_" + System.nanoTime()));
+    }
+
+    /** Поделиться постом ленты в чате. */
+    public static void sharePost(long postId, long toChatId, String comment) {
+        ClientNetwork.send(new MessengerPackets.SharePost(postId, toChatId, "s" + (++nonceCounter) + "_" + System.nanoTime(), comment));
+    }
+
+    /** Текст сообщения для превью и уведомлений: «[Фото] подпись», «[Голосовое 0:07]», «[Пост] …». */
     public static String previewText(MessageInfo message) {
         String text = message.text().replace('\n', ' ');
+        if (message.post() != null && text.isEmpty()) {
+            return PhoneLang.tr("messenger.post_preview", message.post().author());
+        }
         if (message.voice() != null) {
             return PhoneLang.tr("messenger.voice_preview", dev.blockphone.fabric.client.voice.VoiceMessages.time(message.voice().durationMs()));
         }
@@ -264,7 +282,14 @@ public final class MessengerClient {
                     .put(p.user().uuid(), new TypingInfo(p.user().name(), System.currentTimeMillis() + TYPING_SHOW_MS));
             case MessengerPackets.Presence p -> ONLINE.put(p.user().uuid(), p.user().online());
             case MessengerPackets.Failure p -> {
-                lastError = PhoneLang.tr(p.key(), p.arg());
+                String arg = p.arg();
+                if (p.key().equals("messenger.error.muted") || p.key().equals("messenger.error.banned")
+                        || p.key().equals("call.error.banned")) {
+                    // Аргумент — время окончания (пусто — навсегда).
+                    arg = arg.isEmpty() ? PhoneLang.tr("social.forever")
+                            : dev.blockphone.fabric.client.social.SocialFormat.dateTime(Long.parseLong(arg));
+                }
+                lastError = PhoneLang.tr(p.key(), arg);
                 lastErrorAt = System.currentTimeMillis();
                 // Неотправленные сообщения больше не ждём.
                 PENDING.clear();

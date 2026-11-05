@@ -71,6 +71,21 @@ class MessengerServiceTest {
     }
 
     @Test
+    void reloadRegreetsPlayersWithMod() throws Exception {
+        platform.clear();
+        ServerSettings.Storage storage = new ServerSettings.Storage("h2", dir.resolve("messenger"), "", 0, "", "", "", "bp_");
+        server = BlockPhoneServer.restart(server, platform, new ServerSettings(false, true, storage));
+        // Новое приветствие с новыми настройками — телефон сбросит состояние и поздоровается снова.
+        assertFalse(platform.last(ALEX, ServerHelloPacket.class).messengerEnabled());
+        assertFalse(platform.last(STEVE, ServerHelloPacket.class).messengerEnabled());
+        assertTrue(platform.of(NOTCH, ServerHelloPacket.class).isEmpty());
+        server.stop();
+        server = BlockPhoneServer.restart(null, platform, new ServerSettings(true, true, storage));
+        join(ALEX, "Alex");
+        assertTrue(platform.last(ALEX, ServerHelloPacket.class).messengerEnabled());
+    }
+
+    @Test
     void helloAndEmptyChatList() {
         assertTrue(platform.last(ALEX, ServerHelloPacket.class).messengerEnabled());
         assertTrue(platform.last(ALEX, MessengerPackets.ChatList.class).chats().isEmpty());

@@ -229,6 +229,38 @@ public final class MessengerRepository {
         }
     }
 
+    /** Пересылка и пост в сообщении: от кого переслано («» — нет) и id поста (0 — нет). */
+    public record Extra(String forwardedFrom, long postId) {
+    }
+
+    public void setExtra(long messageId, String forwardedFrom, long postId) throws SQLException {
+        try (PreparedStatement ps = c().prepareStatement("UPDATE " + messages + " SET forwarded_from = ?, post_id = ? WHERE id = ?")) {
+            ps.setString(1, forwardedFrom.length() > 64 ? forwardedFrom.substring(0, 64) : forwardedFrom);
+            ps.setLong(2, postId);
+            ps.setLong(3, messageId);
+            ps.executeUpdate();
+        }
+    }
+
+    /** id сообщения → пересылка/пост (только такие сообщения). */
+    public java.util.Map<Long, Extra> extras(java.util.Collection<Long> messageIds) throws SQLException {
+        java.util.Map<Long, Extra> result = new java.util.HashMap<>();
+        if (messageIds.isEmpty()) {
+            return result;
+        }
+        StringBuilder in = new StringBuilder();
+        for (long id : messageIds) {
+            in.append(in.length() == 0 ? "" : ",").append(id);
+        }
+        try (PreparedStatement ps = c().prepareStatement("SELECT id, forwarded_from, post_id FROM " + messages
+                + " WHERE (forwarded_from <> '' OR post_id > 0) AND id IN (" + in + ")"); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                result.put(rs.getLong(1), new Extra(rs.getString(2), rs.getLong(3)));
+            }
+        }
+        return result;
+    }
+
     /** id сообщения → id стикера (только сообщения-стикеры). */
     public java.util.Map<Long, Long> stickerIds(java.util.Collection<Long> messageIds) throws SQLException {
         java.util.Map<Long, Long> result = new java.util.HashMap<>();

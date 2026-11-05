@@ -21,4 +21,11 @@ processResources {
     from(rootProject.file('docs/CUSTOM_APPS.md')) {
         into 'blockphone/apps'
     }
+    // Шаблон своего сервера комнат для авторов приложений (сервер — тот же, что relay-server/).
+    from(rootProject.file('relay-server/worker.js')) {
+        into 'blockphone/apps/relay-server-template'
+    }
+    from(rootProject.file('docs/relay-template')) {
+        into 'blockphone/apps/relay-server-template'
+    }
 }

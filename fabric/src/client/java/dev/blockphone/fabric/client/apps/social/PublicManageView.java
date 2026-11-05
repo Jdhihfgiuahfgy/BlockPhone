@@ -11,14 +11,19 @@ import dev.blockphone.fabric.client.network.ClientSession;
 import dev.blockphone.fabric.client.phone.PhoneDialog;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
+import dev.blockphone.common.protocol.data.ImageRef;
+import dev.blockphone.fabric.client.messenger.Avatars;
+import dev.blockphone.fabric.client.photo.ImageUploads;
+import dev.blockphone.fabric.client.photo.PhotoStore;
 import dev.blockphone.fabric.client.social.SocialClient;
+import dev.blockphone.fabric.client.ui.PhotoPicker;
 import dev.blockphone.fabric.client.ui.TextArea;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 
 /**
- * Управление пабликом: название и описание, администраторы (добавить — владелец, убрать — владелец или сам себя),
+ * Управление пабликом: аватар (фото из галереи или с компьютера), название и описание, администраторы (добавить — владелец, убрать — владелец или сам себя),
  * удаление паблика (владелец или модератор).
  */
 final class PublicManageView extends SocialView {
@@ -26,6 +31,8 @@ final class PublicManageView extends SocialView {
     private final TextArea title = new TextArea(false, 0.85f);
     private final TextArea description = new TextArea(true, 0.75f);
     private boolean filled;
+    private final PhotoPicker picker = new PhotoPicker(this::attach);
+    private ImageUploads.Upload upload;
 
     PublicManageView(SocialApp app, long publicId) {
         super(app);
@@ -44,8 +51,23 @@ final class PublicManageView extends SocialView {
         SocialClient.requestPublic(publicId);
     }
 
+    /** Фото выбрано — загрузить и сразу поставить аватаром. */
+    private void attach(PhotoStore.Photo photo) {
+        ImageUploads.cancel(upload);
+        upload = ImageUploads.start(photo, ImageRef.Purpose.POST, done -> {
+            if (done.state() == ImageUploads.State.FAILED) {
+                SocialClient.showMessage(tr(done.error()), true);
+            } else if (done.image() != null) {
+                SocialClient.send(new SocialPackets.SetPublicAvatar(publicId, done.image().id()));
+            }
+        });
+    }
+
     @Override
     void onHidden() {
+        if (upload != null && upload.busy()) {
+            ImageUploads.cancel(upload);
+        }
         title.setFocused(false);
         description.setFocused(false);
     }
@@ -72,13 +94,30 @@ final class PublicManageView extends SocialView {
             description.setText(info.description());
             filled = true;
         }
+        if (picker.isOpen()) {
+            picker.render(g, mouseX, mouseY, w, height());
+            return;
+        }
         boolean owner = info.role() == Role.OWNER;
         boolean mod = ClientSession.has(Rights.MOD_PUBLICS);
 
-        int total = 210 + (info.admins().size() + 1) * Rows.H;
+        int total = 250 + (info.admins().size() + 1) * Rows.H;
         clampScroll(total, height());
         beginList(g, 0, height());
         int y = 4 - (int) scroll;
+        // Аватар паблика.
+        Avatars.drawPublic(g, info.title(), info.color(), info.avatar(), 6, y, 32);
+        int ax = 44;
+        int aw = (w - ax - 10) / 2;
+        button(g, ax, y + 8, aw, 16, tr("social.public_avatar"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL, picker::open);
+        if (info.avatar() != null) {
+            button(g, ax + aw + 4, y + 8, aw, 16, tr("profile.banner.remove"), mouseX, mouseY, PhoneDraw.ButtonStyle.DANGER,
+                    () -> SocialClient.send(new SocialPackets.SetPublicAvatar(publicId, 0)));
+        }
+        if (upload != null && upload.busy()) {
+            PhoneDraw.text(g, tr("photo.uploading"), ax, y + 26, PhoneTheme.secondaryText(), 0.55f, false);
+        }
+        y += 38;
         PhoneDraw.text(g, tr("social.public_title"), 8, y + 2, PhoneTheme.secondaryText(), 0.65f, false);
         title.setBounds(6, y + 10, w - 12, 18);
         title.render(g, mouseX, mouseY);
@@ -124,7 +163,24 @@ final class PublicManageView extends SocialView {
     }
 
     @Override
+    boolean mouseScrolled(double x, double y, double amount) {
+        return picker.isOpen() ? picker.mouseScrolled(amount) : super.mouseScrolled(x, y, amount);
+    }
+
+    @Override
+    boolean onBack() {
+        if (picker.isOpen()) {
+            picker.close();
+            return true;
+        }
+        return super.onBack();
+    }
+
+    @Override
     boolean mouseClicked(double x, double y, int button) {
+        if (picker.isOpen()) {
+            return picker.mouseClicked(x, y, button);
+        }
         boolean t = title.mouseClicked(x, y, button);
         boolean d = description.mouseClicked(x, y, button);
         if (t || d) {

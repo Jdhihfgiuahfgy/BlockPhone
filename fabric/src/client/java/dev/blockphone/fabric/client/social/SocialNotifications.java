@@ -49,13 +49,18 @@ public final class SocialNotifications {
         long postId = notice.postId();
         java.util.UUID actor = notice.actor().uuid();
         dev.blockphone.common.protocol.data.SocialData.NoticeType type = notice.type();
-        dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:" + type + ":" + postId + ":" + actor, "feed", title, text,
+        dev.blockphone.fabric.client.phone.PhoneNotifications.add("feed:" + type + ":" + postId + ":" + actor, "messenger", title, text,
                 actor, phone -> {
-                    phone.openApp("feed");
-                    if (PhoneState.app("feed") instanceof dev.blockphone.fabric.client.apps.social.SocialApp app) {
+                    phone.openApp(dev.blockphone.fabric.client.apps.hub.HubApp.ID);
+                    dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+                    if (hub != null) {
+                        dev.blockphone.fabric.client.apps.social.SocialApp app = hub.social();
+                        if (type != dev.blockphone.common.protocol.data.SocialData.NoticeType.REPORT) {
+                            hub.showFeed();
+                        }
                         switch (type) {
                             case FOLLOW -> app.openProfile(actor);
-                            case REPORT -> app.switchTab(dev.blockphone.fabric.client.apps.social.SocialApp.Tab.MODERATION);
+                            case REPORT -> hub.showModeration();
                             default -> {
                                 if (postId > 0) {
                                     app.openPost(postId);
@@ -93,7 +98,7 @@ public final class SocialNotifications {
         }
 
         @Override
-        public void render(GuiGraphics g, Font font, long time) {
+        public void render(GuiGraphics g, Font font, long time) { // mc:render — в 26.1 extractRenderState/extractBackground
             PhoneDraw.rawRoundedRect(g, 0, 0, width(), height(), 4, PhoneTheme.bodyEdge());
             PhoneDraw.rawRoundedRect(g, 1, 1, width() - 1, height() - 1, 3, 0xF0111725);
             g.fill(1, 1, 3, height() - 1, PhoneTheme.accent());

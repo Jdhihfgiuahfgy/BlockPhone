@@ -290,7 +290,7 @@ public final class GalleryApp extends PhoneApp {
         int rows = (photos.size() + COLUMNS - 1) / COLUMNS;
         double max = Math.max(0, rows * (CELL + GAP) - contentHeight());
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, contentHeight(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     private void renderViewer(GuiGraphics g, int mouseX, int mouseY) {

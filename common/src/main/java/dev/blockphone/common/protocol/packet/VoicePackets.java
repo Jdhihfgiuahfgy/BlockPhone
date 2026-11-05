@@ -4,7 +4,10 @@ import dev.blockphone.common.protocol.Packet;
 import dev.blockphone.common.protocol.PacketReader;
 import dev.blockphone.common.protocol.PacketWriter;
 import dev.blockphone.common.protocol.data.ImageRef;
+import dev.blockphone.common.protocol.data.VoiceData;
 import dev.blockphone.common.protocol.data.VoiceData.CallInfo;
+
+import java.util.UUID;
 import dev.blockphone.common.protocol.data.VoiceData.VoiceRef;
 
 /**
@@ -120,6 +123,46 @@ public final class VoicePackets {
         @Override
         public void write(PacketWriter w) {
             w.writeLong(chatId);
+        }
+    }
+
+    /** Клиент → сервер: звук своего микрофона в звонке (кадры Opus 16 кГц, {@link VoiceData#CODEC_CALL_OPUS16}). */
+    public record CallAudio(long chatId, int seq, byte[] data) implements Packet {
+        public static CallAudio read(PacketReader r) {
+            return new CallAudio(r.readLong(), r.readVarInt(), r.readBytes(VoiceData.MAX_CALL_AUDIO));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(chatId).writeVarInt(seq).writeBytes(data);
+        }
+    }
+
+    /**
+     * Сервер → клиент: звук звонка. from — чей голос (своё состояние декодера на каждого); at — где в мире звучит
+     * (участник с громкой связью; {@link VoiceData#NOBODY} — в телефоне, не из точки мира); codec — {@link VoiceData}.
+     */
+    public record CallAudioFrom(long chatId, UUID from, UUID at, int seq, int codec, byte[] data) implements Packet {
+        public static CallAudioFrom read(PacketReader r) {
+            return new CallAudioFrom(r.readLong(), r.readUuid(), r.readUuid(), r.readVarInt(), r.readVarInt(),
+                    r.readBytes(VoiceData.MAX_CALL_AUDIO));
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(chatId).writeUuid(from).writeUuid(at).writeVarInt(seq).writeVarInt(codec).writeBytes(data);
+        }
+    }
+
+    /** Клиент → сервер: свой микрофон выключен / громкая связь в звонке. */
+    public record CallControl(long chatId, boolean muted, boolean speaker) implements Packet {
+        public static CallControl read(PacketReader r) {
+            return new CallControl(r.readLong(), r.readBoolean(), r.readBoolean());
+        }
+
+        @Override
+        public void write(PacketWriter w) {
+            w.writeLong(chatId).writeBoolean(muted).writeBoolean(speaker);
         }
     }
 

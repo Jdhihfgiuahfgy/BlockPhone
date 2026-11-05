@@ -108,6 +108,7 @@ public final class SocialService {
             case SocialPackets.ResolveReport p -> resolve(player, p);
             case SocialPackets.Mute p -> mute(player, p);
             case SocialPackets.UpdateLook p -> updateLook(player, p);
+            case SocialPackets.SetPublicAvatar p -> setPublicAvatar(player, p);
             default -> {
             }
         }
@@ -191,9 +192,17 @@ public final class SocialService {
 
     /** Можно ли игроку писать (посты, комментарии): право и не заглушён. Сам отправляет ошибку. */
     private boolean canWrite(UUID player) throws SQLException {
+        return canWrite(player, true);
+    }
+
+    /** checkMute = false — оформление своей страницы, «о себе», паблики: мут на них не действует. */
+    private boolean canWrite(UUID player, boolean checkMute) throws SQLException {
         if (!backend.has(player, Permission.POST)) {
             fail(player, "no_permission");
             return false;
+        }
+        if (!checkMute) {
+            return true;
         }
         long muted = mutedUntil(player);
         if (muted > 0) {
@@ -387,7 +396,7 @@ public final class SocialService {
             return;
         }
         bio = verdict.text();
-        if (!canWrite(player)) {
+        if (!canWrite(player, false)) {
             return;
         }
         repo.setBio(player, bio, System.currentTimeMillis());
@@ -432,7 +441,7 @@ public final class SocialService {
         List<UserInfo> admins = adminIds.stream().map(u -> backend.user(u, names.get(u))).toList();
         return new PublicInfo(row.id(), row.title(), row.description(), row.color(), backend.user(row.owner(), names.get(row.owner())),
                 admins, repo.subscriberCount(row.id()), repo.publicPostCount(row.id()), repo.isSubscribed(row.id(), viewer),
-                role(row, viewer), row.createdAt());
+                role(row, viewer), row.createdAt(), decorImage(row.avatarImage()));
     }
 
     private void sendPublic(UUID player, long publicId) throws SQLException {
@@ -468,7 +477,7 @@ public final class SocialService {
             fail(player, "no_permission");
             return;
         }
-        if (!canWrite(player)) {
+        if (!canWrite(player, false)) {
             return;
         }
         String error = checkPublicText(title, description, 0);
@@ -751,7 +760,8 @@ public final class SocialService {
             fail(player, "no_permission");
             return;
         }
-        if (p.user().equals(player) || !backend.users().userExists(p.user())) {
+        // Модератор может снять мут и с себя (и наказать себя — например, для проверки).
+        if (!backend.users().userExists(p.user())) {
             fail(player, "user_not_found");
             return;
         }
@@ -787,41 +797,114 @@ public final class SocialService {
         return new String[]{t.text(), d.text()};
     }
 
+    /**
+     * Превью постов для сообщений («Поделиться»): автор — паблик или ник, начало текста, фото. Нет такого поста — нет в
+     * ответе; удалённый — с deleted.
+     */
+    public Map<Long, dev.blockphone.common.protocol.data.MessengerData.PostShare> sharePreviews(java.util.Collection<Long> postIds)
+            throws SQLException {
+        Map<Long, dev.blockphone.common.protocol.data.MessengerData.PostShare> result = new HashMap<>();
+        UUID nobody = new UUID(0, 0);
+        for (long id : new java.util.LinkedHashSet<>(postIds)) {
+            PostRow row = repo.post(id, nobody);
+            if (row == null) {
+                continue;
+            }
+            if (row.deleted()) {
+                result.put(id, new dev.blockphone.common.protocol.data.MessengerData.PostShare(id, "", "", null, true));
+                continue;
+            }
+            String author;
+            if (row.publicId() > 0) {
+                PublicRow pub = repo.publicRow(row.publicId());
+                author = pub != null ? pub.title() : "?";
+            } else {
+                author = backend.users().userNames(List.of(row.author())).getOrDefault(row.author(), "?");
+            }
+            String text = row.text().length() > dev.blockphone.common.protocol.data.MessengerData.PostShare.MAX_TEXT
+                    ? row.text().substring(0, dev.blockphone.common.protocol.data.MessengerData.PostShare.MAX_TEXT - 1) + "…" : row.text();
+            ImageRef image = row.imageId() > 0 ? backend.imageRepo().refs(List.of(row.imageId())).get(row.imageId()) : null;
+            result.put(id, new dev.blockphone.common.protocol.data.MessengerData.PostShare(id, author, text, image, false));
+        }
+        return result;
+    }
+
     /** Оформление страницы для пакета (фото баннера — с размерами). */
     private SocialData.ProfileLook look(UUID uuid) throws SQLException {
         SocialRepository.LookRow row = repo.look(uuid);
-        ImageRef banner = null;
-        if (row.bannerImage() > 0) {
-            ImageRepository.ImageMeta meta = backend.imageRepo().meta(row.bannerImage());
-            if (meta != null && meta.kind() == ImageRepository.KIND_BANNER) {
-                banner = new ImageRef(meta.id(), meta.width(), meta.height());
+        ImageRef avatar = decorImage(row.avatarImage());
+        int type = row.avatarType() == SocialData.ProfileLook.AVATAR_PHOTO && avatar == null ? SocialData.ProfileLook.AVATAR_HEAD
+                : row.avatarType();
+        return new SocialData.ProfileLook(type, row.pose(), row.background(), row.bannerStyle(), decorImage(row.bannerImage()), avatar);
+    }
+
+    /** Фото оформления (баннер, аватар игрока или паблика — видны всем) с размерами или null. */
+    private ImageRef decorImage(long id) throws SQLException {
+        if (id <= 0) {
+            return null;
+        }
+        ImageRepository.ImageMeta meta = backend.imageRepo().meta(id);
+        return meta != null && meta.kind() == ImageRepository.KIND_BANNER ? meta.ref() : null;
+    }
+
+    /**
+     * Заменить фото оформления: wanted — новое (0 — убрать, −1 — оставить). Новое прикрепляется как видимое всем, старое
+     * отвязывается (удалится через сутки). Возвращает id, который сохранить, или null — ошибка (уже отправлена игроку).
+     */
+    private Long replaceDecor(UUID player, long current, long wanted, long refId) throws SQLException {
+        if (wanted < 0 || wanted == current) {
+            return current;
+        }
+        if (wanted > 0) {
+            String error = backend.images().checkAllowed(player, ImageRef.Purpose.POST);
+            ImageRef image = error == null ? backend.images().claim(player, wanted, ImageRepository.KIND_BANNER, refId) : null;
+            if (image == null) {
+                send(player, new SocialPackets.Failure(error != null ? error : "photo.error.not_found", ""));
+                return null;
             }
         }
-        return new SocialData.ProfileLook(row.avatarType(), row.pose(), row.background(), row.bannerStyle(), banner);
+        if (current > 0) {
+            backend.imageRepo().attach(current, ImageRepository.KIND_UNUSED, 0); // старое фото удалится через сутки
+        }
+        return wanted;
     }
 
     private void updateLook(UUID player, SocialPackets.UpdateLook p) throws SQLException {
         SocialRepository.LookRow old = repo.look(player);
-        long banner = old.bannerImage();
-        if (p.bannerImageId() >= 0 && p.bannerImageId() != banner) {
-            if (p.bannerImageId() > 0) {
-                String error = backend.images().checkAllowed(player, ImageRef.Purpose.POST);
-                ImageRef image = error == null
-                        ? backend.images().claim(player, p.bannerImageId(), ImageRepository.KIND_BANNER, 0) : null;
-                if (image == null) {
-                    send(player, new SocialPackets.Failure(error != null ? error : "photo.error.not_found", ""));
-                    return;
-                }
-            }
-            if (banner > 0) {
-                backend.imageRepo().attach(banner, ImageRepository.KIND_UNUSED, 0); // старое фото удалится через сутки
-            }
-            banner = p.bannerImageId();
+        Long banner = replaceDecor(player, old.bannerImage(), p.bannerImageId(), 0);
+        if (banner == null) {
+            return;
         }
-        SocialData.ProfileLook look = new SocialData.ProfileLook(p.avatarType(), p.pose(), p.background(), p.bannerStyle(), null);
-        repo.setLook(player, new SocialRepository.LookRow(look.avatarType(), look.pose(), look.background(), look.bannerStyle(), banner),
-                System.currentTimeMillis());
+        Long avatar = replaceDecor(player, old.avatarImage(), p.avatarImageId(), 0);
+        if (avatar == null) {
+            return;
+        }
+        SocialData.ProfileLook look = new SocialData.ProfileLook(p.avatarType(), p.pose(), p.background(), p.bannerStyle(), null, null);
+        repo.setLook(player, new SocialRepository.LookRow(look.avatarType(), look.pose(), look.background(), look.bannerStyle(), banner,
+                avatar), System.currentTimeMillis());
         sendProfile(player, player);
+    }
+
+    private void setPublicAvatar(UUID player, SocialPackets.SetPublicAvatar p) throws SQLException {
+        PublicRow row = repo.publicRow(p.publicId());
+        if (row == null) {
+            send(player, new SocialPackets.PublicRemoved(p.publicId()));
+            return;
+        }
+        boolean mod = role(row, player) == Role.NONE;
+        if (mod && !backend.has(player, Permission.MOD_PUBLICS)) {
+            fail(player, "not_admin");
+            return;
+        }
+        Long avatar = replaceDecor(player, row.avatarImage(), Math.max(0, p.imageId()), row.id());
+        if (avatar == null) {
+            return;
+        }
+        repo.setPublicAvatar(row.id(), avatar);
+        if (mod) {
+            log(player, "edit_public", "public#" + row.id(), row.title() + ": avatar");
+        }
+        sendPublic(player, row.id());
     }
 
     /** Профиль изменился с точки зрения игрока (например, заблокировал) — прислать заново. */
@@ -878,7 +961,7 @@ public final class SocialService {
         Map<UUID, String> names = backend.users().userNames(rows.stream().map(PostRow::author).toList());
         Map<Long, PublicRef> pubs = new HashMap<>();
         for (PublicRow row : repo.publicRows(rows.stream().map(PostRow::publicId).toList())) {
-            pubs.put(row.id(), new PublicRef(row.id(), row.title(), row.color()));
+            pubs.put(row.id(), new PublicRef(row.id(), row.title(), row.color(), decorImage(row.avatarImage())));
         }
         Map<Long, ImageRef> images = backend.imageRepo().refs(rows.stream().map(PostRow::imageId).toList());
         Set<Long> managed = managedPublicIds(viewer);

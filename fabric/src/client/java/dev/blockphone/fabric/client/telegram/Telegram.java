@@ -153,6 +153,7 @@ public final class Telegram {
                     error -> BlockPhoneFabric.LOGGER.warn("Telegram update error", error),
                     error -> BlockPhoneFabric.LOGGER.warn("Telegram error", error));
             status = Status.STARTING;
+            TelegramProxy.onClientStarted();
         } catch (Throwable e) {
             BlockPhoneFabric.LOGGER.error("TDLib failed to start", e);
             fatal = e.getClass().getSimpleName() + ": " + e.getMessage();
@@ -175,6 +176,23 @@ public final class Telegram {
                 onResult.accept(result);
             }
         }), error -> BlockPhoneFabric.LOGGER.warn("Telegram request failed", error));
+    }
+
+    /** Клиент TDLib запущен (можно слать запросы). */
+    public static boolean running() {
+        return client != null;
+    }
+
+    /** Запрос без показа ошибок игроку (проверка прокси и т. п.); ответ — на потоке рендера. */
+    static void sendQuiet(TdApi.Function<?> function, Consumer<TdApi.Object> onResult) {
+        it.tdlight.TelegramClient c = client;
+        if (c == null) {
+            return;
+        }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        TdApi.Function<TdApi.Object> f = (TdApi.Function) function;
+        c.send(f, result -> Minecraft.getInstance().execute(() -> onResult.accept(result)),
+                error -> Minecraft.getInstance().execute(() -> onResult.accept(new TdApi.Error(500, String.valueOf(error)))));
     }
 
     private static void showError(TdApi.Error error) {
@@ -222,6 +240,7 @@ public final class Telegram {
     private static void handle(TdApi.Object update) {
         switch (update) {
             case TdApi.UpdateAuthorizationState u -> onAuth(u.authorizationState);
+            case TdApi.UpdateConnectionState u -> TelegramProxy.onConnectionState(u.state);
             case TdApi.UpdateNewChat u -> CHATS.put(u.chat.id, u.chat);
             case TdApi.UpdateChatTitle u -> withChat(u.chatId, c -> c.title = u.title);
             case TdApi.UpdateChatPhoto u -> withChat(u.chatId, c -> c.photo = u.photo);
@@ -319,6 +338,7 @@ public final class Telegram {
             }
             case TdApi.AuthorizationStateReady s -> {
                 status = Status.READY;
+                encryptOldDatabase();
                 send(new TdApi.GetMe(), r -> {
                     if (r instanceof TdApi.User me) {
                         myId = me.id;
@@ -334,6 +354,7 @@ public final class Telegram {
             case TdApi.AuthorizationStateClosing s -> status = Status.STARTING;
             case TdApi.AuthorizationStateClosed s -> {
                 client = null;
+                TelegramProxy.onClientClosed();
                 clearData();
                 status = Status.CLOSED;
                 if (restartAfterClose) {
@@ -351,7 +372,9 @@ public final class Telegram {
         TdApi.SetTdlibParameters p = new TdApi.SetTdlibParameters();
         p.databaseDirectory = dir.resolve("db").toAbsolutePath().toString();
         p.filesDirectory = dir.resolve("files").toAbsolutePath().toString();
-        p.databaseEncryptionKey = new byte[0];
+        byte[][] pending = new byte[1][];
+        p.databaseEncryptionKey = databaseKey(dir, pending);
+        pendingDbKey = pending[0];
         p.useFileDatabase = true;
         p.useChatInfoDatabase = true;
         p.useMessageDatabase = true;
@@ -368,6 +391,75 @@ public final class Telegram {
                 status = Status.ERROR;
             }
         });
+    }
+
+    /** Ключ для старой открытой базы: TDLib меняет ключ только после входа, поэтому — в AuthorizationStateReady. */
+    private static byte @Nullable [] pendingDbKey;
+
+    /** Старая открытая база: зашифровать новым ключом, ключ сохранить зашифрованным ключом Windows. */
+    private static void encryptOldDatabase() {
+        byte[] key = pendingDbKey;
+        pendingDbKey = null;
+        if (key == null) {
+            return;
+        }
+        Path keyFile = ClientFiles.root().resolve("telegram").resolve("db.key");
+        send(new TdApi.SetDatabaseEncryptionKey(key), k -> {
+            if (k instanceof TdApi.Ok) {
+                try {
+                    dev.blockphone.fabric.client.storage.SecretBox.write(keyFile, key);
+                    BlockPhoneFabric.LOGGER.info("Telegram database is now encrypted");
+                } catch (Exception e) {
+                    BlockPhoneFabric.LOGGER.warn("Cannot save the Telegram database key", e);
+                }
+            } else {
+                BlockPhoneFabric.LOGGER.warn("Telegram database encryption failed: {}", k);
+            }
+        });
+    }
+
+    /**
+     * Ключ шифрования базы TDLib (под Windows): случайные 32 байта в {@code telegram/db.key}, сам файл зашифрован ключом
+     * Windows. Новой базе ключ даётся сразу; старая открытая база шифруется после запуска (ключ — в pending[0]);
+     * ключ не расшифровывается (база с другого компьютера) — база откладывается в сторону, вход заново.
+     */
+    private static byte[] databaseKey(Path dir, byte[][] pending) {
+        if (!dev.blockphone.fabric.client.storage.SecretBox.available()) {
+            return new byte[0];
+        }
+        Path keyFile = dir.resolve("db.key");
+        Path db = dir.resolve("db");
+        dev.blockphone.fabric.client.storage.SecretBox.Read read = dev.blockphone.fabric.client.storage.SecretBox.read(keyFile);
+        if (read.data() != null && read.data().length == 32) {
+            return read.data();
+        }
+        boolean dbExists;
+        try (var list = java.nio.file.Files.list(db)) {
+            dbExists = list.findAny().isPresent();
+        } catch (Exception e) {
+            dbExists = false;
+        }
+        byte[] key = new byte[32];
+        new java.security.SecureRandom().nextBytes(key);
+        if (read.unreadable() || read.data() != null) {
+            // Ключ есть, но не наш: прочитать базу нельзя — отложить её и ключ, начать заново.
+            dev.blockphone.fabric.client.storage.SecretBox.moveAside(keyFile);
+            if (dbExists) {
+                dev.blockphone.fabric.client.storage.SecretBox.moveAside(db);
+            }
+            dbExists = false;
+        }
+        if (dbExists) {
+            pending[0] = key;
+            return new byte[0];
+        }
+        try {
+            dev.blockphone.fabric.client.storage.SecretBox.write(keyFile, key);
+            return key;
+        } catch (Exception e) {
+            BlockPhoneFabric.LOGGER.warn("Cannot save the Telegram database key, the database stays unencrypted", e);
+            return new byte[0];
+        }
     }
 
     private static void withChat(long chatId, Consumer<TdApi.Chat> action) {
@@ -546,6 +638,15 @@ public final class Telegram {
         view.messageIds = new long[]{messageId};
         view.forceRead = true;
         send(view, null);
+    }
+
+    /** Переслать сообщения (альбом — всеми id) из одного чата в другой — как «Переслать» в Telegram. */
+    public static void forward(long fromChatId, long[] messageIds, long toChatId) {
+        TdApi.ForwardMessages request = new TdApi.ForwardMessages();
+        request.chatId = toChatId;
+        request.fromChatId = fromChatId;
+        request.messageIds = messageIds;
+        send(request, null);
     }
 
     public static void sendText(long chatId, String text) {
@@ -1078,6 +1179,73 @@ public final class Telegram {
     }
 
     /** Включить/выключить уведомления чата (как «Без звука» в Telegram). */
+    /** Можно ли писать в чат: WRITE — да; READ_ONLY — канал без прав админа или запрет в группе; JOIN — не участник. */
+    public enum Access { WRITE, READ_ONLY, JOIN }
+
+    /**
+     * Права на отправку в чат. Поля читаются по именам (у версий TDLib разный состав): статус участника супергруппы
+     * (создатель / админ с canPostMessages / участник / вышел), разрешения группы canSendBasicMessages (или canSendMessages).
+     * Не удалось разобрать — WRITE, как раньше.
+     */
+    public static Access access(TdApi.Chat chat) {
+        try {
+            TdApi.Supergroup sg = supergroup(chat);
+            Object status = sg != null ? field(sg, "status") : null;
+            String kind = status != null ? status.getClass().getSimpleName() : "";
+            if (kind.endsWith("Left") || kind.endsWith("Banned")) {
+                return Access.JOIN;
+            }
+            if (kind.endsWith("Creator")) {
+                return Access.WRITE;
+            }
+            if (sg != null && sg.isChannel) {
+                if (kind.endsWith("Administrator")) {
+                    Object rights = field(status, "rights");
+                    Object post = rights != null ? field(rights, "canPostMessages") : field(status, "canPostMessages");
+                    return Boolean.FALSE.equals(post) ? Access.READ_ONLY : Access.WRITE;
+                }
+                return Access.READ_ONLY;
+            }
+            if (kind.endsWith("Administrator")) {
+                return Access.WRITE;
+            }
+            if (kind.endsWith("Restricted")) {
+                Object perms = field(status, "permissions");
+                return perms != null && !canSend(perms) ? Access.READ_ONLY : Access.WRITE;
+            }
+            if (!(chat.type instanceof TdApi.ChatTypePrivate) && !(chat.type instanceof TdApi.ChatTypeSecret)) {
+                Object perms = field(chat, "permissions");
+                if (perms != null && !canSend(perms)) {
+                    return Access.READ_ONLY;
+                }
+            }
+        } catch (Throwable e) {
+            return Access.WRITE;
+        }
+        return Access.WRITE;
+    }
+
+    private static boolean canSend(Object permissions) throws ReflectiveOperationException {
+        Object v = field(permissions, "canSendBasicMessages");
+        if (v == null) {
+            v = field(permissions, "canSendMessages");
+        }
+        return !Boolean.FALSE.equals(v);
+    }
+
+    private static @Nullable Object field(Object target, String name) throws IllegalAccessException {
+        try {
+            return target.getClass().getField(name).get(target);
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+    }
+
+    /** Вступить в канал/группу (кнопка «Подписаться»). */
+    public static void join(long chatId) {
+        send(new TdApi.JoinChat(chatId), null);
+    }
+
     public static void setMuted(TdApi.Chat chat, boolean mute) {
         TdApi.ChatNotificationSettings n = chat.notificationSettings != null ? chat.notificationSettings : new TdApi.ChatNotificationSettings();
         n.useDefaultMuteFor = false;

@@ -1,0 +1,150 @@
+// Сборка мода под другую версию Minecraft из общих исходников модуля fabric (написан под 1.21.11).
+// Модуль версии задаёт до `apply from`:
+//   ext.portMinecraft  — версия Minecraft (для сборки)
+//   ext.portMinecraftDep — что писать в fabric.mod.json → depends.minecraft (одна версия или диапазон)
+//   ext.portFabricApi  — версия Fabric API
+//   ext.portRenames    — замены имён 1.21.11 → эта версия (порядок важен: длинные раньше); после них
+//                        отдельное слово Identifier → ResourceLocation, если ext.portResourceLocation = true
+//   ext.portRegex      — замены по регулярным выражениям (после обычных)
+//   ext.portOverlays   — папки src/ с файлами-«переходниками», которые подменяют одноимённые общие
+//                        (по порядку: более поздние перекрывают ранние; своя src/ модуля — последней)
+//   ext.portUnobfuscated — true для Minecraft 26.1+: игра без обфускации (плагин net.fabricmc.fabric-loom, без
+//                        mappings, обычные implementation вместо mod*), Java 25
+def unobfuscated = project.findProperty('portUnobfuscated') == true
+apply plugin: unobfuscated ? 'net.fabricmc.fabric-loom' : 'fabric-loom'
+
+if (unobfuscated) {
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 25
+    }
+}
+
+base {
+    archivesName = "${rootProject.mod_name}-fabric"
+}
+version = "${rootProject.mod_version}+mc${project.portMinecraft}"
+
+def shared = project(':fabric').file('src')
+def ported = layout.buildDirectory.dir('ported')
+def renames = project.portRenames
+def resourceLocation = project.findProperty('portResourceLocation') != false
+def overlays = (project.findProperty('portOverlays') ?: []) + [file('src')]
+// Замены по регулярным выражениям (после обычных): ext.portRegex = [/\bGuiGraphics\b/: 'GuiGraphicsExtractor', …]
+def regexRenames = project.findProperty('portRegex') ?: [:]
+
+def portTask = { String set ->
+    tasks.register("port${set.capitalize()}Sources", Sync) {
+        from("${shared}/${set}/java")
+        overlays.each { dir -> from(new File(dir, "${set}/java")) }
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        into(ported.map { it.dir("${set}/java") })
+        // Список замен — тоже вход задачи: изменили его — исходники переносятся заново.
+        inputs.property('renames', renames.toString() + regexRenames.toString() + resourceLocation)
+        filteringCharset = 'UTF-8'
+        filter { String line ->
+            String out = line
+            renames.each { from, to -> out = out.replace(from, to) }
+            regexRenames.each { from, to -> out = out.replaceAll(from, to) }
+            if (resourceLocation) {
+                // Тип Identifier в объявлениях и параметрах (после замены импорта).
+                out = out.replaceAll(/\bIdentifier\b/, 'ResourceLocation')
+            }
+            out
+        }
+    }
+}
+def portMain = portTask('main')
+def portClient = portTask('client')
+
+loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        "${rootProject.mod_id}" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java.srcDirs = [ported.map { it.dir('main/java') }]
+        resources.srcDirs = ["${shared}/main/resources"]
+    }
+    client {
+        java.srcDirs = [ported.map { it.dir('client/java') }]
+        resources.srcDirs = ["${shared}/client/resources"]
+    }
+}
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xmaxerrs', '5000']
+}
+compileJava.dependsOn portMain
+compileClientJava.dependsOn portClient
+
+repositories {
+    maven { url = 'https://api.modrinth.com/maven' }
+    maven { url = 'https://mvn.mchv.eu/repository/mchv/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.portMinecraft}"
+    if (unobfuscated) {
+        implementation "net.fabricmc:fabric-loader:${project.findProperty('portLoader') ?: rootProject.loader_version}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${project.portFabricApi}"
+    } else {
+        mappings loom.officialMojangMappings()
+        modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${project.portFabricApi}"
+    }
+
+    implementation project(':common')
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${rootProject.voicechat_api_version}"
+
+    include(implementation("com.h2database:h2:${rootProject.h2_version}") { transitive = false })
+    include(implementation("org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadb_version}") { transitive = false })
+    include(implementation("javazoom:jlayer:${rootProject.jlayer_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-java:${rootProject.tdlight_java_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-api:${rootProject.tdlight_api_version}") { transitive = false })
+    include(implementation("it.tdlight:tdlight-natives:${rootProject.tdlight_natives_version}:windows_amd64") { transitive = false })
+    include(implementation("org.reactivestreams:reactive-streams:1.0.4"))
+    include(implementation("io.atlassian.util.concurrent:atlassian-util-concurrent:4.0.1") { transitive = false })
+    include(implementation("org.jcodec:jcodec:${rootProject.jcodec_version}") { transitive = false })
+    for (String m : ["imageio-webp", "imageio-core", "imageio-metadata", "common-lang", "common-io", "common-image"]) {
+        String group = m.startsWith("common") ? "com.twelvemonkeys.common" : "com.twelvemonkeys.imageio"
+        include(implementation("${group}:${m}:${rootProject.twelvemonkeys_version}") { transitive = false })
+    }
+    include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
+    // Скрипты своих приложений: Lua (LuaJ, MIT) — песочница без доступа к Java, файлам и сети (см. ScriptRuntime).
+    include(implementation("org.luaj:luaj-jse:${rootProject.luaj_version}") { transitive = false })
+    // Браузер: JCEF (Chromium) — Java-часть; сам Chromium скачивается при первом запуске (jcefmaven, Maven Central).
+    include(implementation("me.friwi:jcefmaven:${rootProject.jcefmaven_version}") { transitive = false })
+    include(implementation("me.friwi:jcef-api:${rootProject.jcef_api_version}") { transitive = false })
+    // commons-compress/io/lang3/codec есть в самой игре (новее наших) — в jar их не кладём: своя старая копия
+    // подменяла игровую, и Minecraft 26.2 падал (NoSuchMethodError MutableObject.get).
+    compileOnly("org.apache.commons:commons-compress:${rootProject.commons_compress_version}") { transitive = false }
+    compileOnly("commons-io:commons-io:${rootProject.commons_io_version}") { transitive = false }
+    compileOnly("org.apache.commons:commons-lang3:${rootProject.commons_lang3_version}") { transitive = false }
+    compileOnly("commons-codec:commons-codec:${rootProject.commons_codec_version}") { transitive = false }
+}
+
+processResources {
+    def props = [
+            version          : project.version,
+            minecraft_version: project.portMinecraftDep,
+            loader_version   : project.findProperty('portLoader') ?: rootProject.loader_version
+    ]
+    inputs.properties props
+    filteringCharset 'UTF-8'
+    filesMatching('fabric.mod.json') {
+        expand props
+    }
+}
+
+jar {
+    from(project(':common').sourceSets.main.output)
+}

@@ -197,7 +197,7 @@ public final class LockApp extends PhoneApp {
             int bottom = listBottom();
             double max = Math.max(0, notices.size() * (CARD_H + 4) - (bottom - listTop()));
             scroll = Math.max(0, Math.min(max, scroll));
-            Scrollbar.report(listTop(), bottom, scroll, max, false, v -> scroll = v);
+            Scrollbar.report(listTop(), bottom, scroll, max, false, v -> scroll = v, () -> scroll);
             g.enableScissor(0, listTop(), w, bottom);
             int y = listTop() - (int) scroll;
             for (PhoneNotifications.Notice n : notices) {

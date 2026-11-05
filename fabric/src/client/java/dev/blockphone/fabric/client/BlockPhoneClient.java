@@ -8,7 +8,6 @@ import dev.blockphone.fabric.client.network.ClientNetwork;
 import dev.blockphone.fabric.client.phone.PhoneScreen;
 import dev.blockphone.fabric.client.music.MusicHud;
 import dev.blockphone.fabric.client.music.MusicPlayer;
-import dev.blockphone.fabric.client.music.spotify.Spotify;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -36,6 +35,12 @@ public final class BlockPhoneClient implements ClientModInitializer {
     public static KeyMapping musicPrevKey;
     /** Пульт музыки: открыт, пока клавиша зажата. */
     public static KeyMapping musicRemoteKey;
+    /** Повернуть телефон «на ходу» набок (по умолчанию K). */
+    public static KeyMapping rotateKey;
+    /** Включить/выключить телефон без рамки. */
+    public static KeyMapping framelessKey;
+    /** Режим джойстика: управлять игрой на ближайшем экране (телефон в руках набок). */
+    public static KeyMapping gameKey;
     private static boolean wasInWorld;
 
     @Override
@@ -46,6 +51,10 @@ public final class BlockPhoneClient implements ClientModInitializer {
         cameraKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.blockphone.camera", InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(), KEY_CATEGORY));
 
+        rotateKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.rotate", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, KEY_CATEGORY));
+        framelessKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.frameless", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_O, KEY_CATEGORY));
         compactKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.blockphone.compact", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_J, KEY_CATEGORY));
         cursorKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
@@ -55,51 +64,85 @@ public final class BlockPhoneClient implements ClientModInitializer {
         musicPrevKey = register("key.blockphone.music_prev");
         musicRemoteKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.blockphone.music_remote", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, KEY_CATEGORY));
+        gameKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.blockphone.gamepad", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, KEY_CATEGORY));
 
+        dev.blockphone.fabric.client.music.together.TogetherInvites.init();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Вышли из мира (на сервер или из одиночной игры) — музыка и голосовые замолкают. Событие отключения
             // с некоторыми модами (FastQuit и т. п.) не приходит, поэтому проверяем и здесь.
             boolean inWorld = client.level != null;
             if (wasInWorld && !inWorld) {
-                MusicPlayer.stop();
-                dev.blockphone.fabric.client.voice.VoiceMessages.stop();
+                dev.blockphone.fabric.client.network.ClientNetwork.forgetServer();
             }
             wasInWorld = inWorld;
             MusicPlayer.tick();
             dev.blockphone.fabric.client.clock.ClockService.tick();
+            dev.blockphone.fabric.client.music.together.ListenTogether.tick();
+            dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.tick();
             dev.blockphone.fabric.client.music.yandex.YandexMusic.tick();
-            Spotify.tick();
+            dev.blockphone.fabric.client.music.media.WindowsMedia.tick();
+            dev.blockphone.fabric.client.telegram.TelegramProxy.tick();
             dev.blockphone.fabric.client.music.lyrics.LyricsService.tick();
             passMovementThrough(client);
             dev.blockphone.fabric.client.phone.PhoneHolders.tick(client);
+            while (framelessKey.consumeClick()) {
+                if (dev.blockphone.fabric.client.phone.PhonePin.active()) {
+                    PhoneScreen.toggleFrameless();
+                }
+            }
+            while (rotateKey.consumeClick()) {
+                if (dev.blockphone.fabric.client.phone.PhonePin.active()) {
+                    PhoneScreen.toggleCompactLandscape();
+                }
+            }
             while (compactKey.consumeClick()) {
                 if (client.screen == null || client.screen instanceof PhoneScreen) {
                     dev.blockphone.fabric.client.phone.PhonePin.toggle(client);
                 }
             }
             dev.blockphone.fabric.client.phone.PhonePin.tick(client);
+            // Свёрнутое приложение, которое работает в фоне (хост сетевой игры), продолжает свой такт.
+            if (!(client.screen instanceof PhoneScreen) && !dev.blockphone.fabric.client.phone.PhonePin.active()) {
+                dev.blockphone.fabric.client.phone.PhoneApp bg = dev.blockphone.fabric.client.phone.PhoneState.current();
+                if (bg != null && bg.runsInBackground()) {
+                    bg.backgroundTick();
+                }
+            }
+            dev.blockphone.fabric.client.apps.custom.CustomApps.tickBackground(client);
+            dev.blockphone.fabric.client.apps.custom.CloudRelay.tick();
+            dev.blockphone.fabric.client.screens.Screens.tick();
+            while (gameKey.consumeClick()) {
+                dev.blockphone.fabric.client.screens.AppDisplays.toggleControl(client);
+            }
             dev.blockphone.fabric.client.music.MusicRemote.tick(client);
             dev.blockphone.fabric.client.voice.VoiceMessages.tick();
             dev.blockphone.fabric.client.voice.CallClient.tick();
             while (musicPlayKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() == null && dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.playing() != null) {
+                    dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.toggle(); // играет SoundCloud во вкладке «Музыки»
+                } else if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.toggle();
                 } else {
-                    Spotify.togglePlay();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.togglePlay();
                 }
             }
             while (musicNextKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() == null && dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.playing() != null) {
+                    dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.next(); // играет SoundCloud во вкладке «Музыки»
+                } else if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.next();
                 } else {
-                    Spotify.next();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.next();
                 }
             }
             while (musicPrevKey.consumeClick()) {
-                if (MusicPlayer.current() != null || Spotify.status() != Spotify.Status.CONNECTED) {
+                if (MusicPlayer.current() == null && dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.playing() != null) {
+                    dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.previous(); // играет SoundCloud во вкладке «Музыки»
+                } else if (MusicPlayer.current() != null || !dev.blockphone.fabric.client.music.media.WindowsMedia.supported()) {
                     MusicPlayer.previous();
                 } else {
-                    Spotify.previous();
+                    dev.blockphone.fabric.client.music.media.WindowsMedia.previous();
                 }
             }
             dev.blockphone.fabric.client.telegram.VideoNoteRecorder.tick();
@@ -136,11 +179,17 @@ public final class BlockPhoneClient implements ClientModInitializer {
         MusicHud.init();
         dev.blockphone.fabric.client.phone.PhonePin.init();
         dev.blockphone.fabric.client.music.lyrics.LyricsWorld.init();
+        dev.blockphone.fabric.client.screens.Screens.init();
         dev.blockphone.fabric.client.music.lyrics.LyricsHud.init();
         dev.blockphone.fabric.client.telegram.VideoNoteRecorder.init();
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             MusicPlayer.stop();
+            dev.blockphone.fabric.client.music.media.WindowsMedia.stop();
             dev.blockphone.fabric.client.telegram.Telegram.shutdown();
+            dev.blockphone.fabric.client.browser.WebEngine.shutdown();
+            dev.blockphone.fabric.client.apps.custom.CustomApps.saveAll();
+            dev.blockphone.fabric.client.music.together.ListenTogether.shutdown();
+            dev.blockphone.fabric.client.apps.custom.CloudRelay.shutdown();
         });
 
         ClientNetwork.init();

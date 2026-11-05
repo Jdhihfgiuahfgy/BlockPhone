@@ -87,6 +87,25 @@ public final class ImageRepository {
         }
     }
 
+    /** Копия картинки (пересылка): новый владелец, сразу прикреплена (kind, refId). 0 — исходной нет. */
+    public long copy(long id, UUID owner, int kind, long refId, long now) throws SQLException {
+        try (PreparedStatement ps = c().prepareStatement("INSERT INTO " + images
+                + " (owner, kind, ref_id, width, height, size, data, created_at) SELECT ?, ?, ?, width, height, size, data, ? FROM "
+                + images + " WHERE id = ?", Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, owner.toString());
+            ps.setInt(2, kind);
+            ps.setLong(3, refId);
+            ps.setLong(4, now);
+            ps.setLong(5, id);
+            if (ps.executeUpdate() == 0) {
+                return 0;
+            }
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                return keys.next() ? keys.getLong(1) : 0;
+            }
+        }
+    }
+
     public ImageMeta meta(long id) throws SQLException {
         try (PreparedStatement ps = c().prepareStatement("SELECT id, owner, kind, ref_id, width, height, size FROM " + images
                 + " WHERE id = ?")) {

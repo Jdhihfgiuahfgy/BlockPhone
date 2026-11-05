@@ -28,7 +28,7 @@ import org.jetbrains.annotations.Nullable;
 /** Клиентская сеть: приём пакетов сервера и состояние «есть ли BlockPhone на сервере». */
 public final class ClientNetwork {
     /** Приветствие сервера; {@code null}, если сервер без BlockPhone (или одиночная игра). */
-    private static @Nullable ServerHelloPacket serverHello;
+    private static volatile @Nullable ServerHelloPacket serverHello;
 
     public static void init() {
         ClientPlayNetworking.registerGlobalReceiver(RawPayload.TYPE, (payload, context) -> {
@@ -43,14 +43,27 @@ public final class ClientNetwork {
         });
 
         // Событие приходит из сетевого потока, а текстуры освобождать можно только в потоке рендера.
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(ClientNetwork::forgetServer));
+        // Новое подключение (сервер или одиночная игра) начинается «без BlockPhone», пока сервер не поздоровается.
+        // Раньше состояние прошлого сервера оставалось, если событие отключения не пришло (FastQuit и т. п.).
+        // INIT приходит до любых пакетов, а сброс встаёт в очередь потока рендера раньше приветствия.
+        ClientPlayConnectionEvents.INIT.register((handler, client) -> {
             serverHello = null;
-            // Вышли из мира — музыка и голосовые замолкают (то же — в BlockPhoneClient по исчезновению мира).
+            client.execute(ClientNetwork::forgetServer);
+        });
+    }
+
+    /** Вышли из мира или подключаемся заново: забыть сервер (вызывать в потоке рендера). */
+    public static void forgetServer() {
+        serverHello = null;
+        // Вышли из мира — музыка и голосовые замолкают (то же — в BlockPhoneClient по исчезновению мира).
+        if (dev.blockphone.fabric.client.config.PhoneSettings.get().musicStopOnLeave) {
             dev.blockphone.fabric.client.music.MusicPlayer.stop();
-            VoiceMessages.stop();
-            PhoneState.reset();
-            resetServerState();
-        }));
+        }
+        VoiceMessages.stop();
+        PhoneState.reset();
+        dev.blockphone.fabric.client.screens.Screens.closeAll();
+        resetServerState();
     }
 
     private static void handle(Packet packet) {
@@ -73,6 +86,8 @@ public final class ClientNetwork {
             SocialClient.onSession();
         } else if (group == SocialPackets.class) {
             SocialClient.handle(packet);
+        } else if (group == dev.blockphone.common.protocol.packet.ModerationPackets.class) {
+            dev.blockphone.fabric.client.social.ModerationClient.handle(packet);
         } else if (packet instanceof ImagePackets.UploadResult result) {
             ImageUploads.onResult(result);
         } else if (packet instanceof ImagePackets.ImageData data) {
@@ -92,13 +107,19 @@ public final class ClientNetwork {
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.CallResult result) {
             dev.blockphone.fabric.client.apps.custom.CustomApps.onCallResult(result);
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Relayed relayed) {
-            dev.blockphone.fabric.client.apps.custom.CustomApps.onRelayed(relayed);
+            if (relayed.appId().equals(dev.blockphone.fabric.client.screens.ScreenSync.APP)) {
+                dev.blockphone.fabric.client.screens.ScreenSync.onMessage(relayed.fromName(), relayed.payload());
+            } else {
+                dev.blockphone.fabric.client.apps.custom.CustomApps.onRelayed(relayed);
+            }
         } else if (packet instanceof dev.blockphone.common.protocol.packet.AppPackets.Players players) {
             dev.blockphone.fabric.client.apps.custom.CustomApps.onPlayers(players);
         } else if (packet instanceof PhoneUsePackets.State state) {
             PhoneHolders.handle(state);
         } else if (packet instanceof VoicePackets.CallState state) {
             CallClient.handle(state);
+        } else if (packet instanceof VoicePackets.CallAudioFrom audio) {
+            dev.blockphone.fabric.client.voice.CallAudio.onAudio(audio);
         } else {
             MessengerClient.handle(packet);
         }
@@ -107,7 +128,9 @@ public final class ClientNetwork {
     /** Всё, что относится к текущему серверу (чаты, лента, загрузки, сессия). */
     private static void resetServerState() {
         MessengerClient.reset();
+        dev.blockphone.fabric.client.screens.ScreenSync.reset();
         SocialClient.reset();
+        dev.blockphone.fabric.client.social.ModerationClient.reset();
         ImageUploads.reset();
         RemoteImages.reset();
         VoiceMessages.reset();

@@ -1,5 +1,7 @@
 plugins {
     id 'fabric-loom' version '1.19-SNAPSHOT' apply false
+    // Minecraft 26.1+ выходит без обфускации: для таких версий — этот id того же Loom (модули fabric-26.*).
+    id 'net.fabricmc.fabric-loom' version '1.19-SNAPSHOT' apply false
     id 'xyz.jpenilla.run-paper' version '3.1.0' apply false
 }
 

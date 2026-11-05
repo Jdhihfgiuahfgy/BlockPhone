@@ -1,0 +1,13 @@
+// Мод для Minecraft 26.2 (игра без обфускации, Java 25): замены 26.1 + свои, «переходники» 26.1 + свои в src/.
+apply from: rootProject.file('gradle/port-renames.gradle')
+
+ext.portMinecraft = '26.2'
+ext.portMinecraftDep = '>=26.2 <26.3'
+ext.portFabricApi = '0.161.0+26.2'
+ext.portLoader = '0.19.5'
+ext.portUnobfuscated = true
+ext.portResourceLocation = false
+ext.portRenames = RENAMES_26_2
+ext.portOverlays = [project(':fabric-26.1').file('src')]
+ext.portRegex = REGEX_26_2
+apply from: rootProject.file('gradle/fabric-port.gradle')

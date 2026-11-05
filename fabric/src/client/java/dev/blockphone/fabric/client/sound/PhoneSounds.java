@@ -48,8 +48,28 @@ public final class PhoneSounds {
 
     /** Идущий звук; stop() — прекратить. */
     public static final class Handle {
-        private volatile boolean stopped;
-        private volatile boolean finished;
+        volatile boolean stopped;
+        volatile boolean finished;
+        /** Объёмный звук: стерео-панорама −1 (слева) … 1 (справа) и «глухость» 0..1 (за стеной — низкие частоты). */
+        private volatile float pan;
+        private volatile float muffle;
+        private volatile boolean spatial;
+        private float pitch = 1;
+
+        /** Поменять панораму и глухость на ходу (источник движется). */
+        public void place(float pan, float muffle) {
+            this.pan = Math.max(-1, Math.min(1, pan));
+            this.muffle = Math.max(0, Math.min(1, muffle));
+        }
+
+        /** Громкость (множитель к начальной, 0..2) и высота тона (множитель, 0.25..4) на ходу — мотор, сирена (только микшер приложений). */
+        volatile float tuneVolume = 1;
+        volatile float tunePitch = 1;
+
+        public void tune(float volume, float pitch) {
+            this.tuneVolume = Math.max(0, Math.min(2, volume));
+            this.tunePitch = Math.max(0.25f, Math.min(4, pitch));
+        }
 
         public void stop() {
             stopped = true;
@@ -57,6 +77,14 @@ public final class PhoneSounds {
 
         public boolean playing() {
             return !stopped && !finished;
+        }
+
+        float pan() {
+            return pan;
+        }
+
+        float muffle() {
+            return muffle;
         }
     }
 
@@ -135,11 +163,32 @@ public final class PhoneSounds {
         return handle;
     }
 
+    /**
+     * Объёмный звук приложения: панорама (−1..1), глухость (0..1 — низкочастотный фильтр, «за стеной») и высота тона
+     * (0.5..2 — частота воспроизведения). Вывод всегда стерео.
+     */
+    public static Handle playFile(Path file, float volume, boolean loop, float pan, float muffle, float pitch) {
+        Handle handle = new Handle();
+        handle.spatial = true;
+        handle.place(pan, muffle);
+        handle.pitch = Math.max(0.5f, Math.min(2f, pitch));
+        start(handle, () -> Decoders.open(file), null, loop, volume);
+        return handle;
+    }
+
+    /**
+     * Звук своего приложения через общий микшер ({@link AppMixer}): один выход для всех звуков приложения, без
+     * перегрузки, с плавной остановкой. pan — NaN для обычного звука.
+     */
+    public static Handle playApp(Path file, float volume, boolean loop, float pan, float muffle, float pitch) {
+        return AppMixer.play(file, volume, loop, pan, muffle, pitch);
+    }
+
     private interface Opener {
         @Nullable AudioDecoder open() throws IOException;
     }
 
-    private static float gain(float extra) {
+    static float gain(float extra) {
         Minecraft mc = Minecraft.getInstance();
         float v = Math.max(0, Math.min(1, PhoneSettings.get().soundVolume / 100f));
         return v * mc.options.getSoundSourceVolume(SoundSource.MASTER) * Math.max(0, Math.min(1, extra));
@@ -193,6 +242,10 @@ public final class PhoneSounds {
     }
 
     private static void playDecoder(Handle handle, AudioDecoder decoder, float extra, boolean loop) throws Exception {
+        if (handle.spatial) {
+            playSpatial(handle, decoder, extra, loop);
+            return;
+        }
         int rate = decoder.sampleRate();
         int channels = decoder.channels();
         long maxSamples = loop ? Long.MAX_VALUE : (long) rate * channels * MAX_ONESHOT_MS / 1000;
@@ -209,6 +262,47 @@ public final class PhoneSounds {
                     bytes[2 * i + 1] = (byte) (v >> 8);
                 }
                 line.write(bytes, 0, n * 2);
+                played += n;
+            }
+            finish(line, handle);
+        }
+    }
+
+    /** Стерео с панорамой (равная мощность), низкочастотным фильтром по глухости и сменой частоты для высоты тона. */
+    private static void playSpatial(Handle handle, AudioDecoder decoder, float extra, boolean loop) throws Exception {
+        int rate = decoder.sampleRate();
+        int channels = Math.max(1, decoder.channels());
+        long maxSamples = loop ? Long.MAX_VALUE : (long) rate * channels * MAX_ONESHOT_MS / 1000;
+        long played = 0;
+        int outRate = Math.round(rate * handle.pitch);
+        try (SourceDataLine line = open(outRate, 2)) {
+            short[] buf = new short[4096];
+            byte[] bytes = new byte[4096 * 4];
+            float lowL = 0, lowR = 0;
+            int n;
+            while (!handle.stopped && played < maxSamples && (n = decoder.read(buf)) != -1) {
+                float g = gain(extra);
+                double angle = (handle.pan + 1) * Math.PI / 4;
+                float gl = (float) Math.cos(angle) * 1.41f * g;
+                float gr = (float) Math.sin(angle) * 1.41f * g;
+                float m = handle.muffle;
+                // Один полюс: при глухости 1 — срез около 600 Гц, звук ещё и тише.
+                float a = 1 - m * 0.92f;
+                float quiet = 1 - m * 0.35f;
+                int frames = n / channels;
+                for (int f = 0; f < frames; f++) {
+                    float l = buf[f * channels];
+                    float r = channels > 1 ? buf[f * channels + 1] : l;
+                    lowL += (l - lowL) * a;
+                    lowR += (r - lowR) * a;
+                    int vl = Math.max(-32768, Math.min(32767, Math.round(lowL * gl * quiet)));
+                    int vr = Math.max(-32768, Math.min(32767, Math.round(lowR * gr * quiet)));
+                    bytes[4 * f] = (byte) vl;
+                    bytes[4 * f + 1] = (byte) (vl >> 8);
+                    bytes[4 * f + 2] = (byte) vr;
+                    bytes[4 * f + 3] = (byte) (vr >> 8);
+                }
+                line.write(bytes, 0, frames * 4);
                 played += n;
             }
             finish(line, handle);

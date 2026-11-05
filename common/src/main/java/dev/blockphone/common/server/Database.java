@@ -239,6 +239,9 @@ public final class Database implements AutoCloseable {
                     + "PRIMARY KEY (uuid, pack_id))");
         }
         column("messages", "sticker_id BIGINT NOT NULL DEFAULT 0");
+        // Пересланные сообщения и посты в чатах.
+        column("messages", "forwarded_from VARCHAR(64) NOT NULL DEFAULT ''");
+        column("messages", "post_id BIGINT NOT NULL DEFAULT 0");
         index("idx_stickers_pack", "stickers", "pack_id");
         index("idx_sticker_packs_owner", "sticker_packs", "owner");
         // Оформление личной страницы.
@@ -247,6 +250,8 @@ public final class Database implements AutoCloseable {
         column("profiles", "avatar_bg INT NOT NULL DEFAULT 0");
         column("profiles", "banner_style INT NOT NULL DEFAULT 0");
         column("profiles", "banner_image BIGINT NOT NULL DEFAULT 0");
+        column("profiles", "avatar_image BIGINT NOT NULL DEFAULT 0");
+        column("publics", "avatar_image BIGINT NOT NULL DEFAULT 0");
         index("idx_follows_target", "follows", "target");
         index("idx_publics_title", "publics", "title_lower");
         index("idx_subscriptions_uuid", "subscriptions", "uuid");
@@ -254,6 +259,16 @@ public final class Database implements AutoCloseable {
         index("idx_posts_author", "posts", "author, id");
         index("idx_comments_post", "comments", "post_id, id");
         index("idx_reports_open", "reports", "resolution, id");
+        // Панель модерации: бан в телефоне и причина мута.
+        try (Statement st = connection().createStatement()) {
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS " + table("bans") + " ("
+                    + "uuid CHAR(36) NOT NULL PRIMARY KEY,"
+                    + "until_at BIGINT NOT NULL,"
+                    + "reason VARCHAR(255) NOT NULL,"
+                    + "by_uuid CHAR(36) NOT NULL,"
+                    + "created_at BIGINT NOT NULL)");
+        }
+        column("mutes", "reason VARCHAR(255) NOT NULL DEFAULT ''");
     }
 
     /** ALTER TABLE ... ADD COLUMN без IF NOT EXISTS (его нет в MySQL): ошибку «уже есть» игнорируем. */

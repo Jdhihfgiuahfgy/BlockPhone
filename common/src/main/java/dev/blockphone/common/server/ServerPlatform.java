@@ -45,6 +45,38 @@ public interface ServerPlatform {
         task.run();
     }
 
+    /** Где игрок: мир и координаты (для громкой связи в звонке). */
+    record Position(String world, double x, double y, double z) {
+        public double distanceSq(Position other) {
+            if (!world.equals(other.world)) {
+                return Double.MAX_VALUE;
+            }
+            double dx = x - other.x;
+            double dy = y - other.y;
+            double dz = z - other.z;
+            return dx * dx + dy * dy + dz * dz;
+        }
+    }
+
+    /** Позиции игроков онлайн (вызывается в главном потоке). Пусто — платформа не знает (прокси). */
+    default java.util.Map<UUID, Position> positions() {
+        return java.util.Map.of();
+    }
+
+    /** Игроки онлайн (все, не только с модом) — кому показывать лог сообщений. По умолчанию — никто. */
+    default java.util.Collection<UUID> onlinePlayers() {
+        return java.util.List.of();
+    }
+
+    /** Сообщение в чат игры (текст с цветовыми кодами §). Вызывается в главном потоке ({@link #runOnMain}). */
+    default void sendChat(UUID player, String text) {
+    }
+
+    /** Команда от имени консоли (бан в телефоне → команда сервера). Вызывается в главном потоке. */
+    default boolean runConsoleCommand(String command) {
+        return false;
+    }
+
     void info(String message);
 
     void warn(String message, Throwable error);

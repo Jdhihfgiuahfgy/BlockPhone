@@ -44,6 +44,15 @@ public final class StoreApp extends PhoneApp {
     private final TextArea search = new TextArea(false, 0.75f);
     private final TextArea sourceInput = new TextArea(false, 0.7f);
     private final TextArea reviewInput = new TextArea(true, 0.65f);
+    /** Чейнджлог при публикации («что нового в этой версии»). */
+    private final TextArea changelogInput = new TextArea(true, 0.65f);
+    /** Своё приложение, которое сейчас публикуется (страница с чейнджлогом), или null. */
+    private @Nullable AppDefinition publishing;
+    /** Фильтр каталога по категории ("all" — все) и сортировка (name, rating, updated, size). */
+    private String category = "all";
+    private String sort = "name";
+    private static final List<String> SORTS = List.of("name", "rating", "updated", "size");
+    private @Nullable dev.blockphone.fabric.client.ui.PopupMenu menu;
     /** Выбранная оценка в форме отзыва (0 — не выбрана). */
     private int myStars;
     private @Nullable String reviewFor;
@@ -61,16 +70,18 @@ public final class StoreApp extends PhoneApp {
         sourceInput.setMaxLength(300);
         reviewInput.setPlaceholder(PhoneLang.tr("store.review_placeholder"));
         reviewInput.setMaxLength(500);
+        changelogInput.setPlaceholder(PhoneLang.tr("store.changelog_placeholder"));
+        changelogInput.setMaxLength(AppStore.MAX_CHANGELOG);
     }
 
     @Override
     public String title() {
-        return detail != null ? detail.name() : PhoneLang.tr("app.store");
+        return publishing != null ? PhoneLang.tr("store.publish") : detail != null ? detail.name() : PhoneLang.tr("app.store");
     }
 
     @Override
     public String headerAction() {
-        return detail == null ? "⟳" : null;
+        return detail == null && publishing == null ? "⟳" : null;
     }
 
     @Override
@@ -88,6 +99,15 @@ public final class StoreApp extends PhoneApp {
 
     @Override
     public boolean onBack() {
+        if (menu != null && menu.isOpen()) {
+            menu.close();
+            return true;
+        }
+        if (publishing != null) {
+            publishing = null;
+            changelogInput.setFocused(false);
+            return true;
+        }
         if (detail != null) {
             detail = null;
             reviewInput.setFocused(false);
@@ -99,7 +119,7 @@ public final class StoreApp extends PhoneApp {
 
     @Override
     public boolean capturesKeyboard() {
-        return search.isFocused() || sourceInput.isFocused() || reviewInput.isFocused();
+        return search.isFocused() || sourceInput.isFocused() || reviewInput.isFocused() || changelogInput.isFocused();
     }
 
     private void toast(String text) {
@@ -114,7 +134,9 @@ public final class StoreApp extends PhoneApp {
         hits.clear();
         int w = contentWidth();
         int h = contentHeight();
-        if (detail != null) {
+        if (publishing != null) {
+            renderPublish(g, publishing, mouseX, mouseY, w, h);
+        } else if (detail != null) {
             renderDetail(g, detail, mouseX, mouseY, w, h);
         } else {
             int listH = h - TABS_H;
@@ -130,6 +152,9 @@ public final class StoreApp extends PhoneApp {
             int ty = h - TABS_H - th - 6;
             PhoneDraw.rawRoundedRect(g, 8, ty, w - 8, ty + th, 4, 0xF0202838);
             PhoneDraw.wrapped(g, notice, 14, ty + 4, w - 28, 0xFFFFFFFF, 0.7f, false);
+        }
+        if (menu != null) {
+            menu.render(g, mouseX, mouseY);
         }
     }
 
@@ -157,7 +182,15 @@ public final class StoreApp extends PhoneApp {
     private void renderCatalog(GuiGraphics g, int mx, int my, int w, int h) {
         search.setBounds(6, 4, w - 12, 16);
         search.render(g, mx, my);
-        int top = 24;
+        // Категория и сортировка — «таблетки» под поиском, нажатие — меню.
+        String catLabel = "▦ " + PhoneLang.tr("store.cat." + category);
+        String sortLabel = "⇅ " + PhoneLang.tr("store.sort." + sort);
+        int cw = (w - 16) / 2;
+        pill(g, 6, 23, cw, catLabel, !category.equals("all"), mx, my);
+        hits.add(new Hit(6, 23, cw, 13, () -> categoryMenu(6, 37)));
+        pill(g, 10 + cw, 23, cw, sortLabel, !sort.equals("name"), mx, my);
+        hits.add(new Hit(10 + cw, 23, cw, 13, () -> sortMenu(10 + cw + cw, 37)));
+        int top = 40;
         if (AppStore.state() == AppStore.State.LOADING && AppStore.entries().isEmpty()) {
             PhoneDraw.centeredText(g, PhoneLang.tr("messenger.loading"), w / 2f, top + 30, PhoneTheme.secondaryText(), 0.75f, false);
             return;
@@ -165,18 +198,22 @@ public final class StoreApp extends PhoneApp {
         String q = search.text().strip().toLowerCase(Locale.ROOT);
         List<AppStore.Entry> list = new ArrayList<>();
         for (AppStore.Entry e : AppStore.entries()) {
+            if (!category.equals("all") && !category.equals(e.category())) {
+                continue;
+            }
             if (q.isEmpty() || e.name().toLowerCase(Locale.ROOT).contains(q) || e.description().toLowerCase(Locale.ROOT).contains(q)
-                    || e.author().toLowerCase(Locale.ROOT).contains(q)) {
+                    || e.author().toLowerCase(Locale.ROOT).contains(q) || e.id().contains(q) || (!e.uid().isEmpty() && e.uid().equals(q))) {
                 list.add(e);
             }
         }
+        list.sort(comparator());
         if (list.isEmpty()) {
             String text = !AppStore.errors().isEmpty() ? PhoneLang.tr("store.error", AppStore.errors().get(0)) : PhoneLang.tr("store.empty");
             PhoneDraw.wrapped(g, text, 12, top + 20, w - 24, PhoneTheme.secondaryText(), 0.65f, true);
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, list.size() * ROW_H - (h - top)), scroll));
-        Scrollbar.report(top, h, scroll, Math.max(0, list.size() * ROW_H - (h - top)), false, v -> scroll = v);
+        Scrollbar.report(top, h, scroll, Math.max(0, list.size() * ROW_H - (h - top)), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, top, w, h);
         for (int i = 0; i < list.size(); i++) {
             int y = top + i * ROW_H - (int) scroll;
@@ -187,6 +224,53 @@ public final class StoreApp extends PhoneApp {
             row(g, e, y, w, mx, my, top, h);
         }
         g.disableScissor();
+    }
+
+    /** Порядок каталога по выбранной сортировке (при равенстве — по названию). */
+    private java.util.Comparator<AppStore.Entry> comparator() {
+        java.util.Comparator<AppStore.Entry> byName = java.util.Comparator.comparing(e -> e.name().toLowerCase(Locale.ROOT));
+        return switch (sort) {
+            case "rating" -> java.util.Comparator.<AppStore.Entry>comparingDouble(e -> {
+                AppStore.Rating r = AppStore.rating(e.id());
+                return r != null && r.count() > 0 ? -r.average() : 0;
+            }).thenComparing(byName);
+            case "updated" -> java.util.Comparator.<AppStore.Entry>comparingLong(e -> -e.updated()).thenComparing(byName);
+            case "size" -> java.util.Comparator.<AppStore.Entry>comparingLong(AppStore.Entry::size).thenComparing(byName);
+            default -> byName;
+        };
+    }
+
+    private void pill(GuiGraphics g, int x, int y, int w, String label, boolean on, int mx, int my) {
+        boolean hover = PhoneDraw.inside(mx, my, x, y, w, 13);
+        PhoneDraw.rawRoundedRect(g, x, y, x + w, y + 13, 6, on ? PhoneTheme.accentTint(0x40) : hover ? PhoneTheme.cardHover() : PhoneTheme.field());
+        PhoneDraw.centeredText(g, PhoneDraw.ellipsize(label + " ▾", w - 8, 0.6f), x + w / 2f, y + 3,
+                on ? PhoneTheme.accent() : PhoneTheme.text(), 0.6f, false);
+    }
+
+    private void categoryMenu(int x, int y) {
+        menu = new dev.blockphone.fabric.client.ui.PopupMenu();
+        menu.add(PhoneLang.tr("store.cat.all"), () -> setCategory("all"));
+        for (String c : AppDefinition.CATEGORIES) {
+            long count = AppStore.entries().stream().filter(e -> e.category().equals(c)).count();
+            menu.add(PhoneLang.tr("store.cat." + c) + (count > 0 ? "  " + count : ""), () -> setCategory(c));
+        }
+        menu.show(x + 70, y, contentWidth(), contentHeight());
+    }
+
+    private void setCategory(String c) {
+        category = c;
+        scroll = 0;
+    }
+
+    private void sortMenu(int x, int y) {
+        menu = new dev.blockphone.fabric.client.ui.PopupMenu();
+        for (String s : SORTS) {
+            menu.add((s.equals(sort) ? "✓ " : "   ") + PhoneLang.tr("store.sort." + s), () -> {
+                sort = s;
+                scroll = 0;
+            });
+        }
+        menu.show(x, y, contentWidth(), contentHeight());
     }
 
     private void row(GuiGraphics g, AppStore.Entry e, int y, int w, int mx, int my, int top, int bottom) {
@@ -204,13 +288,14 @@ public final class StoreApp extends PhoneApp {
         PhoneDraw.text(g, PhoneDraw.ellipsize(e.author().isEmpty() ? e.catalog() : e.author(), tw, 0.6f), tx, cy + 16,
                 PhoneTheme.secondaryText(), 0.6f, false);
         meta(g, e, tx, cy + 27, tw, 0.55f);
-        actionButton(g, e, bx, by, ROW_BTN, 16, mx, my, visible);
+        // Клики проверяются с конца: строку — раньше кнопки, иначе «Установить» открывала страницу приложения.
         if (visible) {
             hits.add(new Hit(6, Math.max(top, cy), w - 12, ch, () -> {
                 detail = e;
                 scroll = 0;
             }));
         }
+        actionButton(g, e, bx, by, ROW_BTN, 16, mx, my, visible && by >= top && by + 16 <= bottom);
     }
 
     /** Строка «★ 4.6 · 1.2 MB · v1.0». */
@@ -346,10 +431,31 @@ public final class StoreApp extends PhoneApp {
         }
         y += 28;
 
+        if (!e.changelog().isEmpty()) {
+            // «В последнем обновлении»: версия, дата и текст автора.
+            y = section(g, PhoneLang.tr("store.changelog"), y);
+            String when = e.updated() > 0 ? "  ·  " + java.time.Instant.ofEpochMilli(e.updated())
+                    .atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("d.MM.yyyy")) : "";
+            int ch = PhoneDraw.wrappedHeight(e.changelog(), w - 32, 0.65f) + 20;
+            PhoneDraw.card(g, 8, y, w - 8, y + ch, false);
+            PhoneDraw.text(g, PhoneLang.tr("store.version_short", e.version()) + when, 14, y + 5, PhoneTheme.accent(), 0.6f, false);
+            PhoneDraw.wrapped(g, e.changelog(), 14, y + 15, w - 32, PhoneTheme.text(), 0.65f, false);
+            y += ch + 10;
+        }
         if (!e.description().isEmpty()) {
             y = section(g, PhoneLang.tr("store.about"), y);
             y += PhoneDraw.wrapped(g, e.description(), 10, y, w - 20, PhoneTheme.text(), 0.7f, false) + 10;
         }
+        y = section(g, PhoneLang.tr("store.category"), y);
+        String catText = PhoneLang.tr("store.cat." + e.category());
+        int catW = (int) PhoneDraw.width(catText, 0.6f) + 12;
+        PhoneDraw.rawRoundedRect(g, 10, y, 10 + catW, y + 13, 6, PhoneTheme.accentTint(0x30));
+        PhoneDraw.text(g, catText, 16, y + 3, PhoneTheme.accent(), 0.6f, false);
+        hits.add(new Hit(10, y, catW, 13, () -> {
+            setCategory(e.category());
+            detail = null;
+        }));
+        y += 22;
         y = section(g, PhoneLang.tr("store.permissions"), y);
         if (e.permissions().isEmpty()) {
             y += PhoneDraw.wrapped(g, PhoneLang.tr("store.no_permissions"), 10, y, w - 20, PhoneTheme.text(), 0.65f, false) + 10;
@@ -374,9 +480,20 @@ public final class StoreApp extends PhoneApp {
         }
         y += 4;
         y += PhoneDraw.wrapped(g, PhoneLang.tr("store.source", e.catalog()), 10, y, w - 20, PhoneTheme.secondaryText(), 0.5f, false);
+        // Уникальный id: им админ сервера разрешает или блокирует приложение (нажатие — копировать).
+        String uidText = e.uid().isEmpty() ? "id: " + e.id() : "uid:" + e.uid();
+        boolean uidHover = PhoneDraw.inside(mx, my, 8, y + 2, w - 16, 12);
+        PhoneDraw.text(g, PhoneDraw.ellipsize(PhoneLang.tr("store.uid", uidText), w - 20, 0.5f), 10, y + 4,
+                uidHover ? PhoneTheme.accent() : PhoneTheme.secondaryText(), 0.5f, false);
+        String copy = e.uid().isEmpty() ? e.id() : "uid:" + e.uid();
+        hits.add(new Hit(8, y + 2, w - 16, 12, () -> {
+            net.minecraft.client.Minecraft.getInstance().keyboardHandler.setClipboard(copy);
+            toast(PhoneLang.tr("store.uid_copied"));
+        }));
+        y += 14;
         double max = Math.max(0, y + (int) scroll + 12 - h);
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     /** Заголовок раздела страницы приложения; возвращает y под ним. */
@@ -508,20 +625,55 @@ public final class StoreApp extends PhoneApp {
         }
     }
 
-    /** Отправить своё приложение в официальный каталог (на проверку владельцу каталога). */
+    /** Отправить своё приложение в официальный каталог: сначала страница «что нового» (чейнджлог). */
     private void askPublish(AppDefinition app) {
-        if (phone == null) {
-            return;
-        }
+        publishing = app;
+        changelogInput.setText("");
+        changelogInput.setFocused(true);
+        scroll = 0;
+    }
+
+    /** Страница публикации: что уходит, поле «что нового в этой версии», «Отправить». */
+    private void renderPublish(GuiGraphics g, AppDefinition app, int mx, int my, int w, int h) {
         String name = CustomApps.name(app);
-        phone.showDialog(new PhoneDialog(PhoneLang.tr("store.publish"), PhoneLang.tr("store.publish_confirm", name, app.version()),
-                PhoneLang.tr("store.publish_send"), false, () -> {
-                    toast(PhoneLang.tr("store.publishing", name));
-                    AppStore.publish(app.id(), error -> toast(error == null ? PhoneLang.tr("store.published", name)
-                            : error.equals("not_configured") ? PhoneLang.tr("store.publish_off")
-                            : error.equals("downloaded") ? PhoneLang.tr("store.publish_not_author")
-                            : PhoneLang.tr("store.publish_failed", error)));
-                }));
+        int y = 8;
+        AppRegistry.Entry entry = AppRegistry.get(CustomApps.PREFIX + app.id());
+        if (entry != null) {
+            entry.drawIcon(g, 10, y, 28);
+        }
+        PhoneDraw.text(g, PhoneDraw.ellipsize(name, w - 52, 0.85f), 44, y + 4, PhoneTheme.text(), 0.85f, false);
+        PhoneDraw.text(g, PhoneDraw.ellipsize("v" + app.version() + " · " + PhoneLang.tr("store.cat." + app.category()), w - 52, 0.6f),
+                44, y + 16, PhoneTheme.secondaryText(), 0.6f, false);
+        y += 38;
+        y += PhoneDraw.wrapped(g, PhoneLang.tr("store.publish_confirm", name, app.version()), 10, y, w - 20, PhoneTheme.secondaryText(),
+                0.6f, false) + 8;
+        y = section(g, PhoneLang.tr("store.changelog_title"), y);
+        changelogInput.setBounds(8, y, w - 16, 70);
+        changelogInput.render(g, mx, my);
+        y += 74;
+        PhoneDraw.rightText(g, changelogInput.text().length() + "/" + AppStore.MAX_CHANGELOG, w - 10, y, PhoneTheme.secondaryText(), 0.5f);
+        y += 10;
+        int bw = (w - 22) / 2;
+        PhoneDraw.button(g, 8, y, bw, 18, PhoneLang.tr("dialog.cancel"), mx, my, PhoneDraw.ButtonStyle.NORMAL);
+        hits.add(new Hit(8, y, bw, 18, () -> publishing = null));
+        boolean busy = AppStore.busy(app.id()) != null;
+        PhoneDraw.button(g, 14 + bw, y, bw, 18, PhoneLang.tr("store.publish_send"), mx, my,
+                busy ? PhoneDraw.ButtonStyle.NORMAL : PhoneDraw.ButtonStyle.PRIMARY);
+        if (!busy) {
+            hits.add(new Hit(14 + bw, y, bw, 18, () -> sendPublish(app)));
+        }
+    }
+
+    private void sendPublish(AppDefinition app) {
+        String name = CustomApps.name(app);
+        String notes = changelogInput.text().strip();
+        changelogInput.setFocused(false);
+        publishing = null;
+        toast(PhoneLang.tr("store.publishing", name));
+        AppStore.publish(app.id(), notes, error -> toast(error == null ? PhoneLang.tr("store.published", name)
+                : error.equals("not_configured") ? PhoneLang.tr("store.publish_off")
+                : error.equals("downloaded") ? PhoneLang.tr("store.publish_not_author")
+                : PhoneLang.tr("store.publish_failed", error)));
     }
 
     /** Установленные из папки apps (в т. ч. не из магазина). */
@@ -532,7 +684,7 @@ public final class StoreApp extends PhoneApp {
             return;
         }
         scroll = Math.max(0, Math.min(Math.max(0, apps.size() * ROW_H - h), scroll));
-        Scrollbar.report(0, h, scroll, Math.max(0, apps.size() * ROW_H - h), false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, Math.max(0, apps.size() * ROW_H - h), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, 0, w, h);
         for (int i = 0; i < apps.size(); i++) {
             AppDefinition app = apps.get(i);
@@ -631,10 +783,14 @@ public final class StoreApp extends PhoneApp {
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         // Поле ввода — только своей вкладки (иначе невидимое поле поиска «съедало» клики по кнопкам «Установленных»).
-        TextArea active = detail != null ? (AppStore.installed(detail.id()) != null && AppStore.reviewable(detail) ? reviewInput : null)
+        if (menu != null && menu.isOpen()) {
+            return menu.mouseClicked(x, y);
+        }
+        TextArea active = publishing != null ? changelogInput
+                : detail != null ? (AppStore.installed(detail.id()) != null && AppStore.reviewable(detail) ? reviewInput : null)
                 : tab == Tab.CATALOG ? search : tab == Tab.SOURCES ? sourceInput : null;
         boolean field = false;
-        for (TextArea t : new TextArea[]{search, sourceInput, reviewInput}) {
+        for (TextArea t : new TextArea[]{search, sourceInput, reviewInput, changelogInput}) {
             if (t == active && t.mouseClicked(x, y, button)) {
                 field = true;
             } else {
@@ -672,6 +828,9 @@ public final class StoreApp extends PhoneApp {
         if (reviewInput.isFocused()) {
             return reviewInput.keyPressed(event);
         }
+        if (changelogInput.isFocused()) {
+            return changelogInput.keyPressed(event);
+        }
         return sourceInput.isFocused() && sourceInput.keyPressed(event);
     }
 
@@ -683,6 +842,9 @@ public final class StoreApp extends PhoneApp {
         }
         if (reviewInput.isFocused()) {
             return reviewInput.charTyped(event);
+        }
+        if (changelogInput.isFocused()) {
+            return changelogInput.charTyped(event);
         }
         return sourceInput.isFocused() && sourceInput.charTyped(event);
     }

@@ -15,4 +15,4 @@ plugins {
 
 rootProject.name = 'BlockPhone'
 
-include 'common', 'fabric', 'fabric-1.21.10', 'paper', 'velocity', 'bungee'
+include 'common', 'fabric', 'fabric-1.21.10', 'fabric-1.21.9', 'fabric-26.1', 'fabric-26.2', 'paper', 'velocity', 'bungee'

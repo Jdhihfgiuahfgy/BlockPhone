@@ -58,6 +58,15 @@ dependencies {
     include(implementation("io.github.jaredmdobson:concentus:${rootProject.concentus_version}") { transitive = false })
     // Скрипты своих приложений: Lua (LuaJ, MIT) — песочница без доступа к Java, файлам и сети (см. ScriptRuntime).
     include(implementation("org.luaj:luaj-jse:${rootProject.luaj_version}") { transitive = false })
+    // Браузер: JCEF (Chromium) — Java-часть; сам Chromium скачивается при первом запуске (jcefmaven, Maven Central).
+    include(implementation("me.friwi:jcefmaven:${rootProject.jcefmaven_version}") { transitive = false })
+    include(implementation("me.friwi:jcef-api:${rootProject.jcef_api_version}") { transitive = false })
+    // commons-compress/io/lang3/codec есть в самой игре (новее наших) — в jar их не кладём: своя старая копия
+    // подменяла игровую, и Minecraft 26.2 падал (NoSuchMethodError MutableObject.get).
+    compileOnly("org.apache.commons:commons-compress:${rootProject.commons_compress_version}") { transitive = false }
+    compileOnly("commons-io:commons-io:${rootProject.commons_io_version}") { transitive = false }
+    compileOnly("org.apache.commons:commons-lang3:${rootProject.commons_lang3_version}") { transitive = false }
+    compileOnly("commons-codec:commons-codec:${rootProject.commons_codec_version}") { transitive = false }
 
     testImplementation "org.junit.jupiter:junit-jupiter:${rootProject.junit_version}"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"

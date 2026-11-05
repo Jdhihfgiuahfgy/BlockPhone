@@ -2,7 +2,6 @@ package dev.blockphone.fabric.client.apps.music;
 
 import dev.blockphone.fabric.client.music.MusicPlayer;
 import dev.blockphone.fabric.client.music.Track;
-import dev.blockphone.fabric.client.music.spotify.Spotify;
 import dev.blockphone.fabric.client.phone.PhoneApp;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -14,14 +13,14 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * Музыка: вкладки «Моя музыка» (файлы из blockphone/music), «Яндекс» (Моя волна, Мне нравится, поиск) и «Spotify»
- * (пульт). Над вкладками — мини-плеер текущего трека (клик — полный плеер). Играет и с закрытым телефоном.
+ * Музыка: вкладки «Моя музыка» (файлы из blockphone/music), «Яндекс» (Моя волна, Мне нравится, поиск) и «На ПК»
+ * (пульт плеера компьютера — Spotify, браузер и др. через системные медиа Windows). Над вкладками — мини-плеер текущего трека (клик — полный плеер). Играет и с закрытым телефоном.
  */
 public final class MusicApp extends PhoneApp {
     static final int TAB_H = 18;
     static final int MINI_H = 26;
 
-    public enum Tab { LOCAL, YANDEX, SPOTIFY }
+    public enum Tab { LOCAL, YANDEX, SOUNDCLOUD, MEDIA, TOGETHER }
 
     private final Deque<MusicView> stack = new ArrayDeque<>();
     private Tab tab = Tab.LOCAL;
@@ -42,7 +41,9 @@ public final class MusicApp extends PhoneApp {
         MusicView root = switch (next) {
             case LOCAL -> new LocalView(this);
             case YANDEX -> new YandexView(this);
-            case SPOTIFY -> new SpotifyView(this);
+            case SOUNDCLOUD -> new SoundCloudView(this);
+            case MEDIA -> new MediaView(this);
+            case TOGETHER -> new TogetherView(this);
         };
         stack.push(root);
         root.onShown();
@@ -80,7 +81,7 @@ public final class MusicApp extends PhoneApp {
     }
 
     private boolean miniVisible(MusicView view) {
-        return view.root() && MusicPlayer.current() != null && tab != Tab.SPOTIFY;
+        return view.root() && MusicPlayer.current() != null && tab != Tab.MEDIA && tab != Tab.TOGETHER && tab != Tab.SOUNDCLOUD;
     }
 
     int viewHeight(MusicView view) {
@@ -119,8 +120,8 @@ public final class MusicApp extends PhoneApp {
 
     @Override
     public void tick() {
-        if (tab == Tab.SPOTIFY) {
-            Spotify.watch();
+        if (tab == Tab.MEDIA) {
+            dev.blockphone.fabric.client.music.media.WindowsMedia.watch();
         }
     }
 
@@ -139,7 +140,7 @@ public final class MusicApp extends PhoneApp {
         }
         String error = MusicPlayer.recentError();
         if (error == null) {
-            error = Spotify.recentError();
+            error = dev.blockphone.fabric.client.music.media.WindowsMedia.recentError();
         }
         if (error != null) {
             int w = contentWidth();
@@ -148,6 +149,53 @@ public final class MusicApp extends PhoneApp {
             PhoneDraw.roundedRect(g, 8, y, w - 8, y + h, 4, 0xE0B8403A);
             PhoneDraw.wrapped(g, error, 14, y + 5, w - 28, 0xFFFFFFFF, 0.75f, true);
         }
+        if (menu != null && menu.isOpen()) {
+            menu.render(g, mouseX, mouseY);
+        }
+    }
+
+    private dev.blockphone.fabric.client.ui.PopupMenu menu;
+    private int menuX;
+    private int menuY;
+
+    /** Для DevShots: экраны Яндекса (home/collection/books/wave/album:id/artist:id/search:текст/menu). */
+    public void debugYandex(String what) {
+        switchTab(Tab.YANDEX);
+        if (view() instanceof YandexView y) {
+            y.debugShow(what);
+        }
+        if (what.startsWith("album:")) {
+            push(new YandexAlbumView(this, what.substring(6), "…"));
+        } else if (what.startsWith("artist:")) {
+            push(new YandexArtistView(this, what.substring(7), "…"));
+        } else if (what.equals("wave")) {
+            push(new YandexWaveSettingsView(this));
+        } else if (what.equals("menu") && dev.blockphone.fabric.client.music.MusicPlayer.current() != null) {
+            menuX = 40;
+            menuY = 120;
+            trackMenu(dev.blockphone.fabric.client.music.MusicPlayer.current());
+        }
+    }
+
+    /** Меню трека Яндекса (ПКМ): волна по треку, к артисту, к альбому. */
+    void trackMenu(Track track) {
+        menu = new dev.blockphone.fabric.client.ui.PopupMenu();
+        String[] artist = dev.blockphone.fabric.client.music.yandex.YandexApi.artistOf(track);
+        String trackId = track.remoteId() != null ? track.remoteId().split(":")[0] : null;
+        String albumId = track.remoteId() != null && track.remoteId().contains(":") ? track.remoteId().split(":")[1] : null;
+        if (trackId != null) {
+            menu.add(MusicView.tr("music.y.wave_track"), () -> dev.blockphone.fabric.client.music.yandex.YandexMusic.playStation(
+                    java.util.List.of("track:" + trackId), MusicView.tr("music.y.wave_of", track.title())));
+        }
+        if (artist != null) {
+            menu.add(MusicView.tr("music.y.to_artist", artist[1]), () -> push(new YandexArtistView(this, artist[0], artist[1])));
+            menu.add(MusicView.tr("music.y.wave_artist"), () -> dev.blockphone.fabric.client.music.yandex.YandexMusic.playStation(
+                    java.util.List.of("artist:" + artist[0]), MusicView.tr("music.y.wave_of", artist[1])));
+        }
+        if (albumId != null) {
+            menu.add(MusicView.tr("music.y.to_album"), () -> push(new YandexAlbumView(this, albumId, track.album())));
+        }
+        menu.show(menuX, menuY, contentWidth(), contentHeight());
     }
 
     private void renderMini(GuiGraphics g, int mx, int my, int top) {
@@ -197,6 +245,10 @@ public final class MusicApp extends PhoneApp {
 
     @Override
     public boolean onBack() {
+        if (menu != null && menu.isOpen()) {
+            menu.close();
+            return true;
+        }
         if (view().onBack()) {
             return true;
         }
@@ -214,6 +266,11 @@ public final class MusicApp extends PhoneApp {
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
+        if (menu != null && menu.isOpen()) {
+            return menu.mouseClicked(x, y);
+        }
+        menuX = (int) x;
+        menuY = (int) y;
         MusicView view = view();
         int w = contentWidth();
         if (view.root() && y >= contentHeight() - TAB_H) {

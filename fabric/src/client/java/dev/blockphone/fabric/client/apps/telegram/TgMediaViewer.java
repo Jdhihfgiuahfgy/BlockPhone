@@ -5,6 +5,8 @@ import dev.blockphone.fabric.client.photo.PhotoStore;
 import dev.blockphone.fabric.client.photo.PhotoTextures;
 import dev.blockphone.fabric.client.telegram.Telegram;
 import dev.blockphone.fabric.client.telegram.VideoPlayer;
+import dev.blockphone.fabric.client.config.PhoneSettings;
+import dev.blockphone.fabric.client.voice.VoiceMessages;
 import it.tdlight.jni.TdApi;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.Identifier;
@@ -95,7 +97,7 @@ final class TgMediaViewer {
         TdApi.File video = videoFile(m.content);
         boolean note = m.content instanceof TdApi.MessageVideoNote;
         int areaTop = 20;
-        int areaH = h - areaTop - (video != null ? 28 : 6);
+        int areaH = h - areaTop - (video != null ? 44 : 6);
         if (video == null) {
             renderPhoto(g, (TdApi.MessagePhoto) m.content, w, areaTop, areaH);
         } else {
@@ -149,7 +151,7 @@ final class TgMediaViewer {
         };
         if (!caption.isEmpty()) {
             int ch = Math.min(40, PhoneDraw.wrappedHeight(caption, w - 16, 0.7f));
-            int cy = h - (video != null ? 30 : 8) - ch - 4;
+            int cy = h - (video != null ? 46 : 8) - ch - 4;
             g.fill(0, cy - 3, w, cy + ch + 3, 0x90000000);
             g.enableScissor(0, cy - 3, w, cy + ch + 3);
             PhoneDraw.wrapped(g, caption, 8, cy, w - 16, 0xFFFFFFFF, 0.7f, false);
@@ -208,6 +210,13 @@ final class TgMediaViewer {
         PhoneDraw.rawRoundedRect(g, bx + (int) (bw * pos / dur) - 2, y + 5, bx + (int) (bw * pos / dur) + 3, y + 11, 2, 0xFFFFFFFF);
         hits.add(new Hit(bx - 2, y, bw + 4, 16, null));
         PhoneDraw.rightText(g, time(pos) + " / " + time(dur), w - 4, y + 5, 0xFFDDDDDD, 0.55f);
+        // Громкость видео и «кружочков» (общая с голосовыми): − 100 % +.
+        int vy = y - 18;
+        g.fill(0, vy - 2, w, y - 4, 0x90000000);
+        PhoneDraw.text(g, tr("telegram.volume"), 8, vy + 4, 0xFFDDDDDD, 0.6f, false);
+        button(g, w - 70, vy, 18, 14, "−", mx, my, () -> VoiceMessages.changeMediaVolume(-10));
+        PhoneDraw.centeredText(g, PhoneSettings.get().mediaVolume + "%", w - 38, vy + 4, 0xFFFFFFFF, 0.65f, false);
+        button(g, w - 24, vy, 18, 14, "+", mx, my, () -> VoiceMessages.changeMediaVolume(10));
     }
 
     private static String time(double s) {

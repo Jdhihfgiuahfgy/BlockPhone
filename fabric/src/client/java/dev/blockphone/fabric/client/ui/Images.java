@@ -32,6 +32,18 @@ public final class Images {
         PhoneDraw.textureCover(g, texture.id(), x, y, w, h, texture.width(), texture.height());
     }
 
+    /** Как {@link #draw}, но со скруглёнными углами радиуса r (аватарки). */
+    public static void drawRounded(GuiGraphics g, ImageRef image, int x, int y, int w, int h, int r, int maxSize) {
+        PhotoTextures.Image texture = RemoteImages.get(image.id(), maxSize);
+        if (texture == null) {
+            PhoneDraw.rawRoundedRect(g, x, y, x + w, y + h, r, PhoneTheme.dark() ? 0xFF1F2738 : 0xFFDCE3EE);
+            PhoneDraw.centeredText(g, RemoteImages.failed(image.id()) ? "×" : "...", x + w / 2f, y + h / 2f - 3,
+                    PhoneTheme.secondaryText(), 0.75f, false);
+            return;
+        }
+        PhoneDraw.textureCoverRounded(g, texture.id(), x, y, w, h, texture.width(), texture.height(), r);
+    }
+
     /** Фото целиком, вписанное в прямоугольник по центру (для просмотра). */
     public static void drawFit(GuiGraphics g, ImageRef image, int x, int y, int w, int h) {
         float k = Math.min(w / (float) Math.max(1, image.width()), h / (float) Math.max(1, image.height()));

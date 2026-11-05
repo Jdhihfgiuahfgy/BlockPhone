@@ -53,6 +53,7 @@ public final class Backend {
     private final ContentFilter filter;
     private final PrivacyService privacy;
     private final StickerService stickers;
+    private final ModerationService moderation;
     private volatile boolean available;
     private volatile String serverId = "";
 
@@ -71,14 +72,16 @@ public final class Backend {
         this.messenger = settings.messengerEnabled() ? new MessengerService(this) : null;
         this.social = settings.social().enabled() ? new SocialService(this) : null;
         this.voices = new VoiceService(this);
-        this.calls = new CallService(this, bridges);
+        this.calls = new CallService(this);
         this.filter = new ContentFilter(settings.filter());
         this.privacy = new PrivacyService(this);
         this.stickers = new StickerService(this);
+        this.moderation = new ModerationService(this);
         for (String bad : filter.badEntries()) {
             platform.warn("BlockPhone filter: bad entry ignored: " + bad, null);
         }
-        VoiceBridges.setLeaveListener((player, group) -> run(player, false, null, () -> calls.leftGroup(player, group)));
+        // Голоса из Simple Voice Chat (если он есть) — для громкой связи в звонках.
+        VoiceBridges.setMicrophoneListener((player, opus) -> run(player, false, null, () -> calls.nearbyVoice(player, opus)));
     }
 
     public void start() {
@@ -103,6 +106,15 @@ public final class Backend {
             }
         });
         executor.scheduleWithFixedDelay(() -> run(null, false, null, calls::tick), 5, 5, java.util.concurrent.TimeUnit.SECONDS);
+        // Позиции игроков для громкой связи — только пока она у кого-то включена.
+        executor.scheduleWithFixedDelay(() -> {
+            if (available && calls.needsPositions()) {
+                platform.runOnMain(() -> {
+                    Map<UUID, ServerPlatform.Position> snapshot = Map.copyOf(platform.positions());
+                    executor.execute(() -> calls.positions(snapshot));
+                });
+            }
+        }, 1, 500, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     public void stop() {
@@ -177,6 +189,10 @@ public final class Backend {
         return null;
     }
 
+    public ModerationService moderation() {
+        return moderation;
+    }
+
     public PrivacyService privacy() {
         return privacy;
     }
@@ -212,7 +228,7 @@ public final class Backend {
                 || (filter.settings().bypassForModerators && has(player, Permission.FILTER_BYPASS))) {
             return new ContentFilter.Verdict(text, false, null, java.util.List.of());
         }
-        ContentFilter.Verdict verdict = filter.check(text);
+        ContentFilter.Verdict verdict = filter.check(text, context);
         if (verdict.violation()) {
             long now = System.currentTimeMillis();
             String name = online.getOrDefault(player, player.toString());
@@ -279,12 +295,13 @@ public final class Backend {
 
     void sendSession(UUID player) throws SQLException {
         int rights = rights(player);
-        long mutedUntil = social != null ? social.mutedUntil(player) : 0;
+        long mutedUntil = moderation.mutedUntil(player);
+        ModerationRepository.Punishment ban = moderation.banned(player);
         int reports = social != null && Rights.has(rights, Rights.MOD_REPORTS) ? social.openReports() : 0;
         ServerSettings.Social s = settings.social();
         boolean callsOk = calls.available() && Rights.has(rights, Rights.CALL);
         send(player, new SessionPacket(serverId, social != null, s.photos(), s.maxPhotoBytes(), s.maxPhotoSide(), rights, mutedUntil,
-                reports, voices.maxSeconds(player), callsOk));
+                reports, voices.maxSeconds(player), callsOk && ban == null, ban != null ? ban.until() : 0, ban != null ? ban.reason() : ""));
     }
 
     // --- События платформы ---
@@ -305,6 +322,7 @@ public final class Backend {
         run(uuid, false, null, () -> {
             String name = online.remove(uuid);
             images.forget(uuid);
+            moderation.forget(uuid);
             voices.forget(uuid);
             if (messenger != null) {
                 calls.quit(uuid);
@@ -324,31 +342,66 @@ public final class Backend {
     /** Пакет от игрока (уже декодированный). */
     public void handle(UUID player, Packet packet) {
         Class<?> group = packet.getClass().getEnclosingClass();
-        if (group == MessengerPackets.class) {
-            if (messenger != null) {
-                run(player, true, "messenger.error.internal", () -> messenger.handle(player, packet));
-            }
-        } else if (group == dev.blockphone.common.protocol.packet.StickerPackets.class) {
-            if (messenger != null) {
-                run(player, true, "messenger.error.internal", () -> stickers.handle(player, packet));
-            }
-        } else if (group == dev.blockphone.common.protocol.packet.PrivacyPackets.class) {
-            run(player, true, "messenger.error.internal", () -> privacy.handle(player, packet));
-        } else if (group == SocialPackets.class) {
-            if (social != null) {
-                run(player, true, "social.error.internal", () -> social.handle(player, packet));
-            }
-        } else if (group == ImagePackets.class) {
-            run(player, true, "photo.error.internal", () -> images.handle(player, packet));
-        } else if (group == VoicePackets.class) {
-            if (packet instanceof VoicePackets.UploadBegin || packet instanceof VoicePackets.UploadChunk
-                    || packet instanceof VoicePackets.RequestVoice) {
-                run(player, true, "voice.error.internal", () -> voices.handle(player, packet));
-            } else if (messenger != null) {
-                run(player, true, "messenger.error.internal", () -> calls.handle(player, packet));
-            }
-        } else if (packet instanceof SessionPacket.Refresh) {
+        if (group == dev.blockphone.common.protocol.packet.ModerationPackets.class) {
+            run(player, true, "social.error.internal", () -> moderation.handle(player, packet));
+            return;
+        }
+        if (packet instanceof SessionPacket.Refresh) {
             run(player, true, null, () -> sendSession(player));
+            return;
+        }
+        String errorKey;
+        SqlTask task;
+        if (group == MessengerPackets.class && messenger != null) {
+            errorKey = "messenger.error.internal";
+            task = () -> messenger.handle(player, packet);
+        } else if (group == dev.blockphone.common.protocol.packet.StickerPackets.class && messenger != null) {
+            errorKey = "messenger.error.internal";
+            task = () -> stickers.handle(player, packet);
+        } else if (group == dev.blockphone.common.protocol.packet.PrivacyPackets.class) {
+            errorKey = "messenger.error.internal";
+            task = () -> privacy.handle(player, packet);
+        } else if (group == SocialPackets.class && social != null) {
+            errorKey = "social.error.internal";
+            task = () -> social.handle(player, packet);
+        } else if (group == ImagePackets.class) {
+            errorKey = "photo.error.internal";
+            task = () -> images.handle(player, packet);
+        } else if (group == VoicePackets.class && (packet instanceof VoicePackets.UploadBegin || packet instanceof VoicePackets.UploadChunk
+                || packet instanceof VoicePackets.RequestVoice)) {
+            errorKey = "voice.error.internal";
+            task = () -> voices.handle(player, packet);
+        } else if (group == VoicePackets.class && messenger != null) {
+            errorKey = "messenger.error.internal";
+            task = () -> calls.handle(player, packet);
+        } else {
+            return;
+        }
+        // Бан в телефоне: кроме сведений о сессии и выхода из звонка, сервер ничего от игрока не принимает.
+        run(player, true, errorKey, () -> {
+            ModerationRepository.Punishment ban = packet instanceof VoicePackets.LeaveCall ? null : moderation.banned(player);
+            if (ban != null) {
+                sendBanned(player, ban, packet);
+            } else {
+                task.run();
+            }
+        });
+    }
+
+    /** Сообщить заблокированному игроку (на действия, которые он видит: отправка, пост, загрузка). */
+    private void sendBanned(UUID player, ModerationRepository.Punishment ban, Packet packet) {
+        String until = ban.until() == dev.blockphone.common.protocol.data.ModerationData.FOREVER ? "" : String.valueOf(ban.until());
+        if (packet instanceof MessengerPackets.SendMessage || packet instanceof MessengerPackets.OpenDirect
+                || packet instanceof MessengerPackets.CreateGroup) {
+            send(player, new MessengerPackets.Failure("messenger.error.banned", until));
+        } else if (packet instanceof SocialPackets.CreatePost || packet instanceof SocialPackets.AddComment) {
+            send(player, new SocialPackets.Failure("social.error.banned", until));
+        } else if (packet instanceof ImagePackets.UploadBegin begin) {
+            send(player, new ImagePackets.UploadResult(begin.uploadId(), null, "photo.error.banned"));
+        } else if (packet instanceof VoicePackets.UploadBegin begin) {
+            send(player, new VoicePackets.UploadResult(begin.uploadId(), null, "voice.error.banned"));
+        } else if (packet instanceof VoicePackets.StartCall) {
+            send(player, new MessengerPackets.Failure("call.error.banned", until));
         }
     }
 

@@ -95,7 +95,7 @@ final class NewChatView extends MessengerView {
     private void clampScroll(int count) {
         double max = Math.max(0, count * UserRows.ROW_H - (height() - LIST_TOP));
         scroll = Math.max(0, Math.min(max, scroll));
-        Scrollbar.report(LIST_TOP, height(), scroll, max, false, v -> scroll = v);
+        Scrollbar.report(LIST_TOP, height(), scroll, max, false, v -> scroll = v, () -> scroll);
     }
 
     @Override

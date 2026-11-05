@@ -30,8 +30,11 @@ public final class VideoNoteEncoder implements AutoCloseable {
         this.picture = Picture.create(size, size, ColorSpace.RGB);
     }
 
-    /** Целевой поток видео, бит/с: ~1 Мбит/с — минута «кружочка» ≈ 8 МБ (стандартный JCodec давал в 3–4 раза больше). */
-    static final int BITRATE = 1_000_000;
+    /**
+     * Целевой поток видео, бит/с: ~1,8 Мбит/с — минута «кружочка» ≈ 14 МБ (было 1 Мбит/с — картинка сильно «мылилась»;
+     * стандартный JCodec давал ещё больше).
+     */
+    static final int BITRATE = 1_800_000;
 
     /**
      * JCodec по умолчанию почти не ограничивает размер кадра. Подменяем управление качеством: QP кадра подстраивается
@@ -52,8 +55,8 @@ public final class VideoNoteEncoder implements AutoCloseable {
 
     static final class TargetRate implements RateControl {
         private final int frameBits;
-        private int qpP = 30;
-        private int qpI = 28;
+        private int qpP = 26;
+        private int qpI = 24;
         private boolean key;
         private int bits;
 
@@ -84,9 +87,9 @@ public final class VideoNoteEncoder implements AutoCloseable {
             int target = key ? frameBits * 4 : frameBits;
             int qp = key ? qpI : qpP;
             if (bits > target * 1.15) {
-                qp = Math.min(46, qp + (bits > target * 2 ? 2 : 1));
+                qp = Math.min(40, qp + (bits > target * 2 ? 2 : 1));
             } else if (bits < target * 0.7) {
-                qp = Math.max(20, qp - 1);
+                qp = Math.max(18, qp - 1);
             }
             if (key) {
                 qpI = qp;

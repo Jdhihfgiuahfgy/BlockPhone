@@ -6,7 +6,6 @@ import dev.blockphone.fabric.client.config.PhoneSettings;
 import dev.blockphone.fabric.client.i18n.PhoneLang;
 import dev.blockphone.fabric.client.music.lyrics.Lyrics;
 import dev.blockphone.fabric.client.music.lyrics.LyricsService;
-import dev.blockphone.fabric.client.music.spotify.Spotify;
 import dev.blockphone.fabric.client.phone.PhoneDraw;
 import dev.blockphone.fabric.client.phone.PhoneScreen;
 import dev.blockphone.fabric.client.phone.PhoneTheme;
@@ -22,7 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * Виджет «сейчас играет» на экране игры. Показывает плеер телефона, а если он молчит — Spotify.
+ * Виджет «сейчас играет» на экране игры. Показывает плеер телефона, а если он молчит — что играет на компьютере (системные медиа Windows).
  * Оформление ({@link #STYLES}), угол экрана, отступы, масштаб, прозрачность, цвет и что показывать — в настройках телефона
  * ({@code PhoneSettings.hud*}). {@link #draw} рисует виджет в точке (0, 0) — им же пользуется предпросмотр в настройках.
  * Полоска звонка (входящий / идущий) — в левом верхнем углу (под виджетом, если он там же); видна всегда, кроме F1, F3,
@@ -88,7 +87,7 @@ public final class MusicHud {
         renderCall(g, callY);
     }
 
-    /** Текущий трек: плеер телефона, иначе Spotify; {@code null} — ничего не играет. */
+    /** Текущий трек: плеер телефона, иначе плеер компьютера (Windows); {@code null} — ничего не играет. */
     public static @Nullable Info current() {
         Track track = MusicPlayer.current();
         if (track != null && MusicPlayer.state() != MusicPlayer.State.STOPPED) {
@@ -101,11 +100,18 @@ public final class MusicHud {
             return new Info(track.title(), track.artist(), Covers.get(track), MusicPlayer.positionMs(), MusicPlayer.durationMs(),
                     MusicPlayer.state() != MusicPlayer.State.PAUSED, lyric);
         }
-        if (Spotify.status() == Spotify.Status.CONNECTED) {
-            Spotify.watch();
-            Spotify.Playing p = Spotify.playing();
-            if (p != null) {
-                return new Info(p.title(), p.artist(), Covers.url(p.coverUrl()), p.position(), p.durationMs(), p.playing(), null);
+        // SoundCloud во вкладке «Музыки» (сайт во встроенном браузере).
+        dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.Playing sc = dev.blockphone.fabric.client.music.soundcloud.SoundCloudWeb.playing();
+        if (sc != null && (sc.playing() || PhoneSettings.get().hudShowPaused)) {
+            return new Info(sc.title(), sc.artist(), Covers.url(sc.artwork()), sc.positionMs(), sc.durationMs(), sc.playing(), null);
+        }
+        if (dev.blockphone.fabric.client.music.media.WindowsMedia.supported() && PhoneSettings.get().hudWindowsMedia) {
+            // Плеер телефона молчит — то, что играет на компьютере (Spotify, браузер, Яндекс Музыка…).
+            dev.blockphone.fabric.client.music.media.WindowsMedia.watch();
+            dev.blockphone.fabric.client.music.media.WindowsMedia.Playing p = dev.blockphone.fabric.client.music.media.WindowsMedia.playing();
+            if (p != null && (p.playing() || PhoneSettings.get().hudShowPaused)) {
+                return new Info(p.title(), p.artist(), p.cover() != null ? Covers.file(p.cover()) : null, p.position(), p.durationMs(),
+                        p.playing(), null);
             }
         }
         return null;

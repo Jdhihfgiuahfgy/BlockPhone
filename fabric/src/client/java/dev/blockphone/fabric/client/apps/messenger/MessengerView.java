@@ -17,6 +17,11 @@ abstract class MessengerView {
 
     abstract String title();
 
+    /** Нажали на название в заголовке. */
+    boolean onTitleClick() {
+        return false;
+    }
+
     String headerAction() {
         return null;
     }

@@ -60,6 +60,35 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         }
     }
 
+    /** /blockphone reload — перечитать config.yml и перезапустить серверную часть без перезапуска сервера. */
+    @Override
+    public boolean onCommand(org.bukkit.command.CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
+        if (args.length == 0 || !args[0].equalsIgnoreCase("reload")) {
+            sender.sendMessage("§7BlockPhone " + getPluginMeta().getVersion() + " — §f/" + label + " reload");
+            return true;
+        }
+        if (!sender.hasPermission(BlockPhoneServer.RELOAD_PERMISSION)) {
+            sender.sendMessage("§cNo permission (" + BlockPhoneServer.RELOAD_PERMISSION + ")");
+            return true;
+        }
+        try {
+            reloadConfig();
+            getConfig().options().copyDefaults(true);
+            saveConfig();
+            core = BlockPhoneServer.restart(core, this, readSettings(getConfig()));
+            sender.sendMessage("§aBlockPhone: config reloaded");
+        } catch (RuntimeException e) {
+            getLogger().log(Level.WARNING, "BlockPhone reload failed", e);
+            sender.sendMessage("§cBlockPhone: reload failed — " + e.getMessage());
+        }
+        return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(org.bukkit.command.CommandSender sender, org.bukkit.command.Command command, String alias, String[] args) {
+        return args.length == 1 && "reload".startsWith(args[0].toLowerCase(java.util.Locale.ROOT)) ? List.of("reload") : List.of();
+    }
+
     private ServerSettings readSettings(FileConfiguration c) {
         ServerSettings.Storage storage = new ServerSettings.Storage(
                 c.getString("storage.type", "h2"),
@@ -71,14 +100,45 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
                 c.getString("storage.mysql.password", ""),
                 c.getString("storage.table-prefix", "bp_"));
         ServerSettings.Social social = new ServerSettings.Social(c.getBoolean("social.enabled", true),
-                ImageRef.PhotoPolicy.parse(c.getString("social.photos", "server")),
+                ImageRef.PhotoPolicy.parse(c.getString("social.photos", "any")),
                 c.getInt("social.max-photo-kb", 600) * 1024, c.getInt("social.max-photo-side", 1280),
                 c.getInt("social.max-publics-per-player", 3));
         List<String> moderators = c.getStringList("moderators");
         ServerSettings.Voice voice = new ServerSettings.Voice(c.getBoolean("voice.messages", true), c.getInt("voice.max-seconds", 60),
-                c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"));
+                c.getBoolean("voice.calls", true), c.getString("voice.call-group-type", "normal"), c.getInt("voice.speaker-radius", 8));
         return new ServerSettings(c.getBoolean("messenger.enabled", true), c.getBoolean("phone-in-hand.visible", true), storage,
-                social, moderators, voice, readFilter(c), readApps(c), readUploads(c));
+                social, moderators, voice, readFilter(c), readApps(c), readUploads(c), readModeration(c));
+    }
+
+    private static dev.blockphone.common.server.ModerationSettings readModeration(FileConfiguration c) {
+        dev.blockphone.common.server.ModerationSettings m = new dev.blockphone.common.server.ModerationSettings();
+        m.chatLog.enabled = c.getBoolean("moderation.chat-log.enabled", m.chatLog.enabled);
+        m.chatLog.groups = c.getBoolean("moderation.chat-log.groups", m.chatLog.groups);
+        m.chatLog.console = c.getBoolean("moderation.chat-log.console", m.chatLog.console);
+        m.chatLog.format = c.getString("moderation.chat-log.format", m.chatLog.format);
+        m.chatLog.groupFormat = c.getString("moderation.chat-log.group-format", m.chatLog.groupFormat);
+        m.chatLog.photo = c.getString("moderation.chat-log.photo", m.chatLog.photo);
+        m.chatLog.voice = c.getString("moderation.chat-log.voice", m.chatLog.voice);
+        m.chatLog.sticker = c.getString("moderation.chat-log.sticker", m.chatLog.sticker);
+        m.banCommand = c.getString("moderation.ban-command", m.banCommand);
+        m.unbanCommand = c.getString("moderation.unban-command", m.unbanCommand);
+        dev.blockphone.common.server.ModerationSettings.Announce a = m.announce;
+        a.enabled = c.getBoolean("moderation.announce.enabled", a.enabled);
+        a.to = c.getString("moderation.announce.to", a.to);
+        a.notifyPlayer = c.getBoolean("moderation.announce.notify-player", a.notifyPlayer);
+        a.mute = c.getString("moderation.announce.mute", a.mute);
+        a.unmute = c.getString("moderation.announce.unmute", a.unmute);
+        a.ban = c.getString("moderation.announce.ban", a.ban);
+        a.unban = c.getString("moderation.announce.unban", a.unban);
+        a.warn = c.getString("moderation.announce.warn", a.warn);
+        a.playerMute = c.getString("moderation.announce.player-mute", a.playerMute);
+        a.playerBan = c.getString("moderation.announce.player-ban", a.playerBan);
+        a.playerWarn = c.getString("moderation.announce.player-warn", a.playerWarn);
+        a.forever = c.getString("moderation.announce.forever", a.forever);
+        a.minutes = c.getString("moderation.announce.minutes", a.minutes);
+        a.hours = c.getString("moderation.announce.hours", a.hours);
+        a.days = c.getString("moderation.announce.days", a.days);
+        return m.fixNulls();
     }
 
     private static dev.blockphone.common.server.UploadSettings readUploads(FileConfiguration c) {
@@ -115,6 +175,26 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         f.words.blacklist = c.getStringList("filter.words.blacklist");
         f.words.whitelist = c.getStringList("filter.words.whitelist");
         f.words.action = c.getString("filter.words.action", f.words.action);
+        if (c.isList("filter.words.where")) {
+            f.words.where = c.getStringList("filter.words.where");
+        }
+        if (c.isList("filter.links.where")) {
+            f.links.where = c.getStringList("filter.links.where");
+        }
+        for (java.util.Map<?, ?> m : c.getMapList("filter.rules")) {
+            dev.blockphone.common.server.filter.FilterSettings.Rule r = new dev.blockphone.common.server.filter.FilterSettings.Rule();
+            r.name = String.valueOf(m.get("name") == null ? "" : m.get("name"));
+            if (m.get("words") instanceof java.util.List<?> words) {
+                r.words = words.stream().map(String::valueOf).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+            }
+            if (m.get("where") instanceof java.util.List<?> where) {
+                r.where = where.stream().map(String::valueOf).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+            }
+            if (m.get("action") != null) {
+                r.action = String.valueOf(m.get("action"));
+            }
+            f.rules.add(r);
+        }
         f.links.mode = c.getString("filter.links.mode", f.links.mode);
         f.links.domainWhitelist = c.getStringList("filter.links.domain-whitelist");
         f.links.domainBlacklist = c.getStringList("filter.links.domain-blacklist");
@@ -154,6 +234,10 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
             if (getServer().getPluginManager().getPermission(permission.node()) == null) {
                 getServer().getPluginManager().addPermission(bukkit);
             }
+        }
+        if (getServer().getPluginManager().getPermission(BlockPhoneServer.RELOAD_PERMISSION) == null) {
+            getServer().getPluginManager().addPermission(new org.bukkit.permissions.Permission(BlockPhoneServer.RELOAD_PERMISSION,
+                    "Reload the BlockPhone config (/blockphone reload)", PermissionDefault.OP));
         }
     }
 
@@ -272,6 +356,39 @@ public final class BlockPhonePaper extends JavaPlugin implements Listener, Plugi
         } catch (ReflectiveOperationException | RuntimeException e) {
             return text;
         }
+    }
+
+    @Override
+    public java.util.Collection<UUID> onlinePlayers() {
+        List<UUID> result = new java.util.ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            result.add(player.getUniqueId());
+        }
+        return result;
+    }
+
+    @Override
+    public Map<UUID, Position> positions() {
+        Map<UUID, Position> result = new HashMap<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            org.bukkit.Location l = player.getLocation();
+            result.put(player.getUniqueId(), new Position(player.getWorld().getName(), l.getX(), l.getY(), l.getZ()));
+        }
+        return result;
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    public void sendChat(UUID player, String text) {
+        Player target = Bukkit.getPlayer(player);
+        if (target != null) {
+            target.sendMessage(text);
+        }
+    }
+
+    @Override
+    public boolean runConsoleCommand(String command) {
+        return Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
     }
 
     @Override

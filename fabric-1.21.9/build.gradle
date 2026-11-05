@@ -1,0 +1,9 @@
+// Мод для Minecraft 1.21.9: те же замены, что для 1.21.10, и «переходники» модуля fabric-1.21.10 (+ свои в src/).
+apply from: rootProject.file('gradle/port-renames.gradle')
+
+ext.portMinecraft = '1.21.9'
+ext.portMinecraftDep = '1.21.9'
+ext.portFabricApi = '0.134.1+1.21.9'
+ext.portRenames = RENAMES_1_21_10
+ext.portOverlays = [project(':fabric-1.21.10').file('src')]
+apply from: rootProject.file('gradle/fabric-port.gradle')

@@ -97,7 +97,7 @@ public final class PhonePin {
             } else {
                 s.tick();
             }
-        } else if (mc.screen == s && !cursor && !s.capturesKeyboard() && !s.dialogOpen()) {
+        } else if (mc.screen == s && !cursor && !s.holdsCursor() && !s.dialogOpen()) {
             hiding = true;
             mc.setScreen(null);
             hiding = false;
@@ -117,7 +117,7 @@ public final class PhonePin {
         if (s == null || mc.screen == s || mc.options.hideGui || CameraMode.active()) {
             return;
         }
-        s.render(g, -10_000, -10_000, delta.getGameTimeDeltaPartialTick(false));
+        s.render(g, -10_000, -10_000, delta.getGameTimeDeltaPartialTick(false)); // mc:render-call
     }
 
     private PhonePin() {

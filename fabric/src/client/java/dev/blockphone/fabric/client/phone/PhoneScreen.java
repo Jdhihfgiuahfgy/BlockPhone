@@ -56,7 +56,7 @@ public class PhoneScreen extends Screen {
 
     /** Ориентация и полный экран — по текущему приложению (перед отрисовкой и вводом). */
     private void applyOrientation() {
-        boolean wanted = app != null && !locked && app.landscape();
+        boolean wanted = app != null && !locked && (app.landscape() || compact() && PhoneSettings.get().compactLandscape);
         PhoneLayout.immersive = app != null && !locked && app.immersive();
         if (wanted != shownLandscape) {
             shownLandscape = wanted;
@@ -69,9 +69,15 @@ public class PhoneScreen extends Screen {
     /** Размер и положение телефона: по центру или маленький в правом нижнем углу (режим «на ходу»). */
     private void layoutPhone() {
         if (compact()) {
-            scale = Math.max(0.4f, Math.min(1f, Math.min(height * 0.6f / phoneH(), width * 0.5f / phoneW())));
-            originX = width - phoneW() * scale - 6;
-            originY = height - phoneH() * scale - 6;
+            // Набок — шире (до 55 % ширины окна), стоя — до 60 % высоты.
+            scale = PhoneLayout.landscape
+                    ? Math.max(0.4f, Math.min(1.2f, Math.min(height * 0.55f / phoneH(), width * 0.55f / phoneW())))
+                    : Math.max(0.4f, Math.min(1f, Math.min(height * 0.6f / phoneH(), width * 0.5f / phoneW())));
+            PhoneSettings settings = PhoneSettings.get();
+            scale *= Math.max(60, Math.min(160, settings.compactSize)) / 100f;
+            scale = Math.max(0.3f, Math.min(scale, Math.min((height - 12f) / phoneH(), (width - 12f) / phoneW())));
+            originX = 6 + (width - phoneW() * scale - 12) * clamp01(settings.compactX);
+            originY = 6 + (height - phoneH() * scale - 12) * clamp01(settings.compactY);
             return;
         }
         float fit = Math.min((height - 16f) / phoneH(), (width - 16f) / phoneW());
@@ -81,7 +87,37 @@ public class PhoneScreen extends Screen {
         originY = (height - phoneH() * scale) / 2f;
     }
 
+    private static float clamp01(float v) {
+        return Float.isNaN(v) ? 1f : Math.max(0f, Math.min(1f, v));
+    }
+
+    /** Телефон «на ходу» перетаскивают за рамку корпуса: смещение мыши от угла телефона. */
+    private boolean dragging;
+    private double grabX;
+    private double grabY;
+
+    /** Точка на рамке корпуса (внутри корпуса, но не на экране). */
+    private boolean onBezel(double sx, double sy) {
+        boolean inBody = sx >= -PhoneLayout.BEZEL && sy >= -PhoneLayout.BEZEL
+                && sx < screenW() + PhoneLayout.BEZEL && sy < screenH() + PhoneLayout.BEZEL;
+        return inBody && !PhoneDraw.inside(sx, sy, 0, 0, screenW(), screenH());
+    }
+
     /** Режим «на ходу» ({@link PhonePin}): телефон маленький в углу, фон не затемняется, можно ходить и крутить камеру. */
+    /** Телефон без рамки (только экран) или с корпусом. */
+    public static void toggleFrameless() {
+        PhoneSettings settings = PhoneSettings.get();
+        settings.frameless = !settings.frameless;
+        settings.save();
+    }
+
+    /** Повернуть телефон «на ходу» набок или обратно. */
+    public static void toggleCompactLandscape() {
+        PhoneSettings settings = PhoneSettings.get();
+        settings.compactLandscape = !settings.compactLandscape;
+        settings.save();
+    }
+
     public boolean compact() {
         return PhonePin.pinned(this);
     }
@@ -94,6 +130,11 @@ public class PhoneScreen extends Screen {
     /** Приложение ждёт ввода текста (тогда клавиши ходьбы не пропускаются в игру). */
     public boolean capturesKeyboard() {
         return app != null && app.capturesKeyboard();
+    }
+
+    /** «На ходу»: приложение держит курсор (вводят текст) — не прятать курсор при отпускании клавиши. */
+    public boolean holdsCursor() {
+        return app != null && app.holdsCursor();
     }
 
     /** Снять блокировку: открыть приложение, которое было открыто до блокировки. */
@@ -254,12 +295,20 @@ public class PhoneScreen extends Screen {
         return 1f - inv * inv * inv; // ease-out cubic
     }
 
+    private static volatile float @org.jetbrains.annotations.Nullable [] shownRect;
+    private static volatile long shownAt;
+
+    /** Экран телефона на окне в последнем кадре: x, y, ширина, высота (координаты интерфейса); null — давно не рисовался. */
+    public static float @org.jetbrains.annotations.Nullable [] shownScreenRect() {
+        return System.currentTimeMillis() - shownAt < 250 ? shownRect : null;
+    }
+
     private float phoneY() {
         return originY + (1f - slideProgress()) * (height - originY);
     }
 
     @Override
-    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) { // mc:render — в 26.1 extractRenderState/extractBackground
         if (compact()) {
             return; // «На ходу» мир виден полностью.
         }
@@ -268,7 +317,7 @@ public class PhoneScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) { // mc:render — в 26.1 extractRenderState/extractBackground
         ensureAttached();
         applyOrientation();
         float py = phoneY();
@@ -288,14 +337,25 @@ public class PhoneScreen extends Screen {
         int lx = (int) Math.floor((mouseX - originX) / scale);
         int ly = (int) Math.floor((mouseY - py) / scale);
         renderPhone(g, lx, ly, delta);
+        if (t >= 1f && slideProgress() >= 1f) {
+            // Где на окне экран телефона (координаты интерфейса) — для трансляции на экран в мире.
+            shownRect = new float[]{originX + BEZEL * scale, py + BEZEL * scale, screenW() * scale, screenH() * scale};
+            shownAt = System.currentTimeMillis();
+        }
 
         g.pose().popMatrix();
     }
 
     private void renderPhone(GuiGraphics g, int mx, int my, float delta) {
-        // Корпус: тонкая окантовка, подсвеченная акцентом.
-        PhoneDraw.rawRoundedRect(g, 0, 0, phoneW(), phoneH(), BODY_RADIUS, PhoneTheme.bodyEdge());
-        PhoneDraw.rawRoundedRect(g, 1, 1, phoneW() - 1, phoneH() - 1, BODY_RADIUS - 1, PhoneTheme.body());
+        boolean frameless = PhoneSettings.get().frameless;
+        if (!frameless) {
+            // Корпус: тонкая окантовка, подсвеченная акцентом.
+            PhoneDraw.rawRoundedRect(g, 0, 0, phoneW(), phoneH(), BODY_RADIUS, PhoneTheme.bodyEdge());
+            PhoneDraw.rawRoundedRect(g, 1, 1, phoneW() - 1, phoneH() - 1, BODY_RADIUS - 1, PhoneTheme.body());
+        } else if (compact() && (dragging || onBezel(mx - BEZEL, my - BEZEL))) {
+            // Без рамки «на ходу» телефон всё равно таскают за край — показать, где он.
+            PhoneDraw.outline(g, BEZEL - 2, BEZEL - 2, screenW() + 4, screenH() + 4, PhoneTheme.accent());
+        }
 
         g.pose().pushMatrix();
         g.pose().translate(BEZEL, BEZEL);
@@ -327,7 +387,8 @@ public class PhoneScreen extends Screen {
         if (!PhoneLayout.immersive) {
             renderStatusBar(g);
             renderNavBar(g, sx, sy);
-        } else if (sy >= screenH() - NAV_H - 4 && sy < screenH()) {
+        } else if (!app.capturesMouse() && sy >= screenH() - NAV_H - 4 && sy < screenH()) {
+            // Пока мышь захвачена приложением (камера в игре), «назад/домой» не всплывают — курсора нет.
             renderFloatingNav(g, sx, sy);
         }
         if (dialog != null) {
@@ -338,6 +399,10 @@ public class PhoneScreen extends Screen {
         }
 
         g.disableScissor();
+        if (frameless) {
+            g.pose().popMatrix();
+            return;
+        }
         // Скруглённые углы экрана и камера-«точка».
         PhoneDraw.roundCornersMask(g, 0, 0, screenW(), screenH(), SCREEN_RADIUS, PhoneTheme.body());
         // Набок — камера сбоку (слева), как у настоящего телефона.
@@ -506,6 +571,23 @@ public class PhoneScreen extends Screen {
         if (CallOverlay.mouseClicked(sx, sy)) {
             return true;
         }
+        dragging = false;
+        if (compact() && event.button() == 0 && onBezel(sx, sy)) {
+            dragging = true;
+            grabX = event.x() - originX;
+            grabY = event.y() - originY;
+            return true;
+        }
+        // ПКМ мимо корпуса телефона — «назад» (если включено в настройках; закрывает и диалог).
+        if (event.button() == 1 && dev.blockphone.fabric.client.config.PhoneSettings.get().rightClickBack
+                && (sx < -PhoneLayout.BEZEL || sy < -PhoneLayout.BEZEL || sx >= screenW() + PhoneLayout.BEZEL || sy >= screenH() + PhoneLayout.BEZEL)) {
+            if (dialog != null) {
+                dialog = null;
+            } else {
+                back();
+            }
+            return true;
+        }
         if (dialog != null) {
             if (dialog.mouseClicked(sx, sy)) {
                 dialog = null;
@@ -536,6 +618,9 @@ public class PhoneScreen extends Screen {
                 return true;
             }
         }
+        if (app.hasHeader() && event.button() == 0 && PhoneDraw.inside(sx, sy, 0, statusH(), screenW(), HEADER_H) && app.onTitleClick()) {
+            return true;
+        }
         if (inContent(sx, sy)) {
             if (event.button() == 0 && Scrollbar.mouseClicked(sx, sy - contentTop())) {
                 return true;
@@ -548,6 +633,11 @@ public class PhoneScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         applyOrientation();
+        if (dragging) {
+            dragging = false;
+            PhoneSettings.get().save();
+            return true;
+        }
         if (dialog != null) {
             return true;
         }
@@ -563,6 +653,15 @@ public class PhoneScreen extends Screen {
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         applyOrientation();
+        if (dragging) {
+            PhoneSettings settings = PhoneSettings.get();
+            float freeW = width - phoneW() * scale - 12;
+            float freeH = height - phoneH() * scale - 12;
+            settings.compactX = freeW > 0 ? clamp01((float) ((event.x() - grabX - 6) / freeW)) : 1f;
+            settings.compactY = freeH > 0 ? clamp01((float) ((event.y() - grabY - 6) / freeH)) : 1f;
+            layoutPhone();
+            return true;
+        }
         if (dialog != null) {
             return true;
         }
@@ -578,12 +677,21 @@ public class PhoneScreen extends Screen {
         applyOrientation();
         double sx = toScreenX(mouseX);
         double sy = toScreenY(mouseY);
-        return inContent(sx, sy) && app.mouseScrolled(sx, sy - contentTop(), scrollY);
+        boolean handled = inContent(sx, sy) && app.mouseScrolled(sx, sy - contentTop(), scrollY);
+        if (handled) {
+            Scrollbar.clampCurrent();
+        }
+        return handled;
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         ensureAttached();
+        // «На ходу» с курсором: клавиша поворота кладёт телефон набок и обратно (если не набирается текст).
+        if (compact() && !app.capturesKeyboard() && BlockPhoneClient.rotateKey.matches(event)) {
+            toggleCompactLandscape();
+            return true;
+        }
         if (event.isEscape()) {
             if (dialog != null) {
                 dialog = null;
@@ -598,12 +706,16 @@ public class PhoneScreen extends Screen {
         if (app.keyPressed(event)) {
             return true;
         }
-        if (!app.capturesKeyboard() && BlockPhoneClient.openPhoneKey.matches(event)) {
+        if (!app.typingText() && BlockPhoneClient.openPhoneKey.matches(event)) {
             closePhone();
             return true;
         }
         if (!app.capturesKeyboard() && BlockPhoneClient.compactKey.matches(event)) {
             PhonePin.toggle(minecraft);
+            return true;
+        }
+        if (!app.capturesKeyboard() && BlockPhoneClient.framelessKey.matches(event)) {
+            toggleFrameless();
             return true;
         }
         return super.keyPressed(event);

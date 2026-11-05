@@ -81,6 +81,9 @@ public final class CustomApp extends PhoneApp {
             app = latest;
             stack.clear();
             page = null;
+            if (storage != null) {
+                storage.saveNow(); // несохранённое прошлой версией приложения — на диск, новая прочитает
+            }
             storage = latest != null && latest.has(AppPermission.STORAGE) ? new AppStorage(appId) : null;
             if (host != null) {
                 host.release();
@@ -525,7 +528,7 @@ public final class CustomApp extends PhoneApp {
         }
         JsonObject p = app.pages().getAsJsonObject(page);
         scroll = Math.max(0, Math.min(Math.max(0, contentHeight - h), scroll));
-        Scrollbar.report(0, h, scroll, Math.max(0, contentHeight - h), false, v -> scroll = v);
+        Scrollbar.report(0, h, scroll, Math.max(0, contentHeight - h), false, v -> scroll = v, () -> scroll);
         g.enableScissor(0, 0, w, h);
         int y = 6 - (int) scroll;
         JsonArray elements = p.has("elements") ? p.getAsJsonArray("elements") : new JsonArray();
@@ -843,6 +846,20 @@ public final class CustomApp extends PhoneApp {
     }
 
     /** Для DevShots: клик в содержимом приложения. */
+    /** Для автоснимков: набрать текст (как с клавиатуры) — в поле ввода, на странице браузера или скрипту. */
+    public void debugType(String text) {
+        if (host != null) {
+            text.codePoints().forEach(host::debugChar);
+        }
+    }
+
+    /** Для автоснимков: как будто в поле id ввели text и нажали Enter (onSubmit скрипта). */
+    public void debugSubmit(String id, String text) {
+        if (host != null) {
+            host.debugSubmit(id, text);
+        }
+    }
+
     public void debugClick(double x, double y) {
         mouseClicked(x, y, 0);
     }
@@ -949,6 +966,61 @@ public final class CustomApp extends PhoneApp {
             }
         }
         return false;
+    }
+
+    @Override
+    public boolean typingText() {
+        return host != null ? host.typingText() : capturesKeyboard();
+    }
+
+    @Override
+    public boolean runsInBackground() {
+        // С разрешением background приложение тикает CustomApps.tickBackground — здесь второй такт не нужен.
+        return host != null && host.background && ready() && !app.has(AppPermission.BACKGROUND) && !host.displaying();
+    }
+
+    @Override
+    public boolean keepOnReset() {
+        return app != null && app.has(AppPermission.BACKGROUND);
+    }
+
+    /** Такт приложения с разрешением background, пока его не видно на экране (запускается само, без телефона). */
+    void tickAlways() {
+        if (ready() && host != null) {
+            host.start();
+            host.tick();
+        }
+    }
+
+    /** Приложение показывает картинку на экране в мире — тикает само (CustomApps.tickBackground). */
+    boolean displaying() {
+        return host != null && host.displaying();
+    }
+
+    /** Закрытие игры: записать хранилище приложения сразу. */
+    void saveStorageNow() {
+        if (storage != null) {
+            storage.saveNow();
+        }
+    }
+
+    /** Нажали на уведомление приложения — сказать скрипту, какое (onNotification). */
+    void notificationClicked(String tag) {
+        if (ready() && host != null) {
+            host.onNotification(tag);
+        }
+    }
+
+    @Override
+    public void backgroundTick() {
+        if (runsInBackground()) {
+            host.tick();
+        }
+    }
+
+    @Override
+    public boolean holdsCursor() {
+        return host != null ? host.holdsCursor() : capturesKeyboard();
     }
 
     @Override

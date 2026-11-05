@@ -80,6 +80,30 @@ public abstract class PhoneApp {
         return false;
     }
 
+    /** Идёт ввод текста (поле в фокусе): тогда клавиша телефона — просто буква, телефон не закрывается. */
+    public boolean typingText() {
+        return capturesKeyboard();
+    }
+
+    /** «На ходу»: не отдавать мышь игре, даже когда клавишу курсора отпустили (идёт ввод текста). */
+    public boolean holdsCursor() {
+        return capturesKeyboard();
+    }
+
+    /** Приложение работает и с закрытым телефоном (сетевая игра: хост считает матч) — {@link #backgroundTick()}. */
+    public boolean runsInBackground() {
+        return false;
+    }
+
+    /** Не закрывать приложение при выходе из мира ({@link PhoneState#reset()}): свои приложения с разрешением background. */
+    public boolean keepOnReset() {
+        return false;
+    }
+
+    /** Такт, пока телефон закрыт (только если {@link #runsInBackground()}). */
+    public void backgroundTick() {
+    }
+
     /** true, пока приложение ждёт ввода текста: тогда клавиша телефона не закрывает его. */
     public boolean capturesKeyboard() {
         return false;
@@ -127,12 +151,31 @@ public abstract class PhoneApp {
         return PhoneTheme.dark();
     }
 
+    /** Нажали на заголовок (название) — например, профиль собеседника в чате. true — обработано. */
+    public boolean onTitleClick() {
+        return false;
+    }
+
     public final int contentWidth() {
         return PhoneLayout.appW();
     }
 
     public final int contentHeight() {
-        return PhoneLayout.appH() - (hasHeader() ? PhoneLayout.HEADER_H : 0);
+        return PhoneLayout.appH() - (hasHeader() ? PhoneLayout.HEADER_H : 0) - reservedBottom;
+    }
+
+    /** Снизу занято приложением-хозяином (вложенное приложение над панелью вкладок), пикселей. */
+    private int reservedBottom;
+
+    public final void setReservedBottom(int pixels) {
+        reservedBottom = Math.max(0, pixels);
+    }
+
+    /** Вложенное приложение работает с тем же экраном телефона, что и хозяин. */
+    protected final void attachChild(PhoneApp child) {
+        if (child.phone != phone) {
+            child.attach(phone);
+        }
     }
 
     /** Телефон повёрнут набок, пока открыто это приложение (область — 340×132, без заголовка и в полном экране — больше). */

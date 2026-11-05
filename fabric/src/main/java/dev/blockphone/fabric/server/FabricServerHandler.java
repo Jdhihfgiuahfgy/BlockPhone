@@ -24,7 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * (кроме режима разработки: переменная окружения {@code BLOCKPHONE_DEV_MESSENGER=1}).
  */
 public final class FabricServerHandler {
-    private static @Nullable BlockPhoneServer core;
+    private static volatile @Nullable BlockPhoneServer core;
+    private static @Nullable FabricPlatform platform;
     /**
      * Игроки с момента события входа. В JOIN игрок ещё не в списке игроков сервера,
      * поэтому для отправки приветствия держим ссылку сами.
@@ -39,7 +40,8 @@ public final class FabricServerHandler {
             FabricServerConfig config = FabricServerConfig.load();
             // Simple Voice Chat: действия с группами — в потоке сервера.
             dev.blockphone.common.voice.VoiceBridges.setMainThread(server::execute);
-            core = new BlockPhoneServer(new FabricPlatform(server), config.toSettings());
+            platform = new FabricPlatform(server);
+            core = new BlockPhoneServer(platform, config.toSettings());
             core.setAppsDirectory(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("blockphone").resolve("apps"));
             core.start();
         });
@@ -65,6 +67,29 @@ public final class FabricServerHandler {
             }
         });
 
+        // /blockphone reload — перечитать config/blockphone/server.json без перезапуска сервера.
+        net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) ->
+                dispatcher.register(net.minecraft.commands.Commands.literal("blockphone")
+                        .then(net.minecraft.commands.Commands.literal("reload")
+                                .requires(FabricServerHandler::canReload)
+                                .executes(context -> {
+                                    var source = context.getSource();
+                                    if (core == null || platform == null) {
+                                        source.sendFailure(net.minecraft.network.chat.Component.literal(
+                                                "BlockPhone server part is not running here"));
+                                        return 0;
+                                    }
+                                    try {
+                                        core = BlockPhoneServer.restart(core, platform, FabricServerConfig.load().toSettings());
+                                        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("BlockPhone: config reloaded"), true);
+                                        return 1;
+                                    } catch (RuntimeException e) {
+                                        BlockPhoneFabric.LOGGER.warn("BlockPhone reload failed", e);
+                                        source.sendFailure(net.minecraft.network.chat.Component.literal("BlockPhone: reload failed — " + e.getMessage()));
+                                        return 0;
+                                    }
+                                }))));
+
         ServerPlayNetworking.registerGlobalReceiver(RawPayload.TYPE, (payload, context) -> {
             if (core != null) {
                 ServerPlayer player = context.player();
@@ -76,6 +101,23 @@ public final class FabricServerHandler {
     /** Ядро сервера (null — не выделенный сервер или ещё не запущен). Для отладки. */
     public static @Nullable BlockPhoneServer core() {
         return core;
+    }
+
+    /** Консоль — всегда; игрок — узел blockphone.admin.reload (LuckPerms) или оператор уровня 2+. */
+    private static boolean canReload(net.minecraft.commands.CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            return source.getEntity() == null;
+        }
+        boolean fallback = dev.blockphone.fabric.compat.Compat.isOperator(player);
+        if (PERMISSIONS_CHECK != null) {
+            try {
+                return (boolean) PERMISSIONS_CHECK.invoke(null, player, BlockPhoneServer.RELOAD_PERMISSION, fallback);
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                BlockPhoneFabric.LOGGER.warn("Permission check failed for {}", BlockPhoneServer.RELOAD_PERMISSION, e);
+            }
+        }
+        return fallback;
     }
 
     private static boolean devMessenger() {
@@ -119,6 +161,40 @@ public final class FabricServerHandler {
         @Override
         public void runOnMain(Runnable task) {
             server.execute(task);
+        }
+
+        @Override
+        public java.util.Map<UUID, Position> positions() {
+            java.util.Map<UUID, Position> result = new java.util.HashMap<>();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                result.put(player.getUUID(), new Position(player.level().dimension().identifier().toString(), player.getX(), player.getY(),
+                        player.getZ()));
+            }
+            return result;
+        }
+
+        @Override
+        public java.util.Collection<UUID> onlinePlayers() {
+            java.util.List<UUID> result = new java.util.ArrayList<>();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                result.add(player.getUUID());
+            }
+            return result;
+        }
+
+        /** Текст с кодами § — как в ванильном чате (коды форматирования работают и в обычном тексте). */
+        @Override
+        public void sendChat(UUID player, String text) {
+            ServerPlayer target = server.getPlayerList().getPlayer(player);
+            if (target != null) {
+                target.sendSystemMessage(net.minecraft.network.chat.Component.literal(text));
+            }
+        }
+
+        @Override
+        public boolean runConsoleCommand(String command) {
+            server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
+            return true;
         }
 
         /** fabric-permissions-api (LuckPerms), иначе: обычные права — у всех, модераторские — у операторов уровня 2+. */

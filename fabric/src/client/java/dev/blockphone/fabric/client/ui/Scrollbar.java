@@ -17,7 +17,8 @@ public final class Scrollbar {
     private static final int HIT_W = 6;
     private static final int MIN_THUMB = 12;
 
-    private record Bar(int top, int bottom, double scroll, double max, boolean inverted, DoubleConsumer set) {
+    private record Bar(int top, int bottom, double scroll, double max, boolean inverted, DoubleConsumer set,
+                       java.util.function.DoubleSupplier get) {
     }
 
     private static GuiGraphics graphics;
@@ -63,15 +64,37 @@ public final class Scrollbar {
      * Вне отрисовки ничего не делает, поэтому можно вызывать из любого clampScroll.
      */
     public static void report(int top, int bottom, double scroll, double max, boolean inverted, DoubleConsumer set) {
+        report(top, bottom, scroll, max, inverted, set, null);
+    }
+
+    /**
+     * То же с чтением текущей прокрутки (get): тогда {@link #clampCurrent()} сразу после колеса не даёт уйти за край —
+     * без этого содержимое на кадр уезжало за предел и возвращалось («тряска» у края списка).
+     */
+    public static void report(int top, int bottom, double scroll, double max, boolean inverted, DoubleConsumer set,
+                              java.util.function.DoubleSupplier get) {
         if (graphics == null || bottom - top < 20) {
             return;
         }
         Matrix3x2f m = graphics.pose();
         float s = base.m00 == 0 ? 1 : base.m00;
         int dy = Math.round((m.m21 - base.m21) / s);
-        current = new Bar(top + dy, bottom + dy, scroll, max, inverted, set);
+        current = new Bar(top + dy, bottom + dy, scroll, max, inverted, set, get);
         if (dragging != null && dragging.set == set) {
-            dragging = new Bar(top + dy, bottom + dy, dragging.scroll, max, inverted, set);
+            dragging = new Bar(top + dy, bottom + dy, dragging.scroll, max, inverted, set, get);
+        }
+    }
+
+    /** PhoneScreen: после прокрутки колесом — удержать прокрутку последней области в пределах 0..max. */
+    public static void clampCurrent() {
+        Bar bar = current;
+        if (bar == null || bar.get == null) {
+            return;
+        }
+        double value = bar.get.getAsDouble();
+        double clamped = Math.max(0, Math.min(Math.max(0, bar.max), value));
+        if (clamped != value) {
+            bar.set.accept(clamped);
         }
     }
 
@@ -114,7 +137,7 @@ public final class Scrollbar {
         double track = (bar.bottom - 2) - (bar.top + 2) - (t[1] - t[0]);
         double f = track <= 0 ? 0 : Math.max(0, Math.min(1, (y - grab - (bar.top + 2)) / track));
         double value = (bar.inverted ? 1 - f : f) * bar.max;
-        dragging = new Bar(bar.top, bar.bottom, value, bar.max, bar.inverted, bar.set);
+        dragging = new Bar(bar.top, bar.bottom, value, bar.max, bar.inverted, bar.set, bar.get);
         bar.set.accept(value);
     }
 

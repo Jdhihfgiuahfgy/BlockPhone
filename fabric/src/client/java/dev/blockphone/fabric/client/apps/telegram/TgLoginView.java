@@ -89,6 +89,19 @@ final class TgLoginView extends TgView {
         PhoneDraw.roundedRect(g, w / 2 - 16, 10, w / 2 + 16, 42, 16, BLUE);
         PhoneDraw.centeredText(g, "➤", w / 2f, 19, 0xFFFFFFFF, 1.6f, false);
         int y = 50;
+        dev.blockphone.fabric.client.config.PhoneSettings settings = dev.blockphone.fabric.client.config.PhoneSettings.get();
+        if (!settings.telegramBetaAccepted) {
+            // Перед входом — предупреждение: функция тестовая.
+            PhoneDraw.centeredText(g, tr("telegram.beta_title"), w / 2f, y, PhoneTheme.text(), 0.9f, false);
+            y += 14;
+            y += PhoneDraw.wrapped(g, tr("telegram.beta_text"), 12, y, w - 24, PhoneTheme.secondaryText(), 0.65f, false) + 10;
+            PhoneDraw.button(g, 12, y, w - 24, 18, tr("telegram.beta_ok"), mouseX, mouseY, PhoneDraw.ButtonStyle.PRIMARY);
+            hit(12, y, w - 24, 18, () -> {
+                settings.telegramBetaAccepted = true;
+                settings.save();
+            });
+            return;
+        }
         Telegram.Status status = Telegram.status();
         if (editKeys || status == Telegram.Status.NOT_CONFIGURED) {
             renderKeys(g, mouseX, mouseY, y);
@@ -124,6 +137,12 @@ final class TgLoginView extends TgView {
         if (status == Telegram.Status.WAIT_PHONE) {
             button(g, 8, height() - 26, w - 16, 16, tr("telegram.change_keys"), mouseX, mouseY, PhoneDraw.ButtonStyle.NORMAL,
                     () -> editKeys = true);
+        }
+        // Как идёт подключение: напрямую или через прокси (без VPN там, где Telegram заблокирован).
+        if (Telegram.running() && status != Telegram.Status.READY) {
+            String net = dev.blockphone.fabric.client.telegram.TelegramProxy.statusText();
+            int ny = height() - (status == Telegram.Status.WAIT_PHONE ? 50 : 26);
+            PhoneDraw.wrapped(g, "⇄ " + net, 10, ny, w - 20, PhoneTheme.secondaryText(), 0.55f, true);
         }
     }
 

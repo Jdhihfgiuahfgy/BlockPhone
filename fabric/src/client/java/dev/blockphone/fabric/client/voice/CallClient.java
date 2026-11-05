@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Звонки на клиенте: идущие звонки в чатах, входящий вызов (звонок-«рингтон» и уведомление), свой звонок.
- * Сам голос передаёт Simple Voice Chat — сервер переводит участников в общую группу. Только поток рендера.
+ * Звонки на клиенте: идущие звонки в чатах, входящий вызов (звонок-«рингтон» и уведомление), свой звонок, микрофон и
+ * громкая связь. Голос передаёт сам BlockPhone ({@link CallAudio}) — другие моды не нужны. Только поток рендера.
  */
 public final class CallClient {
     private static final long RING_INTERVAL_MS = 2200;
@@ -96,6 +96,44 @@ public final class CallClient {
         ClientNetwork.send(new VoicePackets.LeaveCall(chatId));
     }
 
+    /** Свой микрофон в звонке выключен (по данным сервера). */
+    public static boolean muted() {
+        CallInfo call = myCall();
+        return call != null && call.muted(MessengerClient.self());
+    }
+
+    /** У себя включена громкая связь. */
+    public static boolean speaker() {
+        CallInfo call = myCall();
+        return call != null && call.speaker(MessengerClient.self());
+    }
+
+    public static void setMuted(boolean muted) {
+        CallInfo call = myCall();
+        if (call != null) {
+            CallAudio.setMuted(muted);
+            ClientNetwork.send(new VoicePackets.CallControl(call.chatId(), muted, speaker()));
+        }
+    }
+
+    public static void setSpeaker(boolean speaker) {
+        CallInfo call = myCall();
+        if (call != null) {
+            ClientNetwork.send(new VoicePackets.CallControl(call.chatId(), muted(), speaker));
+        }
+    }
+
+    /** Выключить звук звонка у себя (не слышать собеседников). */
+    public static void setDeafened(boolean deafened) {
+        dev.blockphone.fabric.client.config.PhoneSettings s = dev.blockphone.fabric.client.config.PhoneSettings.get();
+        s.callDeafened = deafened;
+        s.save();
+    }
+
+    public static boolean deafened() {
+        return dev.blockphone.fabric.client.config.PhoneSettings.get().callDeafened;
+    }
+
     // --- Пакеты ---
 
     public static void handle(VoicePackets.CallState state) {
@@ -112,9 +150,14 @@ public final class CallClient {
         boolean mine = inCall(call.chatId());
         if (mine && !wasMine) {
             joinedAt = System.currentTimeMillis();
+            CallAudio.start(call.chatId(), call.muted(self));
+            dev.blockphone.fabric.client.voice.VoiceMessages.stop();
         } else if (!mine && wasMine) {
             joinedAt = 0;
+            CallAudio.stop();
             toast(PhoneLang.tr("call.ended"), title(call), null);
+        } else if (mine) {
+            CallAudio.setMuted(call.muted(self));
         }
         boolean nowRinging = call.active() && call.invited().stream().anyMatch(u -> u.uuid().equals(self));
         boolean joined = call.active() && call.participants().stream().anyMatch(u -> u.uuid().equals(self));
@@ -124,10 +167,10 @@ public final class CallClient {
             long chatId = call.chatId();
             dev.blockphone.fabric.client.phone.PhoneNotifications.add("call:" + chatId, "messenger", PhoneLang.tr("call.missed"),
                     title(before), caller != null ? caller.uuid() : null, phone -> {
-                        phone.openApp("messenger");
-                        if (dev.blockphone.fabric.client.phone.PhoneState.app("messenger")
-                                instanceof dev.blockphone.fabric.client.apps.messenger.MessengerApp app) {
-                            app.openChat(chatId);
+                        phone.openApp(dev.blockphone.fabric.client.apps.hub.HubApp.ID);
+                        dev.blockphone.fabric.client.apps.hub.HubApp hub = dev.blockphone.fabric.client.apps.hub.HubApp.get();
+                        if (hub != null) {
+                            hub.openChat(chatId);
                         }
                     });
         }
@@ -144,6 +187,7 @@ public final class CallClient {
 
     /** Каждый тик: «рингтон» входящего вызова. */
     public static void tick() {
+        CallAudio.tick();
         boolean ring = incoming() != null && dev.blockphone.fabric.client.phone.NotifyPrefs.ring();
         if (ring && (ringtone == null || !ringtone.playing())) {
             ringtone = dev.blockphone.fabric.client.sound.PhoneSounds.play(dev.blockphone.fabric.client.sound.PhoneSounds.Kind.RINGTONE, true);
@@ -157,6 +201,7 @@ public final class CallClient {
     private static dev.blockphone.fabric.client.sound.PhoneSounds.@org.jetbrains.annotations.Nullable Handle ringtone;
 
     public static void reset() {
+        CallAudio.stop();
         CALLS.clear();
         notifiedChat = -1;
         joinedAt = 0;
@@ -194,7 +239,7 @@ public final class CallClient {
         }
 
         @Override
-        public void render(GuiGraphics g, Font font, long time) {
+        public void render(GuiGraphics g, Font font, long time) { // mc:render — в 26.1 extractRenderState/extractBackground
             PhoneDraw.rawRoundedRect(g, 0, 0, width(), height(), 4, PhoneTheme.bodyEdge());
             PhoneDraw.rawRoundedRect(g, 1, 1, width() - 1, height() - 1, 3, 0xF0111725);
             g.fill(1, 1, 3, height() - 1, PhoneTheme.online());
