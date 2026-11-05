@@ -28,4 +28,9 @@ processResources {
     from(rootProject.file('docs/relay-template')) {
         into 'blockphone/apps/relay-server-template'
     }
+    // Сторонние компоненты и их лицензии — в корень каждого jar (fabric, paper, velocity, bungee берут ресурсы common).
+    from(rootProject.file('THIRD_PARTY_NOTICES.md'))
+    from(rootProject.file('licenses')) {
+        into 'licenses'
+    }
 }
